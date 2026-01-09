@@ -4,7 +4,7 @@ import { useTransfers } from '../../context/TransferContext';
 import { getCurrentDragSource } from '../file-manager/FileGrid';
 import { useToast } from '../../context/ToastContext';
 import { useSettings } from '../../context/SettingsContext';
-import { Server, MoreVertical, FolderOpen, FolderClosed, Trash2, Pencil, ChevronRight, Play, Square, Network, Plus, Folder as FolderIcon, X, Search, Terminal as TerminalIcon, PanelLeftOpen, ChevronDown, Laptop, FolderPlus, PanelLeftClose, Terminal, Settings, FileText } from 'lucide-react';
+import { FolderOpen, Trash2, Pencil, ChevronRight, Network, Plus, Folder as FolderIcon, Search, PanelLeftOpen, ChevronDown, Laptop, FolderPlus, PanelLeftClose, Terminal, Settings, FileText } from 'lucide-react';
 import { OSIcon } from '../icons/OSIcon';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/Button';
