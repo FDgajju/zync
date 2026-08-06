@@ -14,7 +14,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Title bar mark**: Top-left chrome uses the background-less (`bare`) monochrome geometry via `ZyncMark`, themed with accent. ([b5d1e3d])
 
 ### Fixed
-- **Ghost overlay vertical alignment**: Inline ghost text no longer sits several rows above the caret when terminal `lineHeight` is greater than 1. Cell **width** still comes from `.xterm-char-measure-element` (subpixel); cell **height** uses viewport `screenHeight / rows` because char-measure uses `line-height: normal` and underestimates real xterm row pitch.
+- **Ghost overlay vertical alignment**: Inline ghost text no longer sits several rows above the caret when terminal `lineHeight` is greater than 1. Cell **width** still comes from `.xterm-char-measure-element` (subpixel); cell **height** uses viewport `screenHeight / rows` because char-measure uses `line-height: normal` and underestimates real xterm row pitch. ([a901e71])
 
 ## [2.22.2] - 2026-07-16
 
