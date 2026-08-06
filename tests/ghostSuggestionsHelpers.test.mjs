@@ -10,6 +10,7 @@ import {
   normalizeSuggestionSuffix,
 } from '../.tmp-agent-tests/src/lib/ghostSuggestions/suggestionSuffix.js';
 import {
+  mergeTerminalCellDimensions,
   resolveGhostCellPosition,
   wrapCellPosition,
 } from '../.tmp-agent-tests/src/lib/ghostSuggestions/cursorPosition.js';
@@ -311,6 +312,27 @@ await runTest('resolveGhostCellPosition predicts ahead of lagging SSH caret', ()
   assert.deepEqual(wrapCellPosition(78, 2, 5, 80), { col: 3, row: 3 });
   // Past viewport bottom: clamp row to last visible line (rows=10 → max row 9).
   assert.deepEqual(wrapCellPosition(0, 8, 200, 80, 10), { col: 40, row: 9 });
+});
+
+await runTest('mergeTerminalCellDimensions prefers char width + viewport row height', () => {
+  // Char-measure underestimates height when lineHeight > 1 (line-height: normal).
+  // Viewport height/rows is the true row pitch used by xterm layout.
+  assert.deepEqual(
+    mergeTerminalCellDimensions(
+      { width: 8.4, height: 14 },
+      { width: 8.5, height: 16.8 },
+    ),
+    { width: 8.4, height: 16.8 },
+  );
+  assert.deepEqual(
+    mergeTerminalCellDimensions({ width: 8, height: 14 }, null),
+    { width: 8, height: 14 },
+  );
+  assert.deepEqual(
+    mergeTerminalCellDimensions(null, { width: 9, height: 17 }),
+    { width: 9, height: 17 },
+  );
+  assert.equal(mergeTerminalCellDimensions(null, null), null);
 });
 
 await runTest('extractActiveSegment parses pipeline and separator tails', () => {

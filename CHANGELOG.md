@@ -13,6 +13,9 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Splash**: Boot splash and React fallback use a themed plated mark (panel + accent plate, accent ring and chevron, text underscore) with vignette, wordmark-style title, and a loading arc that travels the fixed logo ring path. Theme tokens only (no hardcoded brand indigo on splash). ([b5d1e3d])
 - **Title bar mark**: Top-left chrome uses the background-less (`bare`) monochrome geometry via `ZyncMark`, themed with accent. ([b5d1e3d])
 
+### Fixed
+- **Ghost overlay vertical alignment**: Inline ghost text no longer sits several rows above the caret when terminal `lineHeight` is greater than 1. Cell **width** still comes from `.xterm-char-measure-element` (subpixel); cell **height** uses viewport `screenHeight / rows` because char-measure uses `line-height: normal` and underestimates real xterm row pitch.
+
 ## [2.22.2] - 2026-07-16
 
 ### Fixed

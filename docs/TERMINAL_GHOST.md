@@ -335,7 +335,7 @@ Supporting filesystem IPC: `fs_list`, `fs_list_wsl`, `wsl_get_cwd`, `read_wsl_zs
 | `wslShell.ts` | WSL shell id + cwd resolution |
 | `suggestionSuffix.ts` | TS suffix helpers (tests mirror Rust) |
 | `ghostDebug.ts` | `localStorage` debug toggle |
-| `cursorPosition.ts` | Cell → pixel coords for overlay |
+| `cursorPosition.ts` | Cell → pixel coords for overlay (char-measure width + viewport row height) |
 
 ### Backend Rust (`src-tauri/src/ghost/`)
 
