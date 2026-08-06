@@ -15,6 +15,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ### Fixed
 - **Ghost overlay vertical alignment**: Inline ghost text no longer sits several rows above the caret when terminal `lineHeight` is greater than 1. Cell **width** still comes from `.xterm-char-measure-element` (subpixel); cell **height** uses viewport `screenHeight / rows` because char-measure uses `line-height: normal` and underestimates real xterm row pitch. ([a901e71])
+- **Terminal Ctrl+P command palette**: While the terminal is focused, **Ctrl+P** / **Ctrl+Shift+P** open the command palette via xterm custom key handlers (same reliability as **Ctrl+I**). Global `ShortcutManager` no longer dispatches the dead `ssh-ui:toggle-command-palette` event; it uses `zync:open-command-palette`, skips palette/AI chords when xterm is focused to avoid double-fire, and listens for `zync:ai-command-bar` so terminal **Ctrl+I** still toggles the AI sidebar.
 
 ## [2.22.2] - 2026-07-16
 

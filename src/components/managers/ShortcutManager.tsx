@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, type Tab } from '../../store/useAppStore';
-import { matchShortcut } from '../../lib/shortcuts';
+import { isXtermKeyboardTarget, matchShortcut } from '../../lib/shortcuts';
 
 
 
@@ -24,6 +24,13 @@ export function ShortcutManager() {
     const openAddConnectionModal = () => setAddConnectionModalOpen(true);
 
     useEffect(() => {
+        // Terminal keybindings dispatch this; without a listener Ctrl+I would be a no-op
+        // once the global Mod+I branch skips xterm targets.
+        const handleAiCommandBar = () => {
+            toggleAiSidebar();
+        };
+        window.addEventListener('zync:ai-command-bar', handleAiCommandBar);
+
         const handleKeyDown = (e: KeyboardEvent) => {
             const kb = settings.keybindings;
             if (!kb) return;
@@ -33,6 +40,7 @@ export function ShortcutManager() {
             const isContentEditable = e.target instanceof HTMLElement && e.target.isContentEditable;
 
             const isSnippetSidebar = e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 's' || e.code === 'Backquote' || e.key === '`' || e.key === '~');
+            const xtermFocused = isXtermKeyboardTarget(e.target);
 
             if (isInput || isContentEditable) {
                 // Allow terminal shortcuts to always pass through (terminal uses a hidden textarea)
@@ -94,9 +102,20 @@ export function ShortcutManager() {
                 else openSettings();
             }
             // closeTab handled in TabBar.tsx to support confirmation modal
+            // When xterm is focused, useTerminalKeybindings owns palette / AI so we do not double-fire.
             else if (matchShortcut(e, kb.commandPalette || 'Mod+P')) {
+                if (xtermFocused) return;
                 e.preventDefault();
-                window.dispatchEvent(new CustomEvent('ssh-ui:toggle-command-palette'));
+                window.dispatchEvent(new CustomEvent('zync:open-command-palette', {
+                    detail: { commandMode: false },
+                }));
+            }
+            else if (matchShortcut(e, 'Mod+Shift+P')) {
+                if (xtermFocused) return;
+                e.preventDefault();
+                window.dispatchEvent(new CustomEvent('zync:open-command-palette', {
+                    detail: { commandMode: true },
+                }));
             }
             else if (matchShortcut(e, kb.switchTabNext || 'Ctrl+Tab')) {
                 e.preventDefault();
@@ -201,6 +220,7 @@ export function ShortcutManager() {
                 window.dispatchEvent(new CustomEvent('ssh-ui:term-find'));
             }
             else if (matchShortcut(e, kb.aiCommandBar || 'Mod+I')) {
+                if (xtermFocused) return;
                 e.preventDefault();
                 toggleAiSidebar();
             }
@@ -209,6 +229,7 @@ export function ShortcutManager() {
         window.addEventListener('keydown', handleKeyDown, { capture: true });
         return () => {
             window.removeEventListener('keydown', handleKeyDown, { capture: true });
+            window.removeEventListener('zync:ai-command-bar', handleAiCommandBar);
             if (collapseTimeoutRef.current) clearTimeout(collapseTimeoutRef.current);
         };
     }, [openTab, activeTabId, activeConnectionId, isSettingsOpen, openSettings, closeSettings, setAddConnectionModalOpen, settings, updateSettings, tabs, activateTab, toggleAiSidebar]);

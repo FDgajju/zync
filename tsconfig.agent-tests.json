@@ -79,6 +79,7 @@
         "src/lib/ghostSuggestions/promptCwdSniffer.ts",
         "src/lib/ghostSuggestions/secretInputDetect.ts",
         "src/lib/ghostSuggestions/runtime.ts",
+        "src/lib/shortcuts.ts",
         "src/lib/terminal/types.ts",
         "src/lib/terminal/rendererPolicy.ts",
         "src/lib/terminal/webglCapability.ts",

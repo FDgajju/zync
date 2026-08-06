@@ -30,3 +30,10 @@ export function matchShortcut(e: KeyboardEvent, shortcut: string): boolean {
 
     return false;
 }
+
+/** True when key events target xterm's focused helper textarea (or an element inside `.xterm`). */
+export function isXtermKeyboardTarget(target: EventTarget | null | undefined): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.classList.contains('xterm-helper-textarea')) return true;
+    return Boolean(target.closest('.xterm'));
+}

@@ -150,8 +150,9 @@ flowchart TB
 | `useTerminalTheme.ts` | Live theme/accent/opacity sync to open terminals |
 | `useTerminalSearch.ts` | Search addon state |
 | `useTerminalGhost.ts` | Ghost runtime binding |
-| `useTerminalKeybindings.ts` | xterm custom key handlers |
+| `useTerminalKeybindings.ts` | xterm custom key handlers (Ctrl+I / Ctrl+P → AI event / `zync:open-command-palette`; font zoom; search Escape) |
 | `useTerminalGlobalShortcuts.ts` | App-level paste/find guards when xterm focused |
+| `ShortcutManager` + `lib/shortcuts.ts` | Global shortcuts; skips command-palette / AI when xterm focused (`isXtermKeyboardTarget`); listens for `zync:ai-command-bar` |
 | `terminalTheme.ts` | xterm theme resolution, transparency host styles |
 
 **Connection identity:**

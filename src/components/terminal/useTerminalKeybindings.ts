@@ -27,9 +27,19 @@ export function useTerminalKeybindings({
         return true;
       }
 
+      // Same pattern as Ctrl+I: handle in xterm so the chord never reaches the PTY
+      // and works while the helper textarea is focused (window bubble listeners alone are flaky).
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent('zync:ai-command-bar'));
+        return false;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('zync:open-command-palette', {
+          detail: { commandMode: Boolean(e.shiftKey) },
+        }));
         return false;
       }
 
