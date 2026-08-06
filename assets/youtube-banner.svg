@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="1152" viewBox="0 0 2048 1152" fill="none" role="img" aria-label="Zync YouTube Banner">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1a1040"/>
+    </linearGradient>
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.4"/>
+      <stop offset="50%" stop-color="#8b5cf6" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0.3"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Full canvas background for TVs/large displays -->
+  <rect width="2048" height="1152" fill="url(#bg)"/>
+
+  <!-- Subtle grid pattern -->
+  <defs>
+    <pattern id="dots" x="0" y="0" width="48" height="48" patternUnits="userSpaceOnUse">
+      <circle cx="24" cy="24" r="1.5" fill="#6366f1" fill-opacity="0.1"/>
+    </pattern>
+  </defs>
+  <rect width="2048" height="1152" fill="url(#dots)"/>
+
+  <!-- Horizontal layout centered within YouTube Safe Area (1235x338 in middle of 2048x1152) -->
+  <g id="safe-area-content">
+    <!-- Icon Mark (150x150, rx=32) -->
+    <g transform="translate(670, 501)">
+      <rect width="150" height="150" rx="32" fill="#0f172a"/>
+      <rect width="150" height="150" rx="32" fill="none" stroke="url(#borderGrad)" stroke-width="3"/>
+      <g transform="translate(75, 75) scale(0.29) translate(-256, -256)">
+        <path
+          d="M128 170.667L213.333 256L128 341.333"
+          stroke="#6366f1"
+          stroke-width="64"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M248 341.333H392"
+          stroke="#ffffff"
+          stroke-width="64"
+          stroke-linecap="round"
+        />
+      </g>
+    </g>
+
+    <!-- Wordmark & Subtitle -->
+    <text
+      x="860"
+      y="580"
+      font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
+      font-size="88"
+      font-weight="700"
+      fill="#ffffff"
+      letter-spacing="-0.8"
+    >Zync</text>
+    <text
+      x="864"
+      y="630"
+      font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
+      font-size="32"
+      font-weight="500"
+      fill="#94a3b8"
+      letter-spacing="0.4"
+    >A Modern, Native SSH Client</text>
+  </g>
+</svg>

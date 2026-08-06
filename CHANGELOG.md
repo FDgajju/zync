@@ -4,6 +4,12 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Brand asset kit**: Canonical SVGs under `assets/` — app mark (`logo-icon.svg`), legacy backup, square and circular variants, wordmark/horizontal lockups (light + dark), monochrome marks, and banner art for marketing/YouTube.
+
+### Changed
+- **App icon**: Desktop and mobile bundled icons (`src-tauri/icons/**`, `public/icon.png`) now use the free-floating rounded dark plate with indigo hairline ring and `>_` glyph. Cargo rebuilds when core icon files change (`build.rs`).
+
 ## [2.22.2] - 2026-07-16
 
 ### Fixed
