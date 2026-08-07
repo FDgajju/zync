@@ -18,7 +18,7 @@
   <!-- Mark 80×80 -->
   <g transform="translate(270 60)">
     <rect x="0.8" y="0.8" width="78.4" height="78.4" rx="16.8" fill="#0f172a"/>
-    <rect x="0.8" y="0.8" width="78.4" height="78.4" rx="16.8" fill="none" stroke="#6366f1" stroke-width="1.6"/>
+    <rect x="0.8" y="0.8" width="78.4" height="78.4" rx="16.8" fill="none" stroke="#6366f1" stroke-opacity="0.35" stroke-width="1.6"/>
     <g transform="translate(40 38.75) scale(0.150625) translate(-256 -256)">
       <path
         d="M128 170.667L213.333 256L128 341.333"

@@ -20,6 +20,7 @@
     rx="251"
     fill="none"
     stroke="#6366f1"
+    stroke-opacity="0.35"
     stroke-width="10"
   />
 

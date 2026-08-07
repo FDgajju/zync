@@ -104,8 +104,11 @@ export function ZyncMark({
                     rx="103"
                     fill="none"
                     strokeWidth="18"
+                    // Brand assets: soft full indigo. Theme: CSS lifts accent so the
+                    // hairline stays visible on the always-dark product plate.
+                    strokeOpacity={isBrand ? 0.35 : undefined}
                     stroke={isBrand ? '#6366f1' : undefined}
-                    className={isBrand ? undefined : 'stroke-app-accent'}
+                    className={isBrand ? undefined : 'zync-mark-ring-product'}
                 />
             )}
             <g transform={glyphTransform}>

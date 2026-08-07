@@ -2,7 +2,7 @@
   <!-- Lockup for light backgrounds -->
   <g transform="translate(0 0)">
     <rect x="1.1" y="1.1" width="109.8" height="109.8" rx="23.5" fill="#0f172a"/>
-    <rect x="1.1" y="1.1" width="109.8" height="109.8" rx="23.5" fill="none" stroke="#6366f1" stroke-width="2.2"/>
+    <rect x="1.1" y="1.1" width="109.8" height="109.8" rx="23.5" fill="none" stroke="#6366f1" stroke-opacity="0.35" stroke-width="2.2"/>
     <g transform="translate(56 54.25) scale(0.2109375) translate(-256 -256)">
       <path
         d="M128 170.667L213.333 256L128 341.333"

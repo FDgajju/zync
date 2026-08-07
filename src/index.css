@@ -156,6 +156,14 @@
     fill: color-mix(in srgb, #0f172a 88%, var(--color-app-accent, #6366f1) 12%);
 }
 
+/*
+  Theme hairline on the dark product plate — accent at 70% opacity.
+*/
+.zync-mark-ring-product {
+    stroke: var(--color-app-accent, #6366f1);
+    stroke-opacity: 0.7;
+}
+
 /* Plated splash tile */
 .zync-splash-tile {
     border-radius: 26.5%;
