@@ -12,8 +12,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **App icon**: Desktop and mobile bundled icons (`src-tauri/icons/**`, `public/icon.png`) now use the free-floating rounded dark plate with indigo hairline ring and `>_` glyph. Cargo rebuilds when core icon files change (`build.rs`). ([60fc375])
 - **Splash**: Boot splash and React fallback use a themed plated mark (panel + accent plate, accent ring and chevron, text underscore) with vignette, wordmark-style title, and a loading arc that travels the fixed logo ring path. Theme tokens only (no hardcoded brand indigo on splash). ([b5d1e3d])
 - **Title bar mark**: Top-left chrome uses the background-less (`bare`) monochrome geometry via `ZyncMark`, themed with accent. ([b5d1e3d])
-- **Brand hairline softness**: Logo SVGs, banner mark, and regenerated OS icons use a softer indigo plate ring (`stroke-opacity` 0.35) so the border matches the pre-rebrand banner rather than a full-bright indigo edge.
-- **About mark**: Settings → About hero uses themed `ZyncMark` with `frame="ring"` (dark product plate, theme-accent ring at 70% opacity) and a light accent wash on the outer tilt card.
+- **Brand hairline softness**: Logo SVGs, banner mark, and regenerated OS icons use a softer indigo plate ring (`stroke-opacity` 0.35) so the border matches the pre-rebrand banner rather than a full-bright indigo edge. ([688a927])
+- **About mark**: Settings → About hero uses themed `ZyncMark` with `frame="ring"` (dark product plate, theme-accent ring at 70% opacity) and a light accent wash on the outer tilt card. ([688a927])
 
 ### Fixed
 - **Ghost overlay vertical alignment**: Inline ghost text no longer sits several rows above the caret when terminal `lineHeight` is greater than 1. Cell **width** still comes from `.xterm-char-measure-element` (subpixel); cell **height** uses viewport `screenHeight / rows` because char-measure uses `line-height: normal` and underestimates real xterm row pitch. ([a901e71])
