@@ -1,6 +1,7 @@
 import { X, Settings as SettingsIcon, PanelLeft, Network, Gift, Plus, Laptop, FolderPlus, Sparkles, Home, Shield, UserRound, ChevronDown, LogOut, RefreshCw } from 'lucide-react';
 import { GoogleMarkIcon } from '../icons/providerIcons';
 import { OSIcon } from '../icons/OSIcon';
+import { ZyncMark } from '../brand/ZyncMark';
 import { useAppStore, Tab, Connection } from '../../store/useAppStore'; // Updated Import
 import { cn } from '../../lib/utils';
 import { WindowControls } from './WindowControls';
@@ -317,12 +318,8 @@ export function TabBar() {
                 <div className="flex items-center gap-1.5 shrink-0 drag-none px-1">
                     {/* Zync Icon */}
                     <Tooltip content="Zync" position="bottom">
-                        <div className="shrink-0 flex items-center opacity-80 hover:opacity-100 transition-opacity cursor-default px-2">
-                            <svg width="20" height="20" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <rect width="512" height="512" rx="128" className="fill-app-accent/20" />
-                                <path d="M128 170.667L213.333 256L128 341.333" className="stroke-app-accent" strokeWidth="64" strokeLinecap="round" strokeLinejoin="round" />
-                                <path d="M256 341.333H384" className="stroke-app-accent" strokeWidth="64" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
+                        <div className="shrink-0 flex items-center opacity-90 hover:opacity-100 transition-opacity cursor-default px-2">
+                            <ZyncMark size={22} variant="theme" frame="bare" />
                         </div>
                     </Tooltip>
 

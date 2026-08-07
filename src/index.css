@@ -93,6 +93,143 @@
     animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* React fallback splash — aesthetics + GPU-only motion, matches index.html boot */
+@keyframes zync-splash-mark-in {
+    from {
+        opacity: 0;
+        transform: scale(0.94);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes zync-splash-meta-in {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes zync-splash-ring-dash {
+    to {
+        stroke-dashoffset: -1900;
+    }
+}
+
+.zync-splash {
+    /* Soft vignette over theme bg */
+    background-image:
+        radial-gradient(
+            ellipse 70% 55% at 50% 46%,
+            color-mix(in srgb, var(--color-app-panel, #18181b) 45%, transparent) 0%,
+            transparent 68%
+        ),
+        radial-gradient(
+            ellipse 100% 100% at 50% 50%,
+            transparent 42%,
+            color-mix(in srgb, var(--color-app-bg, #09090b) 88%, #000) 100%
+        );
+}
+
+/* Splash plate can track panel (theme surface) */
+.zync-splash-plate {
+    fill: color-mix(
+        in srgb,
+        var(--color-app-panel, #18181b) 86%,
+        var(--color-app-accent, #6366f1) 14%
+    );
+}
+
+/*
+  About / product tile: always a dark plate (like logo-icon.svg) so light themes
+  don't wash out into "white square + blue ring". Accent tints the slate slightly.
+*/
+.zync-mark-plate-product {
+    fill: color-mix(in srgb, #0f172a 88%, var(--color-app-accent, #6366f1) 12%);
+}
+
+/*
+  Theme hairline on the dark product plate — accent at 70% opacity.
+*/
+.zync-mark-ring-product {
+    stroke: var(--color-app-accent, #6366f1);
+    stroke-opacity: 0.7;
+}
+
+/* Plated splash tile */
+.zync-splash-tile {
+    border-radius: 26.5%;
+    box-shadow: 0 12px 32px color-mix(in srgb, #000 32%, transparent);
+}
+
+.zync-splash-icon {
+    display: block;
+    animation: zync-splash-mark-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Quiet track + loading arc on fixed ring path */
+.zync-splash-ring-track {
+    opacity: 0.22;
+}
+
+.zync-splash-ring-spin {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 520 1380;
+    stroke-dashoffset: 0;
+    animation: zync-splash-ring-dash 1.05s linear infinite;
+}
+
+.zync-splash-meta {
+    animation: zync-splash-meta-in 320ms cubic-bezier(0.22, 1, 0.36, 1) 90ms both;
+}
+
+/* Matches boot splash + logo-wordmark optical style (no Inter bundle) */
+.zync-splash-title {
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu, Cantarell, Arial, sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    text-transform: none;
+    color: color-mix(in srgb, var(--color-app-text, #e4e4e7) 92%, transparent);
+    line-height: 1.1;
+    font-feature-settings: 'kern' 1, 'liga' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .zync-splash-icon,
+    .zync-splash-meta,
+    .zync-splash-ring-spin {
+        animation: none !important;
+    }
+
+    .zync-splash-icon,
+    .zync-splash-meta {
+        opacity: 1;
+        transform: none;
+    }
+
+    .zync-splash-ring-track {
+        opacity: 0;
+    }
+
+    .zync-splash-ring-spin {
+        stroke-dasharray: none;
+        stroke-dashoffset: 0;
+        opacity: 1;
+    }
+}
+
 /* Tunnel wizard diagram tokens (scoped) */
 .tunnel-wizard {
     --color-surface: var(--color-app-surface);

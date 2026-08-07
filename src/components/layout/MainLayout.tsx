@@ -79,15 +79,71 @@ const TabLoading = () => (
     </div>
 );
 
+/**
+ * Fallback splash only if boot splash is gone early.
+ * Keep in sync with index.html #boot-splash: plated themed mark + ring dash loader.
+ * Bare/flat monochrome is for title-bar chrome only — not splash.
+ */
 const SplashScreen = () => (
-    <div className="absolute inset-0 z-[99999] flex items-center justify-center bg-app-bg transition-colors duration-300">
-        <div className="flex flex-col items-center gap-3">
-            <svg width="112" height="112" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" className="animate-pulse">
-                <rect width="512" height="512" rx="128" className="fill-app-accent/10" />
-                <path d="M128 170.667L213.333 256L128 341.333" strokeWidth="64" strokeLinecap="round" strokeLinejoin="round" className="stroke-app-accent" />
-                <path d="M256 341.333H384" strokeWidth="64" strokeLinecap="round" strokeLinejoin="round" className="stroke-app-text" />
-            </svg>
-            <div className="text-xs font-bold tracking-[0.18em] uppercase text-app-muted">Zync</div>
+    <div className="zync-splash absolute inset-0 z-[99999] flex items-center justify-center bg-app-bg overflow-hidden">
+        <div className="zync-splash-inner relative flex flex-col items-center gap-[18px]">
+            <div className="zync-splash-mark-wrap relative grid place-items-center w-[120px] h-[120px]">
+                {/* No glow blob — solid plate is the surface (matches boot splash) */}
+                <div className="zync-splash-tile relative w-[120px] h-[120px]">
+                    <svg
+                        className="zync-splash-icon relative z-[1]"
+                        width={120}
+                        height={120}
+                        viewBox="0 0 512 512"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden
+                    >
+                        {/* Solid themed plate (panel + accent), not transparent soft fill */}
+                        <rect width="512" height="512" rx="112" className="zync-splash-plate" />
+                        <rect
+                            className="zync-splash-ring-track stroke-app-accent"
+                            x="9"
+                            y="9"
+                            width="494"
+                            height="494"
+                            rx="103"
+                            fill="none"
+                            strokeWidth="18"
+                        />
+                        <rect
+                            className="zync-splash-ring-spin stroke-app-accent"
+                            x="9"
+                            y="9"
+                            width="494"
+                            height="494"
+                            rx="103"
+                            fill="none"
+                            strokeWidth="18"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                        <g transform="translate(256 248) scale(0.92) translate(-256 -256)">
+                            <path
+                                d="M128 170.667L213.333 256L128 341.333"
+                                className="stroke-app-accent"
+                                strokeWidth="64"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                            <path
+                                d="M256 341.333H384"
+                                className="stroke-app-text"
+                                strokeWidth="64"
+                                strokeLinecap="round"
+                            />
+                        </g>
+                    </svg>
+                </div>
+            </div>
+            <div className="zync-splash-meta flex flex-col items-center">
+                <div className="zync-splash-title">Zync</div>
+            </div>
         </div>
     </div>
 );
@@ -885,14 +941,14 @@ export function MainLayout({ children }: { children: ReactNode }) {
     const hideBootSplash = useCallback(() => {
         try {
             if (typeof window.__zyncHideBootSplash === 'function') {
+                // Owns fade + delayed remove — do not hard-remove here or exit animation is skipped.
                 window.__zyncHideBootSplash();
                 return;
             }
         } catch (e) {
             console.warn('Error in __zyncHideBootSplash:', e);
-        } finally {
-            document.getElementById('boot-splash')?.remove();
         }
+        document.getElementById('boot-splash')?.remove();
     }, []);
 
     const handleAiRunCommand = useCallback((connectionId: string, command: string) => {

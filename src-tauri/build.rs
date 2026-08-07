@@ -1,5 +1,10 @@
 fn main() {
     println!("cargo:rerun-if-changed=.env");
+    // Rebuild window/taskbar icons when generated icon assets change.
+    println!("cargo:rerun-if-changed=icons/icon.ico");
+    println!("cargo:rerun-if-changed=icons/icon.png");
+    println!("cargo:rerun-if-changed=icons/32x32.png");
+    println!("cargo:rerun-if-changed=icons/128x128.png");
     println!("cargo:rerun-if-env-changed=GOOGLE_CLIENT_ID");
     println!("cargo:rerun-if-env-changed=PROFILE");
     let mut file_google_client_id: Option<String> = None;

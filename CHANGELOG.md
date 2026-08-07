@@ -4,6 +4,23 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.3] - 2026-08-07
+
+### Added
+- **Brand asset kit**: Canonical SVGs under `assets/` — app mark (`logo-icon.svg`), legacy backup, square and circular variants, wordmark/horizontal lockups (light + dark), monochrome marks, and banner art for marketing/YouTube. ([60fc375])
+- **`ZyncMark`**: Shared mark component with `bare` / `borderless` / `ring` frames and theme or brand color variants for in-app chrome. ([b5d1e3d])
+
+### Changed
+- **App icon**: Desktop and mobile bundled icons (`src-tauri/icons/**`, `public/icon.png`) now use the free-floating rounded dark plate with indigo hairline ring and `>_` glyph. Cargo rebuilds when core icon files change (`build.rs`). ([60fc375])
+- **Splash**: Boot splash and React fallback use a themed plated mark (panel + accent plate, accent ring and chevron, text underscore) with vignette, wordmark-style title, and a loading arc that travels the fixed logo ring path. Theme tokens only (no hardcoded brand indigo on splash). ([b5d1e3d])
+- **Title bar mark**: Top-left chrome uses the background-less (`bare`) monochrome geometry via `ZyncMark`, themed with accent. ([b5d1e3d])
+- **Brand hairline softness**: Logo SVGs, banner mark, and regenerated OS icons use a softer indigo plate ring (`stroke-opacity` 0.35) so the border matches the pre-rebrand banner rather than a full-bright indigo edge. ([688a927])
+- **About mark**: Settings → About hero uses themed `ZyncMark` with `frame="ring"` (dark product plate, theme-accent ring at 70% opacity) and a light accent wash on the outer tilt card. ([688a927])
+
+### Fixed
+- **Ghost overlay vertical alignment**: Inline ghost text no longer sits several rows above the caret when terminal `lineHeight` is greater than 1. Cell **width** still comes from `.xterm-char-measure-element` (subpixel); cell **height** uses viewport `screenHeight / rows` because char-measure uses `line-height: normal` and underestimates real xterm row pitch. ([a901e71])
+- **Terminal Ctrl+P command palette**: While the terminal is focused, **Ctrl+P** / **Ctrl+Shift+P** open the command palette via xterm custom key handlers (same reliability as **Ctrl+I**). Global `ShortcutManager` no longer dispatches the dead `ssh-ui:toggle-command-palette` event; it uses `zync:open-command-palette`, skips palette/AI chords when xterm is focused to avoid double-fire, and listens for `zync:ai-command-bar` so terminal **Ctrl+I** still toggles the AI sidebar. ([18fe3b9])
+
 ## [2.22.2] - 2026-07-16
 
 ### Fixed

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-label="Zync">
+  <!--
+    Full-bleed square mark — no rounded chrome, no hairline frame.
+    Use where the surface is already masked or square (avatars, some stores,
+    social crop, etc.). NOT the primary desktop app icon.
+
+    Primary app icon: logo-icon.svg (rounded + indigo hairline).
+  -->
+  <rect width="512" height="512" fill="#0f172a"/>
+
+  <g transform="translate(256 248) scale(0.96) translate(-256 -256)">
+    <path
+      d="M128 170.667L213.333 256L128 341.333"
+      stroke="#6366f1"
+      stroke-width="64"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M248 341.333H392"
+      stroke="#ffffff"
+      stroke-width="64"
+      stroke-linecap="round"
+    />
+  </g>
+</svg>

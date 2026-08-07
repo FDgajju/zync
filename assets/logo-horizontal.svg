@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="128" viewBox="0 0 640 128" fill="none" role="img" aria-label="Zync — A Modern, Native SSH Client">
+  <!--
+    Marketing lockup + tagline for dark backgrounds.
+    Icon 112, gap 40, type stacked on optical mid-line of icon.
+  -->
+  <g transform="translate(0 8)">
+    <rect x="1.1" y="1.1" width="109.8" height="109.8" rx="23.5" fill="#0f172a"/>
+    <rect x="1.1" y="1.1" width="109.8" height="109.8" rx="23.5" fill="none" stroke="#6366f1" stroke-opacity="0.35" stroke-width="2.2"/>
+    <g transform="translate(56 54.25) scale(0.2109375) translate(-256 -256)">
+      <path
+        d="M128 170.667L213.333 256L128 341.333"
+        stroke="#6366f1"
+        stroke-width="64"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M248 341.333H392"
+        stroke="#ffffff"
+        stroke-width="64"
+        stroke-linecap="round"
+      />
+    </g>
+  </g>
+
+  <text
+    x="152"
+    y="64"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="44"
+    font-weight="700"
+    fill="#ffffff"
+    letter-spacing="-0.5"
+  >Zync</text>
+  <text
+    x="154"
+    y="92"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-size="15"
+    font-weight="500"
+    fill="#94a3b8"
+    letter-spacing="0.2"
+  >A Modern, Native SSH Client</text>
+</svg>

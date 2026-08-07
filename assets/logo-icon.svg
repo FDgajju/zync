@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-label="Zync">
+  <!--
+    Primary app icon — free-floating rounded plate (transparent corners).
+    Indigo hairline ring on the plate edge. NOT full-bleed square.
+    Square full-bleed variant: logo-icon-square.svg
+  -->
+  <!-- Dark rounded plate — soft silhouette, transparent outside -->
+  <rect width="512" height="512" rx="112" fill="#0f172a"/>
+
+  <!-- Indigo hairline: soft like pre-rebrand banner (full #6366f1 was too bright) -->
+  <rect
+    x="9"
+    y="9"
+    width="494"
+    height="494"
+    rx="103"
+    fill="none"
+    stroke="#6366f1"
+    stroke-opacity="0.35"
+    stroke-width="18"
+  />
+
+  <!-- Glyph optically centered (slight up-bias for underscore) -->
+  <g transform="translate(256 248) scale(0.92) translate(-256 -256)">
+    <path
+      d="M128 170.667L213.333 256L128 341.333"
+      stroke="#6366f1"
+      stroke-width="64"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M256 341.333H384"
+      stroke="#ffffff"
+      stroke-width="64"
+      stroke-linecap="round"
+    />
+  </g>
+</svg>

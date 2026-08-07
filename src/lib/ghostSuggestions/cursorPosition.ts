@@ -2,8 +2,10 @@
  * getCursorPixelPosition — converts xterm cursor cell coordinates to pixel
  * coordinates relative to the ghost overlay parent.
  *
- * Uses xterm's char-measure element (subpixel getBoundingClientRect) with a
- * viewport fallback so ghost overlays stay aligned under WebGL and DOM renderers.
+ * Cell width: prefer `.xterm-char-measure-element` (subpixel glyph advance).
+ * Cell height: prefer viewport (`screenHeight / rows`) — char-measure uses
+ * `line-height: normal` and underestimates row pitch when xterm `lineHeight` > 1,
+ * which stacks into multi-row vertical misalignment (ghost text above the caret).
  */
 
 import type { Terminal } from '@xterm/xterm';
@@ -59,8 +61,28 @@ function estimateCellFromViewport(term: Terminal): TerminalCellDimensions | null
   };
 }
 
+/**
+ * Merge char-measure (width-accurate) with viewport (height-accurate) samples.
+ * @internal exported for unit tests
+ */
+export function mergeTerminalCellDimensions(
+  fromDom: TerminalCellDimensions | null,
+  fromViewport: TerminalCellDimensions | null,
+): TerminalCellDimensions | null {
+  if (fromDom && fromViewport) {
+    return {
+      width: fromDom.width,
+      height: fromViewport.height,
+    };
+  }
+  return fromDom ?? fromViewport;
+}
+
 export function getTerminalCellDimensions(term: Terminal): TerminalCellDimensions | null {
-  return measureCellFromDom(term) ?? estimateCellFromViewport(term);
+  return mergeTerminalCellDimensions(
+    measureCellFromDom(term),
+    estimateCellFromViewport(term),
+  );
 }
 
 function getOverlayRoot(term: Terminal): HTMLElement | null {

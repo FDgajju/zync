@@ -75,7 +75,7 @@ Each workspace can have multiple shell tabs. A **local shell** (`LOCAL_TERMINAL_
 | `@xterm/addon-canvas` | **Removed** — xterm 6 dropped canvas addon; DOM is the non-WebGL path |
 | `terminal-output-{sessionId}` Tauri events | **Removed** — replaced by Tauri `Channel` frames (v2.19.x) |
 | Base64 JSON `number[]` as primary output transport | Legacy decode kept in `terminalOutputPayload.ts` for dev safety only |
-| Private xterm APIs (`_core._renderService`) | **Removed** — ghost/cursor sizing uses `.xterm-char-measure-element` |
+| Private xterm APIs (`_core._renderService`) | **Removed** — ghost sizing uses char-measure for **width** and viewport (`screen/rows`) for **height** (char-measure alone underestimates row pitch when `lineHeight` > 1) |
 | `windowsMode` / `fastScrollModifier` xterm options | Removed in xterm 6; not reintroduced |
 | Canvas renderer aliases (`activateCanvasRenderer` exports) | **Removed** in Phase 7; use DOM APIs |
 | Auto SSH respawn after idle suspend | **Rejected** — user presses **Enter** to resume; scrollback preserved |
@@ -150,8 +150,9 @@ flowchart TB
 | `useTerminalTheme.ts` | Live theme/accent/opacity sync to open terminals |
 | `useTerminalSearch.ts` | Search addon state |
 | `useTerminalGhost.ts` | Ghost runtime binding |
-| `useTerminalKeybindings.ts` | xterm custom key handlers |
+| `useTerminalKeybindings.ts` | xterm custom key handlers (Ctrl+I / Ctrl+P → AI event / `zync:open-command-palette`; font zoom; search Escape) |
 | `useTerminalGlobalShortcuts.ts` | App-level paste/find guards when xterm focused |
+| `ShortcutManager` + `lib/shortcuts.ts` | Global shortcuts; skips command-palette / AI when xterm focused (`isXtermKeyboardTarget`); listens for `zync:ai-command-bar` |
 | `terminalTheme.ts` | xterm theme resolution, transparency host styles |
 
 **Connection identity:**
