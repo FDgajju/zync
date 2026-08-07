@@ -4,6 +4,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.3] - 2026-08-07
+
 ### Added
 - **Brand asset kit**: Canonical SVGs under `assets/` — app mark (`logo-icon.svg`), legacy backup, square and circular variants, wordmark/horizontal lockups (light + dark), monochrome marks, and banner art for marketing/YouTube. ([60fc375])
 - **`ZyncMark`**: Shared mark component with `bare` / `borderless` / `ring` frames and theme or brand color variants for in-app chrome. ([b5d1e3d])
