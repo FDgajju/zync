@@ -941,7 +941,9 @@ All notable changes to Zync are documented in this file. The format is based on 
 - Auto-updates
 - Multiple themes (Dark, Light, Dracula)
 
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.22.1...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.22.4...HEAD
+[2.22.4]: https://github.com/zync-sh/zync/compare/v2.22.2...v2.22.4
+[2.22.2]: https://github.com/zync-sh/zync/compare/v2.22.1...v2.22.2
 [2.22.1]: https://github.com/zync-sh/zync/compare/v2.22.0...v2.22.1
 [2.22.0]: https://github.com/zync-sh/zync/compare/v2.21.0...v2.22.0
 [2.21.0]: https://github.com/zync-sh/zync/compare/v2.20.1...v2.21.0
