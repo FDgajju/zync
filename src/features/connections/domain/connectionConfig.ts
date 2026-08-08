@@ -174,7 +174,11 @@ export const connectionUsesVaultAuth = (
     return connectConfigUsesVaultAuth(result.config);
 };
 
-/** Auto-connect when opening or activating a tab that is not yet live. Vault hosts prompt unlock via connect(). */
+/**
+ * Auto-connect only when the user explicitly opens a host (openTab / sidebar).
+ * Session restore and tab-bar activateTab do not use this — no surprise SSH.
+ * Vault hosts prompt unlock via connect().
+ */
 export const shouldAutoConnectOnOpenTab = (
     _connections: Connection[],
     connection: Connection,
