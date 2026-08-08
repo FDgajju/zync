@@ -4,6 +4,9 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Changed
+- **Session restore / tab switch auto-connect**: Restored host tabs no longer open SSH on app restart or when switching to them in the tab bar. Connections stay disconnected until an explicit sidebar open or **Reconnect**. ([bbab9ce])
+
 ## [2.22.4] - 2026-08-07
 
 ### Added
