@@ -49,6 +49,10 @@ export const TerminalComponent = memo(function TerminalComponent({
   const globalActiveId = useAppStore((state) => state.activeConnectionId);
   const connections = useAppStore((state) => state.connections);
   const connect = useAppStore((state) => state.connect);
+  const openConnectionModal = useAppStore((state) => state.openConnectionModal);
+  const openVaultTab = useAppStore((state) => state.openVaultTab);
+  const setTabView = useAppStore((state) => state.setTabView);
+  const activeTabId = useAppStore((state) => state.activeTabId);
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const ghostSettings = settings.ghostSuggestions;
@@ -179,12 +183,34 @@ export const TerminalComponent = memo(function TerminalComponent({
   }
 
   if (!isConnected) {
+    // TerminalManager sets isVisible = workspaceActive && terminalView.
+    const isSurfaceActive = isVisible && isWorkspaceActive && isTerminalView;
     return (
       <TerminalDisconnectedView
         connection={connection}
         isPendingRestore={isPendingRestore}
         activeConnectionId={terminalKey}
+        isSurfaceActive={isSurfaceActive}
         onReconnect={() => connect(terminalKey)}
+        onEditHost={
+          connection
+            ? () => openConnectionModal(connection.id)
+            : undefined
+        }
+        onOpenFiles={
+          connection && activeTabId
+            ? () => {
+                // Land on Files and start SSH so SFTP can attach when live.
+                setTabView(activeTabId, 'files');
+                void connect(terminalKey);
+              }
+            : undefined
+        }
+        onOpenVault={
+          connection
+            ? () => openVaultTab('local')
+            : undefined
+        }
       />
     );
   }
