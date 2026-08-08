@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useAppStore, Connection, Folder } from '../../store/useAppStore';
-import { Files, Info, Network, Pencil, Plus, Power, RefreshCw, Search, Server, TerminalIcon, Trash2 } from 'lucide-react';
+import { Files, Info, Network, PanelLeft, Pencil, Plus, Power, RefreshCw, Search, Server, TerminalIcon, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -13,6 +13,7 @@ import { FolderFormModal } from './sidebar/FolderFormModal';
 import { SidebarActionButton } from './sidebar/SidebarActionButton';
 import { VaultNavSection } from './sidebar/VaultNavSection';
 import { RemoteHostItem } from './sidebar/RemoteHostItem';
+import { sortConnectionsByLiveFirst } from './sidebar/sortConnections';
 import { AddConnectionModal } from '../modals/AddConnectionModal';
 import { AddTunnelModal } from '../modals/AddTunnelModal';
 import {
@@ -28,6 +29,7 @@ import {
     type ConnectionExchangeExportFormat,
 } from '../../features/connections/infrastructure/connectionTransfer';
 import { FEATURE_META, type FeatureId } from './featureMeta';
+import { GLOBAL_SNIPPETS_CONNECTION_ID, LOCAL_TERMINAL_CONNECTION_ID } from '../../features/connections/application/tabService';
 
 // Lazy Load Modals
 const SettingsModal = lazy(() => import('../settings/SettingsModal').then(mod => ({ default: mod.SettingsModal })));
@@ -47,6 +49,9 @@ const HOST_FILTERS: Array<{ id: HostCatalogFilter; label: string }> = [
     { id: 'local', label: 'Local' },
     { id: 'remote', label: 'Remote' },
 ];
+
+/** Collapsed sidebar icon rail width (keeps nav reachable). */
+const SIDEBAR_RAIL_WIDTH = 52;
 
 export function Sidebar({ className }: { className?: string }) {
     const [viewingDetailsId, setViewingDetailsId] = useState<string | null>(null);
@@ -114,6 +119,8 @@ export function Sidebar({ className }: { className?: string }) {
     }, [width]);
 
     const sidebarRef = useRef<HTMLDivElement>(null);
+    const hostListRef = useRef<HTMLDivElement>(null);
+    const typeaheadRef = useRef({ buffer: '', timer: 0 as ReturnType<typeof setTimeout> | undefined });
 
     // Sync width if settings change externally (e.g. via reset)
     useEffect(() => {
@@ -181,11 +188,6 @@ export function Sidebar({ className }: { className?: string }) {
             setHostFilter('all');
         }
     }, [providerConnected, hostFilter, setHostFilter]);
-
-    // Active sessions stay visible regardless of All Hosts search/filter (those live inside All Hosts).
-    const activeConnections = useMemo(() => {
-        return connections.filter((c: Connection) => c.status === 'connected');
-    }, [connections]);
 
     const filteredHostCount = filteredEntries.length;
     const totalHostCount = catalogEntries.length;
@@ -578,29 +580,27 @@ export function Sidebar({ className }: { className?: string }) {
     }, [hasAnyHosts, hostFilter, inventoryError, inventoryStatus, providerConnected, searchTerm]);
 
     const allHostsToolbar = useMemo(() => (
-        <div className="space-y-2">
-            {/* Empty catalog only — hide once at least one host exists */}
+        <div className="space-y-1.5">
+            {/* Empty catalog — primary CTA lives here; otherwise + is on the section header */}
             {!hasAnyHosts && (
                 <button
                     type="button"
                     onClick={() => openConnectionModal()}
                     className={cn(
-                        'flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5',
-                        'text-[11px] font-medium',
-                        'border border-app-border/40 bg-app-surface/50 text-app-text',
-                        'hover:bg-app-surface hover:border-app-border/60 transition-colors',
+                        'flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-2',
+                        'text-[12px] font-medium',
+                        'bg-app-accent/12 text-app-accent hover:bg-app-accent/18 transition-colors',
                     )}
                 >
-                    <Plus size={13} aria-hidden />
+                    <Plus size={14} aria-hidden />
                     New host
                 </button>
             )}
-            {/* Search only when there is something to search, or user is mid-query */}
             {(hasAnyHosts || searchTerm.trim()) && (
                 <div className="relative">
                     <Search
-                        size={12}
-                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-app-muted/55"
+                        size={13}
+                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-app-muted/50"
                         aria-hidden="true"
                     />
                     <input
@@ -610,19 +610,18 @@ export function Sidebar({ className }: { className?: string }) {
                         aria-label="Search hosts"
                         placeholder={searchPlaceholder}
                         className={cn(
-                            'w-full rounded-md border border-app-border/30 bg-app-bg/50',
-                            'pl-8 pr-3 py-1.5 text-[11px] text-app-text',
-                            'placeholder:text-app-muted/50',
-                            'focus:outline-none focus:border-app-accent/50 focus:bg-app-bg/70',
+                            'w-full rounded-md border border-app-border/25 bg-app-bg/40',
+                            'py-1.5 pl-8 pr-3 text-[12px] text-app-text',
+                            'placeholder:text-app-muted/45',
+                            'focus:border-app-accent/45 focus:bg-app-bg/55 focus:outline-none',
                         )}
                     />
                 </div>
             )}
-            {/* All / Local / Remote only when a sync provider is connected */}
             {providerConnected && (
                 <div className="flex items-center gap-1">
                     <div
-                        className="inline-flex flex-1 min-w-0 rounded-md border border-app-border/30 bg-app-bg/40 p-0.5"
+                        className="inline-flex min-w-0 flex-1 rounded-md bg-app-bg/35 p-0.5"
                         role="tablist"
                         aria-label="Host location filter"
                     >
@@ -634,9 +633,9 @@ export function Sidebar({ className }: { className?: string }) {
                                 aria-selected={hostFilter === item.id}
                                 onClick={() => setHostFilter(item.id)}
                                 className={cn(
-                                    'flex-1 min-w-0 truncate rounded px-1.5 py-1 text-[10px] font-medium transition-colors',
+                                    'min-w-0 flex-1 truncate rounded-md px-1.5 py-1.5 text-[11px] font-medium transition-colors',
                                     hostFilter === item.id
-                                        ? 'bg-app-surface text-app-text shadow-sm'
+                                        ? 'bg-app-surface/90 text-app-text shadow-sm'
                                         : 'text-app-muted hover:text-app-text',
                                 )}
                             >
@@ -648,14 +647,13 @@ export function Sidebar({ className }: { className?: string }) {
                         type="button"
                         onClick={() => { void refreshInventory(); }}
                         className={cn(
-                            'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
-                            'border border-app-border/30 bg-app-bg/40 text-app-muted',
-                            'hover:text-app-text hover:bg-app-surface/60',
+                            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+                            'text-app-muted hover:bg-app-surface/50 hover:text-app-text',
                         )}
                         title="Refresh provider host list"
                         aria-label="Refresh provider host list"
                     >
-                        <RefreshCw size={12} className={cn(inventoryStatus === 'loading' && 'animate-spin')} />
+                        <RefreshCw size={13} className={cn(inventoryStatus === 'loading' && 'animate-spin')} />
                     </button>
                 </div>
             )}
@@ -672,30 +670,96 @@ export function Sidebar({ className }: { className?: string }) {
         setHostFilter,
     ]);
 
+    useEffect(() => {
+        return () => {
+            if (typeaheadRef.current.timer) clearTimeout(typeaheadRef.current.timer);
+        };
+    }, []);
+
+    const handleHostListKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+        const root = hostListRef.current;
+        if (!root) return;
+
+        const items = Array.from(root.querySelectorAll<HTMLElement>('[data-host-row="1"]'));
+        if (!items.length) return;
+
+        const active = document.activeElement as HTMLElement | null;
+        let idx = items.findIndex((el) => el === active || el.contains(active));
+
+        if (event.key === 'ArrowDown' || event.key === 'j') {
+            if (event.key === 'j' && (event.target as HTMLElement)?.tagName === 'INPUT') return;
+            event.preventDefault();
+            const next = idx < 0 ? 0 : Math.min(items.length - 1, idx + 1);
+            items[next]?.focus();
+            return;
+        }
+        if (event.key === 'ArrowUp' || event.key === 'k') {
+            if (event.key === 'k' && (event.target as HTMLElement)?.tagName === 'INPUT') return;
+            event.preventDefault();
+            const next = idx < 0 ? items.length - 1 : Math.max(0, idx - 1);
+            items[next]?.focus();
+            return;
+        }
+        if (event.key === 'Home') {
+            event.preventDefault();
+            items[0]?.focus();
+            return;
+        }
+        if (event.key === 'End') {
+            event.preventDefault();
+            items[items.length - 1]?.focus();
+            return;
+        }
+
+        // Type-ahead: jump to host whose label starts with the typed buffer.
+        if (
+            event.key.length === 1
+            && !event.ctrlKey
+            && !event.metaKey
+            && !event.altKey
+            && (event.target as HTMLElement)?.tagName !== 'INPUT'
+        ) {
+            const ch = event.key.toLocaleLowerCase();
+            if (!/[\p{L}\p{N}._-]/u.test(ch)) return;
+
+            if (typeaheadRef.current.timer) clearTimeout(typeaheadRef.current.timer);
+            typeaheadRef.current.buffer = `${typeaheadRef.current.buffer}${ch}`;
+            typeaheadRef.current.timer = setTimeout(() => {
+                typeaheadRef.current.buffer = '';
+            }, 700);
+
+            const buf = typeaheadRef.current.buffer;
+            const start = idx < 0 ? 0 : idx + 1;
+            const order = [...items.slice(start), ...items.slice(0, start)];
+            const match = order.find((el) => (el.dataset.hostLabel || '').startsWith(buf));
+            if (match) {
+                event.preventDefault();
+                match.focus();
+            }
+        }
+    }, []);
+
     const allHostsContent = useMemo(() => {
         const showEmpty =
             remoteOnlyEntries.length === 0
             && treeRoot.connections.length === 0
             && Object.keys(treeRoot.children).length === 0;
 
+        const orderedRootConnections = sortConnectionsByLiveFirst(treeRoot.connections);
+
         return (
-            <div
-                className={cn(
-                    'rounded-lg border border-app-border/25 bg-app-surface/15',
-                    'flex flex-col flex-1 min-h-0 overflow-hidden',
-                )}
-            >
-                {/* Toolbar stays fixed; only the host list scrolls */}
-                <div className="shrink-0 space-y-2 p-2 pb-0">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {/* Toolbar fixed; list scrolls — no nested card chrome */}
+                <div className="shrink-0 space-y-1.5 px-0.5 pb-1">
                     {allHostsToolbar}
 
                     {inventoryHint && (
                         <p
                             className={cn(
-                                'px-0.5 text-[10px] leading-snug',
+                                'px-0.5 text-[11px] leading-snug',
                                 inventoryStatus === 'error'
-                                    ? 'rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 text-amber-900 dark:text-amber-200/90'
-                                    : 'text-app-muted/60',
+                                    ? 'rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-amber-900 dark:text-amber-200/90'
+                                    : 'text-app-muted/55',
                             )}
                         >
                             {inventoryHint}
@@ -704,9 +768,14 @@ export function Sidebar({ className }: { className?: string }) {
                 </div>
 
                 <div
-                    className="flex-1 min-h-0 overflow-y-auto scrollbar-hide space-y-0.5 p-2 pt-2"
+                    ref={hostListRef}
+                    className="min-h-0 flex-1 space-y-0.5 overflow-y-auto scrollbar-hide px-0.5 pt-1 outline-none"
                     onDragOver={handleAllHostsDragOver}
                     onDrop={handleAllHostsDrop}
+                    onKeyDown={handleHostListKeyDown}
+                    role="list"
+                    aria-label="Hosts"
+                    tabIndex={0}
                 >
                     {Object.keys(treeRoot.children).sort().map(key => (
                         <FolderItem
@@ -724,7 +793,7 @@ export function Sidebar({ className }: { className?: string }) {
                             connectionItemProps={connectionItemProps}
                         />
                     ))}
-                    {treeRoot.connections.map(conn => (
+                    {orderedRootConnections.map(conn => (
                         <ConnectionItem
                             key={conn.id}
                             conn={conn}
@@ -735,7 +804,6 @@ export function Sidebar({ className }: { className?: string }) {
                         />
                     ))}
 
-                    {/* Provider-only hosts in the same list (chips show provider). */}
                     {remoteOnlyEntries.map(entry => (
                         <RemoteHostItem
                             key={`remote-${entry.logicalId}`}
@@ -748,13 +816,13 @@ export function Sidebar({ className }: { className?: string }) {
                     ))}
 
                     {showEmpty && (
-                        <div className="flex flex-col items-center gap-2 px-3 py-6 text-center">
-                            <Server size={18} className="text-app-muted/40" aria-hidden />
-                            <div className="space-y-0.5">
-                                <p className="text-[12px] font-medium text-app-muted/80">
+                        <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
+                            <Server size={20} className="text-app-muted/35" aria-hidden />
+                            <div className="space-y-1">
+                                <p className="text-[13px] font-medium text-app-muted/85">
                                     {emptyListMessage.title}
                                 </p>
-                                <p className="text-[10px] leading-relaxed text-app-muted/55 max-w-[14rem]">
+                                <p className="max-w-[14rem] text-[11px] leading-relaxed text-app-muted/55">
                                     {emptyListMessage.detail}
                                 </p>
                             </div>
@@ -771,6 +839,7 @@ export function Sidebar({ className }: { className?: string }) {
         expandedFolders,
         handleAllHostsDragOver,
         handleAllHostsDrop,
+        handleHostListKeyDown,
         handleKeepAndConnect,
         handleKeepOnDevice,
         handleRenameFolder,
@@ -785,25 +854,42 @@ export function Sidebar({ className }: { className?: string }) {
         updateConnectionFolder,
     ]);
 
+    const railHosts = useMemo(
+        () => sortConnectionsByLiveFirst(
+            connections.filter(
+                (c) => c.id !== LOCAL_TERMINAL_CONNECTION_ID
+                    && c.id !== 'port-forwarding'
+                    && c.id !== GLOBAL_SNIPPETS_CONNECTION_ID,
+            ),
+        ),
+        [connections],
+    );
+
+    const expandSidebar = useCallback(() => {
+        void updateSettings({ sidebarCollapsed: false });
+    }, [updateSettings]);
+
     const initialConnectionId = activeConnectionId && activeConnectionId !== 'local' && activeConnectionId !== 'port-forwarding'
         ? activeConnectionId
         : undefined;
+
+    const contentWidth = isCollapsed ? SIDEBAR_RAIL_WIDTH : width;
 
     return (
         <div
             ref={sidebarRef}
             className={cn(
                 "bg-app-panel flex flex-col h-full shrink-0 relative z-50 overflow-hidden",
-                !isCollapsed && "border-r border-app-border/50",
+                "border-r border-app-border/50",
                 !isResizing ? "transition-[width] duration-300 ease-[cubic-bezier(0.2,0,0,1)]" : "",
                 className
             )}
             style={{
-                width: isCollapsed ? 0 : width,
+                width: contentWidth,
                 willChange: isResizing ? 'auto' : 'width'
             }}
         >
-            {/* Resize Handle */}
+            {/* Resize Handle (expanded only) */}
             {!isCollapsed && width >= 40 && (
                 <div
                     className="absolute right-0 top-0 bottom-0 w-1 hover:w-1.5 cursor-col-resize hover:bg-app-accent/50 transition-all z-[100] group"
@@ -815,75 +901,132 @@ export function Sidebar({ className }: { className?: string }) {
 
             {/* Content Wrapper */}
             <div
-                style={{ width: width, minWidth: width }}
-                className="flex flex-col h-full pt-1.5"
+                style={{ width: contentWidth, minWidth: contentWidth }}
+                className="flex h-full flex-col pt-1"
             >
-                {/* System Actions Column — top nav matches Terminal / Port Forwarding / Vault */}
-                <div className={cn(compactMode ? "px-3 pt-2 mb-2" : "px-4 pt-3 mb-2")}>
-                    <div className="flex flex-col gap-1.5 w-full">
-                        <SidebarActionButton
-                            icon={<TerminalIcon size={13} />}
-                            label="New Terminal"
-                            onClick={() => openTab('local')}
-                        />
+                {isCollapsed ? (
+                    /* ── Icon rail ── */
+                    <div className="flex h-full flex-col items-stretch px-1.5 pb-2 pt-1.5">
+                        <nav className="flex flex-col items-center gap-0.5" aria-label="Workspace">
+                            <SidebarActionButton
+                                icon={<TerminalIcon size={15} />}
+                                label="Terminal"
+                                iconOnly
+                                onClick={() => openTab('local')}
+                            />
+                            <SidebarActionButton
+                                icon={<Network size={15} />}
+                                label="Port forwarding"
+                                iconOnly
+                                onClick={() => openPortForwardingTab()}
+                            />
+                            <VaultNavSection iconOnly />
+                        </nav>
 
-                        <SidebarActionButton
-                            icon={<Network size={13} />}
-                            label="Port Forwarding"
-                            onClick={() => openPortForwardingTab()}
-                        />
+                        <div className="mx-1 my-2 h-px bg-app-border/20" />
 
-                        <VaultNavSection />
+                        <div
+                            className="flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto scrollbar-hide"
+                            role="list"
+                            aria-label="Hosts"
+                        >
+                            <button
+                                type="button"
+                                title="New host"
+                                aria-label="New host"
+                                onClick={() => openConnectionModal()}
+                                className={cn(
+                                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
+                                    'text-app-muted hover:bg-app-surface/50 hover:text-app-text',
+                                )}
+                            >
+                                <Plus size={15} />
+                            </button>
+                            {railHosts.map((conn) => (
+                                <ConnectionItem
+                                    key={`rail-${conn.id}`}
+                                    conn={conn}
+                                    isCollapsed
+                                    locations={connectionItemProps.getLocations?.(conn)}
+                                    onEdit={connectionItemProps.onEdit}
+                                    onOpenContextMenu={connectionItemProps.onOpenContextMenu}
+                                />
+                            ))}
+                        </div>
+
+                        <button
+                            type="button"
+                            title="Expand sidebar"
+                            aria-label="Expand sidebar"
+                            onClick={expandSidebar}
+                            className={cn(
+                                'mt-1 flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-md',
+                                'text-app-muted hover:bg-app-surface/50 hover:text-app-text',
+                            )}
+                        >
+                            <PanelLeft size={15} />
+                        </button>
                     </div>
-                </div>
+                ) : (
+                    <>
+                        {/* Quiet primary nav */}
+                        <div className={cn(compactMode ? 'mb-1.5 px-2 pt-1.5' : 'mb-1.5 px-2.5 pt-2')}>
+                            <nav className="flex w-full flex-col gap-0.5" aria-label="Workspace">
+                                <SidebarActionButton
+                                    icon={<TerminalIcon size={14} />}
+                                    label="Terminal"
+                                    onClick={() => openTab('local')}
+                                />
 
-                <div className="h-px bg-app-border/20 mb-2 mx-4" />
+                                <SidebarActionButton
+                                    icon={<Network size={14} />}
+                                    label="Port forwarding"
+                                    onClick={() => openPortForwardingTab()}
+                                />
 
-                {/* List: Active + All Hosts (header/search sticky; host list scrolls) */}
-                <div className={cn(
-                    "flex-1 min-h-0 flex flex-col overflow-hidden pb-3",
-                    compactMode ? "px-2 gap-1.5" : "px-3 gap-1.5"
-                )}>
-                    {activeConnections.length > 0 && (
-                        <div className="shrink-0 max-h-[30%] overflow-y-auto scrollbar-hide">
+                                <VaultNavSection />
+                            </nav>
+                        </div>
+
+                        <div className="mx-3 mb-1.5 h-px bg-app-border/15" />
+
+                        {/* Single host list — live sessions pin to top, no Active duplicate */}
+                        <div className={cn(
+                            'flex min-h-0 flex-1 flex-col overflow-hidden pb-2',
+                            compactMode ? 'gap-1 px-1.5' : 'gap-1 px-2',
+                        )}>
                             <SidebarSection
-                                title="Active"
-                                count={activeConnections.length}
+                                title="Hosts"
                                 compactMode={compactMode}
                                 variant="action"
-                                icon={<Power size={13} />}
+                                fill
+                                icon={<Server size={14} />}
+                                count={filteredEntries.length > 0 ? filteredEntries.length : undefined}
+                                headerActions={hasAnyHosts ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => openConnectionModal()}
+                                        className={cn(
+                                            'inline-flex h-7 w-7 items-center justify-center rounded-md',
+                                            'text-app-muted hover:bg-app-surface/50 hover:text-app-text',
+                                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent',
+                                        )}
+                                        title="New host"
+                                        aria-label="New host"
+                                    >
+                                        <Plus size={14} />
+                                    </button>
+                                ) : undefined}
+                                onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    setAllHostsContextMenu({ x: event.clientX, y: event.clientY });
+                                }}
                             >
-                                <div className={cn("space-y-1 mb-1 pl-1", compactMode && "space-y-0.5")}>
-                                    {activeConnections.map((conn: Connection) => (
-                                        <ConnectionItem
-                                            key={`active-${conn.id}`}
-                                            conn={conn}
-                                            isCollapsed={false}
-                                            locations={connectionItemProps.getLocations?.(conn)}
-                                            onEdit={connectionItemProps.onEdit}
-                                            onOpenContextMenu={connectionItemProps.onOpenContextMenu}
-                                        />
-                                    ))}
-                                </div>
+                                {allHostsContent}
                             </SidebarSection>
                         </div>
-                    )}
-
-                    <SidebarSection
-                        title="All Hosts"
-                        compactMode={compactMode}
-                        variant="action"
-                        fill
-                        icon={<Server size={13} />}
-                        count={filteredEntries.length > 0 ? filteredEntries.length : undefined}
-                        onContextMenu={(event) => {
-                            event.preventDefault();
-                            setAllHostsContextMenu({ x: event.clientX, y: event.clientY });
-                        }}
-                    >
-                        {allHostsContent}
-                    </SidebarSection>
-                </div>
+                    </>
+                )}
             </div>
 
             {/* Modals */}

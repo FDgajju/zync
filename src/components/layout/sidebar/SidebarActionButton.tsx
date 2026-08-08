@@ -8,8 +8,14 @@ export interface SidebarActionButtonProps {
     active?: boolean;
     nested?: boolean;
     trailing?: ReactNode;
+    /** Icon-only rail (collapsed sidebar). */
+    iconOnly?: boolean;
 }
 
+/**
+ * Quiet primary-nav row (Terminal, Port forwarding, etc.).
+ * Sentence case, light hover — not a heavy “action card.”
+ */
 export function SidebarActionButton({
     icon,
     label,
@@ -17,26 +23,56 @@ export function SidebarActionButton({
     active = false,
     nested = false,
     trailing,
+    iconOnly = false,
 }: SidebarActionButtonProps) {
+    if (iconOnly) {
+        return (
+            <button
+                type="button"
+                title={label}
+                aria-label={label}
+                className={cn(
+                    'group mx-auto flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent outline-none transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg',
+                    'text-app-muted hover:bg-app-surface/50 hover:text-app-text',
+                    active && 'bg-app-surface/55 text-app-accent',
+                )}
+                onClick={onClick}
+            >
+                <span className={cn('opacity-80 group-hover:opacity-100', active && 'opacity-100')}>
+                    {icon}
+                </span>
+            </button>
+        );
+    }
+
     return (
         <button
             type="button"
             className={cn(
-                "group relative flex items-center transition-all cursor-pointer select-none outline-none w-full rounded-lg border border-transparent",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg",
-                nested ? "py-1.5 px-3" : "py-2 px-3",
-                nested
-                    ? "bg-app-surface/20 hover:bg-app-surface/40 hover:border-app-border/20"
-                    : "bg-app-surface/30 hover:bg-app-surface hover:border-app-border/30",
-                "text-app-muted hover:text-app-text",
-                active && (nested ? "bg-app-surface/40 text-app-text" : "text-app-text")
+                'group relative flex w-full cursor-pointer select-none items-center rounded-md border border-transparent outline-none transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg',
+                nested ? 'px-2 py-1.5' : 'px-2 py-1.5',
+                'text-app-muted hover:bg-app-surface/50 hover:text-app-text',
+                active && 'bg-app-surface/55 text-app-text',
             )}
             onClick={onClick}
         >
-            <span className={cn("shrink-0 opacity-70 group-hover:opacity-100", nested && "ml-3")}>
+            <span
+                className={cn(
+                    'shrink-0 opacity-70 transition-opacity group-hover:opacity-100',
+                    nested && 'ml-2',
+                    active && 'opacity-100 text-app-accent',
+                )}
+            >
                 {icon}
             </span>
-            <span className="ml-3 truncate font-medium text-[10px] uppercase tracking-wider opacity-80 group-hover:opacity-100">
+            <span
+                className={cn(
+                    'ml-2.5 truncate text-[12px] font-medium tracking-normal opacity-90 group-hover:opacity-100',
+                    active && 'opacity-100',
+                )}
+            >
                 {label}
             </span>
             {trailing && (

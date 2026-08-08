@@ -17,6 +17,8 @@ interface SidebarSectionProps {
      */
     fill?: boolean;
     icon?: ReactNode;
+    /** Optional trailing controls in the header (e.g. New host). */
+    headerActions?: ReactNode;
     onDrop?: (e: React.DragEvent) => void;
     onContextMenu?: (e: React.MouseEvent) => void;
 }
@@ -30,6 +32,7 @@ export function SidebarSection({
     variant = 'plain',
     fill = false,
     icon,
+    headerActions,
     onDrop,
     onContextMenu
 }: SidebarSectionProps) {
@@ -39,8 +42,8 @@ export function SidebarSection({
     return (
         <div
             className={cn(
-                isAction ? 'mb-1.5' : 'mb-2',
-                fill && 'flex-1 min-h-0 flex flex-col',
+                isAction ? 'mb-1' : 'mb-2',
+                fill && 'flex min-h-0 flex-1 flex-col',
             )}
             onDragOver={onDrop ? (e) => {
                 e.preventDefault();
@@ -58,84 +61,91 @@ export function SidebarSection({
                 onDrop(e);
             } : undefined}
         >
-            <button
-                type="button"
-                onClick={() => setIsExpanded(!isExpanded)}
-                aria-expanded={isExpanded}
-                onContextMenu={onContextMenu}
+            <div
                 className={cn(
-                    'group w-full flex items-center select-none outline-none transition-all shrink-0',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg',
-                    isAction
-                        ? cn(
-                            'gap-0 rounded-lg border border-transparent py-2 px-3',
-                            'bg-app-surface/30 hover:bg-app-surface hover:border-app-border/30',
-                            'text-app-muted hover:text-app-text',
-                            isExpanded && 'text-app-text border-app-border/20',
-                        )
-                        : cn(
-                            'gap-1 mb-1',
-                            compactMode ? 'px-2' : 'px-4',
-                        ),
+                    'group flex w-full shrink-0 items-center select-none',
+                    isAction ? 'gap-0.5' : 'gap-1 mb-1',
+                    !isAction && (compactMode ? 'px-2' : 'px-4'),
                 )}
+                onContextMenu={onContextMenu}
             >
-                {isAction ? (
-                    <>
-                        {icon && (
-                            <span className="shrink-0 opacity-70 group-hover:opacity-100">
-                                {icon}
-                            </span>
-                        )}
-                        <span
-                            className={cn(
-                                'truncate font-medium text-[10px] uppercase tracking-wider opacity-80 group-hover:opacity-100',
-                                icon ? 'ml-3' : undefined,
+                <button
+                    type="button"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    aria-expanded={isExpanded}
+                    className={cn(
+                        'flex min-w-0 flex-1 items-center rounded-md outline-none transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg',
+                        isAction
+                            ? cn(
+                                'gap-2 px-1.5 py-1.5',
+                                'text-app-muted hover:bg-app-surface/40 hover:text-app-text',
+                                isExpanded && 'text-app-text',
+                            )
+                            : cn(
+                                'gap-1 py-0.5',
+                                'text-app-muted hover:text-app-text',
+                            ),
+                    )}
+                >
+                    {isAction ? (
+                        <>
+                            {icon && (
+                                <span className="shrink-0 opacity-65 group-hover:opacity-100">
+                                    {icon}
+                                </span>
                             )}
-                        >
-                            {title}
-                        </span>
-                        {count !== undefined && count > 0 && (
-                            <span className="ml-2 text-[10px] font-medium text-app-accent bg-app-accent/10 px-1.5 rounded-full">
-                                {count}
+                            <span className="truncate text-[12px] font-semibold tracking-normal opacity-90">
+                                {title}
                             </span>
-                        )}
-                        <span className="ml-auto shrink-0 flex items-center justify-center opacity-60 group-hover:opacity-100">
+                            {count !== undefined && count > 0 && (
+                                <span className="ml-1 rounded-full bg-app-surface/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-app-muted">
+                                    {count}
+                                </span>
+                            )}
+                            <span className="ml-auto flex shrink-0 items-center justify-center opacity-50 group-hover:opacity-90">
+                                <ChevronRight
+                                    size={13}
+                                    className={cn(
+                                        'transition-transform duration-200',
+                                        isExpanded && 'rotate-90',
+                                    )}
+                                />
+                            </span>
+                        </>
+                    ) : (
+                        <>
                             <ChevronRight
                                 size={12}
                                 className={cn(
-                                    'transition-transform duration-200',
+                                    'text-app-muted transition-transform duration-200 group-hover:text-app-text',
                                     isExpanded && 'rotate-90',
                                 )}
                             />
-                        </span>
-                    </>
-                ) : (
-                    <>
-                        <ChevronRight
-                            size={12}
-                            className={cn(
-                                'text-app-muted group-hover:text-app-text transition-transform duration-200',
-                                isExpanded && 'rotate-90',
-                            )}
-                        />
-                        <span className="text-xs font-bold text-app-muted group-hover:text-app-text transition-colors uppercase tracking-wider">
-                            {title}
-                        </span>
-                        {count !== undefined && count > 0 && (
-                            <span className="ml-auto text-[10px] font-medium text-app-accent bg-app-accent/10 px-1.5 rounded-full">
-                                {count}
+                            <span className="text-[12px] font-semibold tracking-normal text-app-muted group-hover:text-app-text">
+                                {title}
                             </span>
-                        )}
-                    </>
-                )}
-            </button>
+                            {count !== undefined && count > 0 && (
+                                <span className="ml-auto rounded-full bg-app-surface/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-app-muted">
+                                    {count}
+                                </span>
+                            )}
+                        </>
+                    )}
+                </button>
+                {headerActions ? (
+                    <div className="flex shrink-0 items-center gap-0.5 pr-0.5">
+                        {headerActions}
+                    </div>
+                ) : null}
+            </div>
 
             {isExpanded && (
                 <div
                     className={cn(
-                        'animate-in fade-in slide-in-from-top-1 duration-200',
-                        isAction ? 'mt-1.5' : undefined,
-                        fill && 'flex-1 min-h-0 flex flex-col overflow-hidden',
+                        'animate-in fade-in slide-in-from-top-1 duration-150',
+                        isAction ? 'mt-1' : undefined,
+                        fill && 'flex min-h-0 flex-1 flex-col overflow-hidden',
                     )}
                 >
                     {children}
