@@ -12,14 +12,15 @@ interface ConnectedHostsGroupProps {
 }
 
 /**
- * Virtual folder at the top of All Hosts — same chrome as real folders,
- * no rename/delete/drag. Holds live (connected / connecting) sessions only.
+ * Virtual folder at the top of All Hosts — live sessions only.
+ * Always starts expanded; hides entirely when empty.
  */
 export const ConnectedHostsGroup = memo(function ConnectedHostsGroup({
     connections,
     compactMode,
     connectionItemProps,
 }: ConnectedHostsGroupProps) {
+    // Always open by default so live sessions are visible immediately.
     const [expanded, setExpanded] = useState(true);
 
     if (connections.length === 0) return null;
@@ -58,14 +59,13 @@ export const ConnectedHostsGroup = memo(function ConnectedHostsGroup({
                 )}
                 <span className="flex min-w-0 flex-1 items-center gap-2 truncate font-semibold">
                     Connected
-                    {/* Quiet live cue — not a loud power icon */}
                     <span
                         className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500/90"
                         title="Live sessions"
                         aria-hidden
                     />
                 </span>
-                <span className="ml-auto mr-1 text-[10px] tabular-nums opacity-0 transition-opacity group-hover:opacity-60">
+                <span className="ml-auto mr-1 text-[10px] tabular-nums text-app-muted/50 group-hover:text-app-muted/70">
                     {connections.length}
                 </span>
             </div>

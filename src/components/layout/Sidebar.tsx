@@ -577,7 +577,7 @@ export function Sidebar({ className }: { className?: string }) {
         if (searchTerm.trim()) {
             return {
                 title: 'No matches',
-                detail: 'Try a different search.',
+                detail: 'Try a different search or clear the filter.',
             };
         }
         if (providerConnected && hostFilter === 'local') {
@@ -621,13 +621,13 @@ export function Sidebar({ className }: { className?: string }) {
             return {
                 title: 'No hosts yet',
                 detail: providerConnected
-                    ? 'Use New host above, or refresh Remote after unlocking sync.'
-                    : 'Use New host above to get started.',
+                    ? 'Use + on All Hosts, or refresh Remote after unlocking sync.'
+                    : 'Use + on All Hosts to add a host, folder, or tunnel.',
             };
         }
         return {
             title: 'Nothing here',
-            detail: 'No hosts match the current view.',
+            detail: 'No hosts match this view. Try All, or clear search.',
         };
     }, [hasAnyHosts, hostFilter, inventoryError, inventoryStatus, providerConnected, searchTerm]);
 
@@ -639,13 +639,12 @@ export function Sidebar({ className }: { className?: string }) {
                     type="button"
                     onClick={() => openConnectionModal()}
                     className={cn(
-                        'flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5',
-                        'text-[11px] font-medium',
-                        'border border-app-border/40 bg-app-surface/50 text-app-text',
-                        'hover:bg-app-surface hover:border-app-border/60 transition-colors',
+                        'flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-2',
+                        'text-[12px] font-medium text-app-text',
+                        'bg-app-surface/55 hover:bg-app-surface/75 transition-colors',
                     )}
                 >
-                    <Plus size={13} aria-hidden />
+                    <Plus size={14} aria-hidden />
                     New host
                 </button>
             )}
@@ -653,8 +652,8 @@ export function Sidebar({ className }: { className?: string }) {
             {(hasAnyHosts || searchTerm.trim()) && (
                 <div className="relative">
                     <Search
-                        size={12}
-                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-app-muted/55"
+                        size={13}
+                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-app-muted/50"
                         aria-hidden="true"
                     />
                     <input
@@ -664,10 +663,10 @@ export function Sidebar({ className }: { className?: string }) {
                         aria-label="Search hosts"
                         placeholder={searchPlaceholder}
                         className={cn(
-                            'w-full rounded-md border border-app-border/30 bg-app-bg/50',
-                            'pl-8 pr-3 py-1.5 text-[11px] text-app-text',
-                            'placeholder:text-app-muted/50',
-                            'focus:outline-none focus:border-app-accent/50 focus:bg-app-bg/70',
+                            'w-full rounded-md border border-transparent bg-app-bg/55',
+                            'py-2 pl-8 pr-3 text-[12px] text-app-text',
+                            'placeholder:text-app-muted/45',
+                            'focus:border-app-border/40 focus:bg-app-bg/70 focus:outline-none',
                         )}
                     />
                 </div>
@@ -676,7 +675,7 @@ export function Sidebar({ className }: { className?: string }) {
             {providerConnected && (
                 <div className="flex items-center gap-1">
                     <div
-                        className="inline-flex flex-1 min-w-0 rounded-md border border-app-border/30 bg-app-bg/40 p-0.5"
+                        className="inline-flex min-w-0 flex-1 rounded-md bg-app-bg/45 p-0.5"
                         role="tablist"
                         aria-label="Host location filter"
                     >
@@ -688,7 +687,7 @@ export function Sidebar({ className }: { className?: string }) {
                                 aria-selected={hostFilter === item.id}
                                 onClick={() => setHostFilter(item.id)}
                                 className={cn(
-                                    'flex-1 min-w-0 truncate rounded px-1.5 py-1 text-[10px] font-medium transition-colors',
+                                    'min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
                                     hostFilter === item.id
                                         ? 'bg-app-surface text-app-text shadow-sm'
                                         : 'text-app-muted hover:text-app-text',
@@ -702,14 +701,13 @@ export function Sidebar({ className }: { className?: string }) {
                         type="button"
                         onClick={() => { void refreshInventory(); }}
                         className={cn(
-                            'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
-                            'border border-app-border/30 bg-app-bg/40 text-app-muted',
-                            'hover:text-app-text hover:bg-app-surface/60',
+                            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+                            'text-app-muted hover:bg-app-surface/60 hover:text-app-text',
                         )}
                         title="Refresh provider host list"
                         aria-label="Refresh provider host list"
                     >
-                        <RefreshCw size={12} className={cn(inventoryStatus === 'loading' && 'animate-spin')} />
+                        <RefreshCw size={13} className={cn(inventoryStatus === 'loading' && 'animate-spin')} />
                     </button>
                 </div>
             )}
@@ -809,16 +807,27 @@ export function Sidebar({ className }: { className?: string }) {
                     ))}
 
                     {showEmpty && connectedListHosts.length === 0 && (
-                        <div className="flex flex-col items-center gap-2 px-3 py-6 text-center">
-                            <Server size={18} className="text-app-muted/40" aria-hidden />
-                            <div className="space-y-0.5">
-                                <p className="text-[12px] font-medium text-app-muted/80">
-                                    {emptyListMessage.title}
-                                </p>
-                                <p className="text-[10px] leading-relaxed text-app-muted/55 max-w-[14rem]">
-                                    {emptyListMessage.detail}
-                                </p>
-                            </div>
+                        <div className="flex flex-col items-start gap-1.5 px-2 py-5">
+                            <p className="text-[13px] font-medium text-app-muted/85">
+                                {emptyListMessage.title}
+                            </p>
+                            <p className="text-[12px] leading-relaxed text-app-muted/55">
+                                {emptyListMessage.detail}
+                            </p>
+                            {!hasAnyHosts && (
+                                <button
+                                    type="button"
+                                    onClick={() => openConnectionModal()}
+                                    className={cn(
+                                        'mt-1 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5',
+                                        'text-[12px] font-medium text-app-text',
+                                        'bg-app-surface/60 hover:bg-app-surface/80 transition-colors',
+                                    )}
+                                >
+                                    <Plus size={13} aria-hidden />
+                                    New host
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
@@ -836,9 +845,11 @@ export function Sidebar({ className }: { className?: string }) {
         handleKeepAndConnect,
         handleKeepOnDevice,
         handleRenameFolder,
+        hasAnyHosts,
         inventoryHint,
         inventoryStatus,
         materializingIds,
+        openConnectionModal,
         remoteOnlyEntries,
         renameFolder,
         toggleFolder,
