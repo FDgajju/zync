@@ -1,11 +1,13 @@
 import { useRef, useState, memo } from 'react';
 import { useAppStore, Connection, Tab } from '../../../store/useAppStore';
 import { getCurrentDragSource } from '../../../lib/dragDrop';
+import { Settings } from 'lucide-react';
 import { OSIcon } from '../../icons/OSIcon';
 import { cn } from '../../../lib/utils';
 import { useConnectionDisplayLabels } from '../../../features/connections/presentation/useConnectionDisplayLabels';
 import type { HostLocationTag } from '../../../features/connections/domain/hostCatalog';
 import { HostLocationChips } from './HostLocationChips';
+
 
 interface ConnectionItemComponentProps {
     conn: Connection;
@@ -16,35 +18,7 @@ interface ConnectionItemComponentProps {
     locations?: HostLocationTag[];
 }
 
-function statusDotClass(status: Connection['status'], hasTab: boolean): string | null {
-    if (status === 'connected') {
-        return hasTab
-            ? 'bg-emerald-500 shadow-[0_0_0_2px_var(--color-app-panel)]'
-            : 'bg-emerald-500/70 shadow-[0_0_0_2px_var(--color-app-panel)]';
-    }
-    if (status === 'connecting') {
-        return 'bg-amber-400 animate-pulse shadow-[0_0_0_2px_var(--color-app-panel)]';
-    }
-    if (status === 'error') {
-        return 'bg-app-danger shadow-[0_0_0_2px_var(--color-app-panel)]';
-    }
-    return null;
-}
-
-function statusTitle(status: Connection['status'], hasTab: boolean): string | undefined {
-    if (status === 'connected') return hasTab ? 'Connected' : 'Connected (background)';
-    if (status === 'connecting') return 'Connecting…';
-    if (status === 'error') return 'Connection error';
-    return undefined;
-}
-
-export const ConnectionItem = memo(function ConnectionItem({
-    conn,
-    isCollapsed,
-    onEdit: _onEdit,
-    onOpenContextMenu,
-    locations,
-}: ConnectionItemComponentProps) {
+export const ConnectionItem = memo(function ConnectionItem({ conn, isCollapsed, onEdit, onOpenContextMenu, locations }: ConnectionItemComponentProps) {
     // Selective subscriptions — only re-render when relevant values change
     const isActive = useAppStore(state => state.activeConnectionId === conn.id);
     const hasTab = useAppStore(state => state.tabs.some((t: Tab) => t.connectionId === conn.id));
@@ -74,7 +48,7 @@ export const ConnectionItem = memo(function ConnectionItem({
                         const homeDir = rawHomeDir === '/' ? '' : rawHomeDir.replace(/\/+$/, '');
                         const fileName = dragData.name;
                         destPath = `${homeDir}/${fileName}`;
-                    } catch {
+                    } catch (err) {
                         showToast('error', 'Failed to get home directory');
                         return;
                     }
@@ -127,131 +101,143 @@ export const ConnectionItem = memo(function ConnectionItem({
         }
     };
 
-    const dotClass = statusDotClass(conn.status, hasTab);
-    const showLocationChips = Boolean(
-        locations
-        && locations.length > 0
-        && !(locations.length === 1 && locations[0] === 'local'),
-    );
-
     return (
-        <div
-            ref={rowRef}
-            data-host-row="1"
-            data-host-label={primary.toLocaleLowerCase()}
-            className={cn(
-                'group relative flex cursor-pointer items-center select-none border border-transparent transition-colors',
-                isCollapsed
-                    ? 'mx-auto h-9 w-9 justify-center rounded-md p-1'
-                    : compactMode
-                        ? 'gap-2 rounded-md px-1.5 py-1.5'
-                        : 'gap-2 rounded-md px-2 py-1.5',
-                'hover:bg-app-surface/40',
-                isActive
-                    ? 'bg-app-accent/[0.09] text-app-text'
-                    : 'text-app-muted hover:text-app-text',
-                dropTargetId === conn.id && 'bg-app-accent/15 ring-1 ring-app-accent/35',
-            )}
-            onClick={(e) => {
-                e.preventDefault();
-                openTab(conn.id);
-            }}
-            role="button"
-            tabIndex={0}
-            title={isCollapsed ? primary : undefined}
-            aria-label={ariaLabel}
-            aria-current={isActive ? 'true' : undefined}
-            onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onOpenContextMenu(conn, e.clientX, e.clientY);
-            }}
-            onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
+        <>
+            <div
+                ref={rowRef}
+                className={cn(
+                    "group relative flex items-center transition-all cursor-pointer border select-none",
+                    isCollapsed
+                        ? "justify-center p-2 rounded-xl mx-auto w-12 h-12"
+                        : compactMode
+                            ? "gap-2 px-2 py-1.5 rounded-lg"
+                            : "gap-2.5 px-2.5 py-2 rounded-lg",
+                    "border-transparent hover:bg-app-surface/45 hover:border-app-border/15",
+                    isActive
+                        ? "bg-app-accent/8 border-app-accent/15"
+                        : "text-app-muted hover:text-app-text",
+                    dropTargetId === conn.id && "bg-app-accent/20 border-app-accent ring-2 ring-app-accent/30"
+                )}
+                onClick={(e) => {
                     e.preventDefault();
                     openTab(conn.id);
-                    return;
-                }
-
-                const isContextMenuKey =
-                    (e.shiftKey && e.key === 'F10')
-                    || e.key === 'ContextMenu'
-                    || e.code === 'ContextMenu';
-
-                if (isContextMenuKey) {
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={ariaLabel}
+                onContextMenu={(e) => {
                     e.preventDefault();
-                    const rect = rowRef.current?.getBoundingClientRect();
-                    const x = rect ? rect.left + rect.width / 2 : 0;
-                    const y = rect ? rect.top + rect.height / 2 : 0;
-                    onOpenContextMenu(conn, x, y);
-                }
-            }}
-            onDoubleClick={() => openTab(conn.id)}
-            draggable
-            onDragStart={(e) => {
-                e.dataTransfer.setData('connection-id', conn.id);
-                e.dataTransfer.effectAllowed = 'move';
-            }}
-            onDragOver={handleDragOver}
-            onDragLeave={() => setDropTargetId(null)}
-            onDrop={handleDrop}
-        >
-            {isActive && (
-                <div
-                    className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-app-accent"
-                    aria-hidden
-                />
-            )}
+                    e.stopPropagation();
+                    onOpenContextMenu(conn, e.clientX, e.clientY);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openTab(conn.id);
+                        return;
+                    }
 
-            <div
-                className={cn(
-                    'relative flex shrink-0 items-center justify-center',
-                    compactMode ? 'h-6 w-6' : 'h-7 w-7',
-                )}
+                    const isContextMenuKey =
+                        (e.shiftKey && e.key === 'F10') ||
+                        e.key === 'ContextMenu' ||
+                        e.code === 'ContextMenu';
+
+                    if (isContextMenuKey) {
+                        e.preventDefault();
+                        const rect = rowRef.current?.getBoundingClientRect();
+                        const x = rect ? rect.left + rect.width / 2 : 0;
+                        const y = rect ? rect.top + rect.height / 2 : 0;
+                        onOpenContextMenu(conn, x, y);
+                    }
+                }}
+                onDoubleClick={() => openTab(conn.id)}
+                draggable
+                onDragStart={(e) => {
+                    e.dataTransfer.setData('connection-id', conn.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={handleDragOver}
+                onDragLeave={() => setDropTargetId(null)}
+                onDrop={handleDrop}
             >
-                <OSIcon
-                    icon={conn.icon || 'Server'}
-                    className={cn(
-                        'h-4 w-4 transition-colors',
-                        isActive ? 'text-app-accent' : 'text-app-muted group-hover:text-app-text',
-                    )}
-                />
-                {dotClass && (
-                    <div
-                        className={cn('absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full', dotClass)}
-                        title={statusTitle(conn.status, hasTab)}
-                        aria-hidden
+                {/* Active Marker Line (Left) */}
+                {isActive && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 bg-app-accent shadow-[0_0_12px_rgba(var(--color-app-accent),0.6)] rounded-r-full" />
+                )}
+
+                {/* Icon */}
+                <div className={cn(
+                    "relative shrink-0 flex items-center justify-center transition-all duration-300",
+                    compactMode ? "h-7 w-7" : "h-9 w-9",
+                    "bg-transparent"
+                )}>
+                    <OSIcon
+                        icon={conn.icon || 'Server'}
+                        className={cn(
+                            "transition-transform duration-500",
+                            compactMode ? "w-4 h-4" : "w-4.5 h-4.5",
+                            isActive ? "text-app-accent" : "text-app-muted group-hover:text-app-text group-hover:scale-110"
+                        )}
                     />
+
+                    {/* Status Dot */}
+                    {conn.status === 'connected' && (
+                        <div className={cn(
+                            "absolute -bottom-1 -right-1 h-3 w-3 rounded-full shadow-sm",
+                            hasTab
+                                ? "bg-app-success border-2 border-app-panel animate-pulse-slow"
+                                : "bg-transparent border-2 border-app-accent/60"
+                        )} title={hasTab ? "Connected" : "Tunnel/Background Active"} />
+                    )}
+                </div>
+
+                {!isCollapsed && (
+                    <div className="flex flex-col overflow-hidden min-w-0 flex-1 gap-0.5">
+                        <div className="flex items-center justify-between gap-2 min-w-0">
+                            <span className={cn(
+                                "truncate font-medium leading-tight transition-colors min-w-0",
+                                compactMode ? "text-[13px]" : "text-[13px]",
+                                isActive ? "text-app-text font-semibold" : "text-app-text/85 group-hover:text-app-text"
+                            )}>
+                                {primary}
+                            </span>
+
+                            {/* Hover Actions */}
+                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                <button
+                                    className="p-1 rounded-md hover:bg-app-surface hover:text-app-text text-app-muted transition-colors"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onEdit(conn);
+                                    }}
+                                    aria-label="Edit connection"
+                                    title="Edit Connection"
+                                >
+                                    <Settings size={12} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={cn(
+                                "truncate leading-tight min-w-0",
+                                compactMode ? "text-[10px]" : "text-[11px]",
+                                "text-app-muted/50 group-hover:text-app-muted/70 transition-colors"
+                            )}>
+                                {secondary}
+                            </span>
+                            {locations && locations.length > 0 && (
+                                <HostLocationChips
+                                    locations={locations}
+                                    compact
+                                    hideLocalOnly
+                                    className="ml-auto"
+                                />
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
 
-            {!isCollapsed && (
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                        <span
-                            className={cn(
-                                'min-w-0 truncate text-[13px] leading-tight',
-                                isActive ? 'font-semibold text-app-text' : 'font-medium text-app-text/90',
-                            )}
-                        >
-                            {primary}
-                        </span>
-                        {showLocationChips && locations && (
-                            <HostLocationChips
-                                locations={locations}
-                                compact
-                                hideLocalOnly
-                                className="ml-auto"
-                            />
-                        )}
-                    </div>
-                    {secondary ? (
-                        <span className="truncate text-[11px] leading-tight text-app-muted/55 group-hover:text-app-muted/70">
-                            {secondary}
-                        </span>
-                    ) : null}
-                </div>
-            )}
-        </div>
+        </>
     );
 });

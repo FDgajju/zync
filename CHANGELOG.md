@@ -8,7 +8,6 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Resume-session disconnect card**: Host-aware restore / offline / error UI for terminal and Files/SFTP with last-connected time, Enter-to-reconnect, Edit host, Open vault, and Files ↔ Terminal actions. Shared `relativeTime` helper; autofocus and Enter only when that surface is active so a hidden Files panel cannot steal input. ([481ad20])
 
 ### Changed
-- **Sidebar host nav polish**: Quieter primary nav and section chrome, flat host list (no nested card), removed Active/Hosts duplication with live sessions pinned to the top, calmer host/folder rows, icon-rail collapse (≈52px) with expand control, and host-list keyboard navigation (↑/↓, j/k, type-ahead). ([b5fa0a8])
 - **Session restore / tab switch auto-connect**: Restored host tabs no longer open SSH on app restart or when switching to them in the tab bar. Connections stay disconnected until an explicit sidebar open or **Reconnect**. ([bbab9ce])
 
 ## [2.22.4] - 2026-08-07

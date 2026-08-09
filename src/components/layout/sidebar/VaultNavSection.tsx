@@ -85,7 +85,7 @@ function resolveVaultChrome(
 
 const MENU_WIDTH = 192; // w-48
 
-export function VaultNavSection({ iconOnly = false }: { iconOnly?: boolean }) {
+export function VaultNavSection() {
   const connections = useAppStore(state => state.connections);
   const openVaultTab = useAppStore(state => state.openVaultTab);
   const activeVaultProfileId = useAppStore(state => {
@@ -194,7 +194,7 @@ export function VaultNavSection({ iconOnly = false }: { iconOnly?: boolean }) {
   return (
     <div className="relative w-full" ref={triggerRef}>
       <SplitSidebarActionButton
-        icon={<Shield size={iconOnly ? 14 : 13} />}
+        icon={<Shield size={13} />}
         label="Vault"
         expanded={menuOpen}
         active={activeVaultProfileId === DEFAULT_VAULT_PROFILE_ID || menuOpen}
@@ -204,10 +204,9 @@ export function VaultNavSection({ iconOnly = false }: { iconOnly?: boolean }) {
         onPrimaryClick={openLocalVault}
         onToggleClick={() => setMenuOpen(open => !open)}
         toggleAriaLabel={menuOpen ? 'Close vault menu' : 'Open vault menu'}
-        iconOnly={iconOnly}
       />
 
-      {menuOpen && !iconOnly && menuPos && (
+      {menuOpen && menuPos && (
         <ZPortal>
           <div
             ref={menuRef}

@@ -1,9 +1,9 @@
-import { useMemo, useState, memo } from 'react';
+import { useState, memo } from 'react';
 import { useAppStore, Connection } from '../../../store/useAppStore';
-import { ChevronRight, Folder as FolderIcon, FolderOpen } from 'lucide-react';
+import { Pencil, ChevronRight, Folder as FolderIcon, Trash2, FolderOpen } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { Button } from '../../ui/Button';
 import { ConnectionItem } from './ConnectionItem';
-import { sortConnectionsByLiveFirst } from './sortConnections';
 import type { TreeNode, ConnectionItemProps } from './types';
 
 interface FolderItemProps {
@@ -27,8 +27,8 @@ export const FolderItem = memo(function FolderItem({
     expandedFolders,
     toggleFolder,
     updateConnectionFolder,
-    onDeleteFolder: _onDeleteFolder,
-    onRenameFolder: _onRenameFolder,
+    onDeleteFolder,
+    onRenameFolder,
     onMoveFolder,
     onOpenContextMenu,
     connectionItemProps
@@ -36,11 +36,6 @@ export const FolderItem = memo(function FolderItem({
     const isExpanded = expandedFolders.has(node.path);
     const [isDragOver, setIsDragOver] = useState(false);
     const normalizePath = (path: string) => path.replace(/\/+$/, '');
-    const orderedConnections = useMemo(
-        () => sortConnectionsByLiveFirst(node.connections),
-        [node.connections],
-    );
-    const childCount = node.connections.length + Object.keys(node.children).length;
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
@@ -76,25 +71,20 @@ export const FolderItem = memo(function FolderItem({
     };
 
     return (
-        <div className="select-none">
+        <div className={cn("select-none transition-all duration-200", isExpanded && isCollapsed && "bg-app-surface/30 rounded-2xl pb-1 mb-2 border border-app-border/20")}>
             <div
                 className={cn(
-                    'group relative mb-0.5 flex cursor-pointer items-center rounded-md select-none transition-colors',
+                    "flex items-center group cursor-pointer transition-colors mb-1 rounded-lg relative select-none",
                     isCollapsed
-                        ? 'mx-auto my-0.5 h-9 w-9 justify-center hover:bg-app-surface/50'
-                        : cn(
-                            compactMode ? 'gap-1.5 px-1.5 py-1' : 'gap-1.5 px-2 py-1.5',
-                            'text-app-muted hover:bg-app-surface/35 hover:text-app-text',
-                        ),
-                    isDragOver && 'bg-app-accent/10 text-app-text',
-                    isExpanded && !isCollapsed && 'text-app-text',
+                        ? "justify-center mx-auto w-10 h-10 hover:bg-app-surface/50 my-1"
+                        : cn(compactMode ? "px-2 py-1 text-xs gap-2" : "px-4 py-1.5 text-sm gap-2", "text-app-muted hover:text-app-text hover:bg-app-surface/30"),
+                    isDragOver && "bg-app-accent/10"
                 )}
                 onClick={() => toggleFolder(node.path)}
                 role="button"
                 tabIndex={0}
                 aria-expanded={isExpanded}
                 aria-label={`Folder ${node.name}`}
-                title={isCollapsed ? node.name : undefined}
                 onKeyDown={(e) => {
                     if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
                         e.preventDefault();
@@ -127,50 +117,62 @@ export const FolderItem = memo(function FolderItem({
                 }}
             >
                 {isCollapsed ? (
-                    <span
-                        className={cn(
-                            'flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-semibold',
-                            isExpanded
-                                ? 'bg-app-accent/15 text-app-accent'
-                                : 'bg-app-surface/40 text-app-muted group-hover:text-app-text',
-                        )}
-                    >
+                    <div className={cn(
+                        "flex items-center justify-center w-8 h-8 rounded-lg border text-app-muted font-bold shadow-sm transition-all",
+                        isExpanded
+                            ? "bg-app-accent/20 border-app-accent/50 text-app-accent shadow-md"
+                            : "bg-app-surface/50 border-app-border/30 group-hover:border-app-accent/30 group-hover:text-app-text"
+                    )} title={node.name}>
                         {node.name.charAt(0).toUpperCase()}
-                    </span>
+                    </div>
                 ) : (
                     <>
-                        <ChevronRight
-                            size={13}
-                            className={cn(
-                                'shrink-0 opacity-55 transition-transform duration-200',
-                                isExpanded && 'rotate-90 opacity-80',
-                            )}
-                        />
-                        {isExpanded ? (
-                            <FolderOpen size={14} className="shrink-0 text-app-accent/85" />
-                        ) : (
-                            <FolderIcon size={14} className="shrink-0 opacity-80" />
-                        )}
-                        <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                        <div className={cn("transition-transform duration-200", isExpanded ? "rotate-90" : "")}>
+                            <ChevronRight size={compactMode ? 12 : 14} />
+                        </div>
+                        {isExpanded ? <FolderOpen size={compactMode ? 14 : 16} className="text-app-accent/80" /> : <FolderIcon size={compactMode ? 14 : 16} />}
+                        <span className="font-semibold truncate flex-1 flex items-center gap-2">
                             {node.name}
                         </span>
-                        {childCount > 0 && (
-                            <span className="shrink-0 tabular-nums text-[10px] text-app-muted/45 group-hover:text-app-muted/70">
-                                {childCount}
-                            </span>
-                        )}
+                        <span className="ml-auto text-[10px] opacity-0 group-hover:opacity-60 mr-2">{node.connections.length}</span>
+
+                        <div className="flex opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Rename folder"
+                                className="h-5 w-5 hover:text-app-text"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRenameFolder(node.path);
+                                }}
+                            >
+                                <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Delete folder"
+                                className="h-5 w-5 hover:text-red-400"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDeleteFolder(node.path);
+                                }}
+                            >
+                                <Trash2 className="h-3 w-3" />
+                            </Button>
+                        </div>
                     </>
                 )}
             </div>
 
             {isExpanded && (
-                <div
-                    className={cn(
-                        'space-y-0.5',
-                        !isCollapsed && 'mb-1 ml-2.5 border-l border-app-border/15 pl-1.5',
-                        isCollapsed && 'mb-1 flex flex-col items-center gap-0.5',
-                    )}
-                >
+                <div className={cn(
+                    "space-y-1",
+                    !isCollapsed && "border-l border-app-border/30 ml-4 pl-1",
+                    compactMode ? "mb-1" : "mb-2",
+                    isCollapsed && "flex flex-col items-center gap-1"
+                )}>
                     {Object.keys(node.children).sort().map(key => (
                         <FolderItem
                             key={key}
@@ -180,14 +182,14 @@ export const FolderItem = memo(function FolderItem({
                             expandedFolders={expandedFolders}
                             toggleFolder={toggleFolder}
                             updateConnectionFolder={updateConnectionFolder}
-                            onRenameFolder={_onRenameFolder}
+                            onRenameFolder={onRenameFolder}
                             onMoveFolder={onMoveFolder}
                             onOpenContextMenu={onOpenContextMenu}
                             connectionItemProps={connectionItemProps}
-                            onDeleteFolder={_onDeleteFolder}
+                            onDeleteFolder={onDeleteFolder}
                         />
                     ))}
-                    {orderedConnections.map((conn: Connection) => (
+                    {node.connections.map((conn: Connection) => (
                         <ConnectionItem
                             key={conn.id}
                             conn={conn}
