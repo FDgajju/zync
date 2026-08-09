@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useAppStore, Connection, Folder } from '../../store/useAppStore';
-import { Files, Info, Network, Pencil, Plus, Power, RefreshCw, Search, Server, TerminalIcon, Trash2 } from 'lucide-react';
+import { Files, FolderPlus, Info, Network, Pencil, Plus, Power, RefreshCw, Search, Server, TerminalIcon, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -8,6 +8,7 @@ import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { buildTree } from './sidebar/buildTree';
 import { SidebarSection } from './sidebar/SidebarSection';
 import { ConnectionItem } from './sidebar/ConnectionItem';
+import { ConnectedHostsGroup } from './sidebar/ConnectedHostsGroup';
 import { FolderItem } from './sidebar/FolderItem';
 import { FolderFormModal } from './sidebar/FolderFormModal';
 import { SidebarActionButton } from './sidebar/SidebarActionButton';
@@ -182,11 +183,6 @@ export function Sidebar({ className }: { className?: string }) {
         }
     }, [providerConnected, hostFilter, setHostFilter]);
 
-    // Active sessions stay visible regardless of All Hosts search/filter (those live inside All Hosts).
-    const activeConnections = useMemo(() => {
-        return connections.filter((c: Connection) => c.status === 'connected');
-    }, [connections]);
-
     const filteredHostCount = filteredEntries.length;
     const totalHostCount = catalogEntries.length;
     const hasAnyHosts = totalHostCount > 0;
@@ -245,10 +241,36 @@ export function Sidebar({ className }: { className?: string }) {
         };
     }, []);
 
-    // Filter out active connections for the main tree; respect catalog filter (local subset).
+    // Live sessions live in a virtual "Connected" folder at the top of All Hosts
+    // (not a second sidebar section) — exclude them from the rest of the tree.
+    const isLiveConnection = useCallback(
+        (c: Connection) => c.status === 'connected' || c.status === 'connecting',
+        [],
+    );
+
+    const connectedListHosts = useMemo(() => {
+        const normalizedSearch = searchTerm.toLowerCase();
+        const live = catalogLocalConnections.filter((c: Connection) => {
+            if (!isLiveConnection(c)) return false;
+            if (!searchTerm) return true;
+            return (
+                (c.name ?? c.host ?? '').toLowerCase().includes(normalizedSearch)
+                || Boolean(c.tags?.some((t) => t.toLowerCase().includes(normalizedSearch)))
+            );
+        });
+        const rank = (c: Connection) => (c.status === 'connected' ? 0 : 1);
+        return [...live].sort((a, b) => {
+            const d = rank(a) - rank(b);
+            if (d !== 0) return d;
+            return (a.name || a.host || '').localeCompare(b.name || b.host || '', undefined, {
+                sensitivity: 'base',
+            });
+        });
+    }, [catalogLocalConnections, isLiveConnection, searchTerm]);
+
     const treeConnections = useMemo(() => {
-        return catalogLocalConnections.filter((c: Connection) => c.status !== 'connected');
-    }, [catalogLocalConnections]);
+        return catalogLocalConnections.filter((c: Connection) => !isLiveConnection(c));
+    }, [catalogLocalConnections, isLiveConnection]);
 
     // Build Recursive Tree (search already applied in catalog; re-apply for tree safety)
     const treeRoot = useMemo(
@@ -458,15 +480,47 @@ export function Sidebar({ className }: { className?: string }) {
         ];
     }, [folderContextMenu, getExportableConnectionsForFolder, toFileBaseName]);
 
+    const hostsCreateMenu = useMemo(() => [
+        {
+            id: 'new-host',
+            label: 'New host',
+            icon: <Server size={14} />,
+            onSelect: () => openConnectionModal(),
+        },
+        {
+            id: 'new-folder',
+            label: 'New folder',
+            icon: <FolderPlus size={14} />,
+            onSelect: () => setIsFolderModalOpen(true),
+        },
+        {
+            id: 'new-tunnel',
+            label: 'New tunnel',
+            icon: <Network size={14} />,
+            onSelect: () => setIsAddTunnelModalOpen(true),
+        },
+    ], [openConnectionModal]);
+
     const allHostsContextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!allHostsContextMenu) return [];
         const allHostConnections = connections.filter((connection) => connection.id !== 'local');
         return [
             {
                 label: 'New host',
-                icon: <Plus size={14} />,
+                icon: <Server size={14} />,
                 action: () => openConnectionModal(),
             },
+            {
+                label: 'New folder',
+                icon: <FolderPlus size={14} />,
+                action: () => setIsFolderModalOpen(true),
+            },
+            {
+                label: 'New tunnel',
+                icon: <Network size={14} />,
+                action: () => setIsAddTunnelModalOpen(true),
+            },
+            { separator: true },
             {
                 label: 'Export...',
                 icon: <Files size={14} />,
@@ -708,6 +762,13 @@ export function Sidebar({ className }: { className?: string }) {
                     onDragOver={handleAllHostsDragOver}
                     onDrop={handleAllHostsDrop}
                 >
+                    {/* Virtual folder — live sessions only (no duplicate Active section) */}
+                    <ConnectedHostsGroup
+                        connections={connectedListHosts}
+                        compactMode={compactMode}
+                        connectionItemProps={connectionItemProps}
+                    />
+
                     {Object.keys(treeRoot.children).sort().map(key => (
                         <FolderItem
                             key={key}
@@ -747,7 +808,7 @@ export function Sidebar({ className }: { className?: string }) {
                         />
                     ))}
 
-                    {showEmpty && (
+                    {showEmpty && connectedListHosts.length === 0 && (
                         <div className="flex flex-col items-center gap-2 px-3 py-6 text-center">
                             <Server size={18} className="text-app-muted/40" aria-hidden />
                             <div className="space-y-0.5">
@@ -766,6 +827,7 @@ export function Sidebar({ className }: { className?: string }) {
     }, [
         allHostsToolbar,
         compactMode,
+        connectedListHosts,
         connectionItemProps,
         emptyListMessage,
         expandedFolders,
@@ -839,36 +901,11 @@ export function Sidebar({ className }: { className?: string }) {
 
                 <div className="h-px bg-app-border/20 mb-2 mx-4" />
 
-                {/* List: Active + All Hosts (header/search sticky; host list scrolls) */}
+                {/* Hosts list (Connected virtual folder sits at top of the list) */}
                 <div className={cn(
                     "flex-1 min-h-0 flex flex-col overflow-hidden pb-3",
                     compactMode ? "px-2 gap-1.5" : "px-3 gap-1.5"
                 )}>
-                    {activeConnections.length > 0 && (
-                        <div className="shrink-0 max-h-[30%] overflow-y-auto scrollbar-hide">
-                            <SidebarSection
-                                title="Active"
-                                count={activeConnections.length}
-                                compactMode={compactMode}
-                                variant="action"
-                                icon={<Power size={13} />}
-                            >
-                                <div className={cn("space-y-1 mb-1 pl-1", compactMode && "space-y-0.5")}>
-                                    {activeConnections.map((conn: Connection) => (
-                                        <ConnectionItem
-                                            key={`active-${conn.id}`}
-                                            conn={conn}
-                                            isCollapsed={false}
-                                            locations={connectionItemProps.getLocations?.(conn)}
-                                            onEdit={connectionItemProps.onEdit}
-                                            onOpenContextMenu={connectionItemProps.onOpenContextMenu}
-                                        />
-                                    ))}
-                                </div>
-                            </SidebarSection>
-                        </div>
-                    )}
-
                     <SidebarSection
                         title="All Hosts"
                         compactMode={compactMode}
@@ -876,6 +913,7 @@ export function Sidebar({ className }: { className?: string }) {
                         fill
                         icon={<Server size={13} />}
                         count={filteredEntries.length > 0 ? filteredEntries.length : undefined}
+                        createMenu={hostsCreateMenu}
                         onContextMenu={(event) => {
                             event.preventDefault();
                             setAllHostsContextMenu({ x: event.clientX, y: event.clientY });
