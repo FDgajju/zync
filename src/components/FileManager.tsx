@@ -1410,6 +1410,8 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
 
   // Keyboard Navigation Handler
   useEffect(() => {
+    if (!isConnected) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't interfere with background tabs, modals, inputs, or when strict focus is needed
       if (!isFileManagerPanelShown(containerRef.current) || isNewFolderModalOpen || isNewFileModalOpen || isRenameModalOpen || editingFile || isCopyModalOpen || isPropertiesOpen) return;
@@ -1651,7 +1653,7 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
   }, [
     activeConnectionId, searchTerm, isSearchOpen, files, settings, isNewFolderModalOpen, isNewFileModalOpen, isRenameModalOpen,
     editingFile, selectedFiles, focusedFile, handleNavigate, handleCopy, handlePaste,
-    handleDelete, navigateBack, navigateForward, isCopyModalOpen, isPropertiesOpen, viewMode
+    handleDelete, navigateBack, navigateForward, isCopyModalOpen, isPropertiesOpen, viewMode, isConnected
   ]);
 
   // Focus when the files panel is shown (dispatched from TabContent — avoids isVisible prop churn).

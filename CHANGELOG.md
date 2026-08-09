@@ -4,6 +4,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.5] - 2026-08-09
+
 ### Added
 - **Resume-session disconnect card**: Host-aware restore / offline / error UI for terminal and Files/SFTP with last-connected time, Enter-to-reconnect, Edit host, Open vault, and Files ↔ Terminal actions. Shared `relativeTime` helper; autofocus and Enter only when that surface is active so a hidden Files panel cannot steal input. ([481ad20])
 - **All Hosts create menu**: Section header **+** opens New host / New folder / New tunnel (same options on All Hosts context menu). ([fc9981c])
@@ -950,7 +952,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 - Auto-updates
 - Multiple themes (Dark, Light, Dracula)
 
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.22.4...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.22.5...HEAD
+[2.22.5]: https://github.com/zync-sh/zync/compare/v2.22.4...v2.22.5
 [2.22.4]: https://github.com/zync-sh/zync/compare/v2.22.2...v2.22.4
 [2.22.2]: https://github.com/zync-sh/zync/compare/v2.22.1...v2.22.2
 [2.22.1]: https://github.com/zync-sh/zync/compare/v2.22.0...v2.22.1
