@@ -1,7 +1,8 @@
 # Zync Vault & Sync — Current Documentation
 
 **Last updated:** 2026-06-15  
-**Roadmap / future work:** [VAULT_ROADMAP.md](./VAULT_ROADMAP.md)
+**Roadmap / future work:** [VAULT_ROADMAP.md](./VAULT_ROADMAP.md)  
+**Host add/edit & auth UX:** [CONNECTIONS.md](./CONNECTIONS.md)
 
 Canonical vault + sync reference for implemented behavior, architecture, and operations.
 

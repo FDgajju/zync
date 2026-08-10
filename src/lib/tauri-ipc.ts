@@ -167,6 +167,10 @@ const ipcRenderer = {
       'ssh:test': 'ssh_test_connection',
 
       'ssh:extract-pem': 'ssh_extract_pem',
+      'ssh:write-managed-key': 'ssh_write_managed_key',
+      'ssh:read-local-key-file': 'ssh_read_local_key_file',
+      'ssh:write-ephemeral-key': 'ssh_write_ephemeral_key',
+      'ssh:delete-ephemeral-key': 'ssh_delete_ephemeral_key',
       'ssh:migrate-all-keys': 'ssh_migrate_all_keys',
       'ssh:importConfig': 'ssh_import_config',
       'ssh:importConfigFromFile': 'ssh_import_config_from_file',
@@ -463,6 +467,24 @@ const ipcRenderer = {
           payload = { connectionId: args[0] };
         }
       } else if (tauriCommand === 'ssh_extract_pem') {
+        payload = { path: args[0] };
+      } else if (tauriCommand === 'ssh_write_managed_key') {
+        const first = args[0];
+        if (first && typeof first === 'object' && 'content' in first) {
+          payload = { request: first };
+        } else {
+          payload = { request: { content: args[0], suggestedName: args[1] ?? null } };
+        }
+      } else if (tauriCommand === 'ssh_read_local_key_file') {
+        payload = { path: args[0] };
+      } else if (tauriCommand === 'ssh_write_ephemeral_key') {
+        const first = args[0];
+        if (first && typeof first === 'object' && 'content' in first) {
+          payload = first;
+        } else {
+          payload = { content: args[0] };
+        }
+      } else if (tauriCommand === 'ssh_delete_ephemeral_key') {
         payload = { path: args[0] };
       } else if (tauriCommand === 'shell_open') {
         payload = { path: args[0] };

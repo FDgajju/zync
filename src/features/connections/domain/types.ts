@@ -22,6 +22,11 @@ export interface Connection {
     host: string;
     username: string;
     port: number;
+    /**
+     * Dual-purpose today (auth-method dependent):
+     * - password auth → SSH login password
+     * - key auth → optional ssh-keygen private-key passphrase (not the vault unlock passphrase)
+     */
     password?: string;
     privateKeyPath?: string;
     /** Vault credential reference — when set, password/privateKeyPath are ignored for SSH auth. */

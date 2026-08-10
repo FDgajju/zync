@@ -7,6 +7,28 @@ export type VaultStatus =
   | { status: 'locked'; vaultId: string; itemCount: number; rememberedOnDevice: boolean }
   | { status: 'unlocked'; vaultId: string; itemCount: number };
 
+/** Normalize vault status payloads (handles legacy snake_case field names). */
+export function normalizeVaultStatus(raw: VaultStatus | Record<string, unknown> | null | undefined): VaultStatus | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const status = (raw as { status?: unknown }).status;
+  if (status === 'uninitialized') return { status: 'uninitialized' };
+  if (status === 'locked' || status === 'unlocked') {
+    const record = raw as Record<string, unknown>;
+    const vaultId = String(record.vaultId ?? record.vault_id ?? '');
+    const itemCount = Number(record.itemCount ?? record.item_count ?? 0);
+    if (status === 'locked') {
+      return {
+        status: 'locked',
+        vaultId,
+        itemCount,
+        rememberedOnDevice: Boolean(record.rememberedOnDevice ?? record.remembered_on_device),
+      };
+    }
+    return { status: 'unlocked', vaultId, itemCount };
+  }
+  return null;
+}
+
 export interface VaultItem {
   id: string;
   logicalId: string;
@@ -70,14 +92,38 @@ export interface SecureToVaultResult {
 }
 
 export const vaultIpc = {
-  status: (): Promise<VaultStatus> =>
-    invoke('vault_status'),
+  status: async (): Promise<VaultStatus> => {
+    const raw = await invoke<VaultStatus | Record<string, unknown>>('vault_status');
+    const normalized = normalizeVaultStatus(raw);
+    if (!normalized) {
+      console.warn('[Vault] Unrecognized vault_status payload:', raw);
+      return { status: 'uninitialized' };
+    }
+    return normalized;
+  },
 
-  initialize: (passphrase: string, rememberOnDevice = false): Promise<VaultStatus> =>
-    invoke('vault_initialize', { args: { passphrase, remember_on_device: rememberOnDevice } }),
+  initialize: async (passphrase: string, rememberOnDevice = false): Promise<VaultStatus> => {
+    const raw = await invoke<VaultStatus | Record<string, unknown>>('vault_initialize', {
+      args: { passphrase, remember_on_device: rememberOnDevice },
+    });
+    const normalized = normalizeVaultStatus(raw);
+    if (!normalized) {
+      console.warn('[Vault] Unrecognized vault_initialize payload:', raw);
+      return { status: 'uninitialized' };
+    }
+    return normalized;
+  },
 
-  unlock: (passphrase: string, rememberOnDevice = false): Promise<VaultStatus> =>
-    invoke('vault_unlock', { args: { passphrase, remember_on_device: rememberOnDevice } }),
+  unlock: async (passphrase: string, rememberOnDevice = false): Promise<VaultStatus> => {
+    const raw = await invoke<VaultStatus | Record<string, unknown>>('vault_unlock', {
+      args: { passphrase, remember_on_device: rememberOnDevice },
+    });
+    const normalized = normalizeVaultStatus(raw);
+    if (!normalized || normalized.status !== 'unlocked') {
+      throw new Error('Vault unlock did not return an unlocked status.');
+    }
+    return normalized;
+  },
 
   forgetDevice: (): Promise<void> =>
     invoke('vault_forget_device'),
@@ -134,10 +180,16 @@ export const vaultIpc = {
   hasRecoveryKey: (): Promise<boolean> =>
     invoke('vault_has_recovery_key'),
 
-  unlockWithRecoveryKey: (recoveryKey: string, rememberOnDevice = false): Promise<VaultStatus> =>
-    invoke('vault_unlock_with_recovery_key', {
+  unlockWithRecoveryKey: async (recoveryKey: string, rememberOnDevice = false): Promise<VaultStatus> => {
+    const raw = await invoke<VaultStatus | Record<string, unknown>>('vault_unlock_with_recovery_key', {
       args: { recovery_key: recoveryKey, remember_on_device: rememberOnDevice },
-    }),
+    });
+    const normalized = normalizeVaultStatus(raw);
+    if (!normalized || normalized.status !== 'unlocked') {
+      throw new Error('Vault unlock did not return an unlocked status.');
+    }
+    return normalized;
+  },
 
   exportVault: (destPath: string): Promise<void> =>
     invoke('vault_export', { args: { dest_path: destPath } }),

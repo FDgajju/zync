@@ -13,6 +13,9 @@ const EMPTY_FORM: Partial<Connection> = {
     folder: '', theme: '', tags: [],
 };
 
+export type KeyInputMode = 'file' | 'paste';
+export type VaultInputMode = 'existing' | 'paste' | 'import';
+
 export function useConnectionForm(isOpen: boolean, editingConnectionId: string | null) {
     const connections = useAppStore(state => state.connections);
     const folders = useAppStore(state => state.folders);
@@ -21,7 +24,8 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
 
     const [formData, setFormData] = useState<Partial<Connection>>(EMPTY_FORM);
     const [authMethod, setAuthMethod] = useState<'password' | 'key' | 'vault'>('password');
-    const [keyInputMode, setKeyInputMode] = useState<'file' | 'paste'>('file');
+    const [keyInputMode, setKeyInputMode] = useState<KeyInputMode>('file');
+    const [vaultInputMode, setVaultInputMode] = useState<VaultInputMode>('existing');
     const [touched, setTouched] = useState({ host: false, username: false, port: false, keyPath: false });
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [allowDuplicateEndpoint, setAllowDuplicateEndpoint] = useState(false);
@@ -39,6 +43,7 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
         setSubmitAttempted(false);
         setTouched({ host: false, username: false, port: false, keyPath: false });
         setKeyInputMode('file');
+        setVaultInputMode('existing');
 
         if (activeEditingConnectionId) {
             const conn = useAppStore.getState().connections.find(c => c.id === activeEditingConnectionId);
@@ -59,11 +64,11 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
         setAuthMethod('password');
     }, [activeEditingConnectionId, isOpen]);
 
-    // Paste mode stores key in vault — treat as vault for field validation.
-    const effectiveAuthMode = authMethod === 'key' && keyInputMode === 'paste' ? 'vault' : authMethod;
+    // Local key paste writes a managed file on save — path not required until then.
+    const deferKeyPath = authMethod === 'key' && keyInputMode === 'paste';
     const validation = useMemo(
-        () => validateConnectionDraft(formData, effectiveAuthMode),
-        [formData, effectiveAuthMode]
+        () => validateConnectionDraft(formData, authMethod, { deferKeyPath }),
+        [formData, authMethod, deferKeyPath]
     );
     const hostError = validation.fieldErrors.host || '';
     const usernameError = validation.fieldErrors.username || '';
@@ -79,8 +84,8 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
         [activeEditingConnectionId, connections, formData]
     );
     const credentialHealthChecks = useMemo(
-        () => getCredentialHealthChecks(formData, effectiveAuthMode),
-        [formData, effectiveAuthMode]
+        () => getCredentialHealthChecks(formData, authMethod),
+        [formData, authMethod]
     );
     const jumpCycleWarning = useMemo(() => {
         if (!formData.jumpServerId || !activeEditingConnectionId) return false;
@@ -116,6 +121,7 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
         formData, setFormData,
         authMethod, setAuthMethod,
         keyInputMode, setKeyInputMode,
+        vaultInputMode, setVaultInputMode,
         touched, setTouched,
         submitAttempted, setSubmitAttempted,
         allowDuplicateEndpoint, setAllowDuplicateEndpoint,

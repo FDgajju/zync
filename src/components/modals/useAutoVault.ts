@@ -3,6 +3,10 @@ import { useAppStore, Connection } from '../../store/useAppStore';
 import { useVaultStore } from '../../vault/useVaultStore';
 import { vaultIpc } from '../../vault/ipc';
 import { buildConnectionSavePayload, buildDefaultKeyVaultLabel } from '../../features/connections/domain';
+import {
+    readLocalKeyFileIpc,
+    writeManagedKeyIpc,
+} from '../../features/connections/infrastructure/connectionIpc';
 import { ToastType } from '../../store/toastSlice';
 
 interface UseAutoVaultOptions {
@@ -10,6 +14,7 @@ interface UseAutoVaultOptions {
     formData: Partial<Connection>;
     authMethod: 'password' | 'key' | 'vault';
     keyInputMode: 'file' | 'paste';
+    vaultInputMode: 'existing' | 'paste' | 'import';
     activeEditingConnectionId: string | null;
     validationOk: boolean;
     showToast: (type: ToastType, message: string) => void;
@@ -25,6 +30,7 @@ export function useAutoVault({
     formData,
     authMethod,
     keyInputMode,
+    vaultInputMode,
     activeEditingConnectionId,
     validationOk,
     showToast,
@@ -51,8 +57,8 @@ export function useAutoVault({
     });
     const effectiveKeyVaultLabel = keyVaultLabel.trim() || defaultKeyVaultLabel;
     const keyVaultLabelConflict = vaultStatus?.status === 'unlocked'
-        && authMethod === 'key'
-        && keyInputMode === 'paste'
+        && authMethod === 'vault'
+        && (vaultInputMode === 'paste' || vaultInputMode === 'import')
         && !!pastedKeyText.trim()
         && vaultItems.some(i => i.label === effectiveKeyVaultLabel);
 
@@ -61,14 +67,21 @@ export function useAutoVault({
         : undefined;
 
     const resolveVaultId = async (): Promise<string> => {
-        if (vaultStatus?.status === 'unlocked' && vaultStatus.vaultId) {
-            return vaultStatus.vaultId;
+        // Always re-read store + IPC so we don't use a stale render closure after unlock.
+        const fromStore = useVaultStore.getState().status;
+        if (fromStore?.status === 'unlocked' && fromStore.vaultId) {
+            return fromStore.vaultId;
         }
         const status = await vaultIpc.status();
-        if (status.status !== 'unlocked' || !status.vaultId) {
-            throw new Error('Vault must be unlocked to store credentials.');
+        if (status.status === 'unlocked' && status.vaultId) {
+            useVaultStore.setState({ status });
+            return status.vaultId;
         }
-        return status.vaultId;
+        throw new Error(
+            status.status === 'unlocked'
+                ? 'Vault is unlocked but vault id is missing. Try locking and unlocking the vault, then save again.'
+                : 'Vault must be unlocked to store credentials.',
+        );
     };
 
     const finalizeVaultReplacement = async () => {
@@ -96,7 +109,7 @@ export function useAutoVault({
         }
     };
 
-    const savePastedKey = async (): Promise<Partial<Connection> | null> => {
+    const savePastedKeyToVault = async (): Promise<Partial<Connection> | null> => {
         const keyText = pastedKeyText;
         if (!keyText.trim()) {
             showToast('error', 'Please paste a private key.');
@@ -109,8 +122,8 @@ export function useAutoVault({
             showToast('error', message);
             return null;
         }
-        const unlockedVault = vaultStatus?.status === 'unlocked' ? vaultStatus : null;
-        if (!unlockedVault) {
+        const liveStatus = useVaultStore.getState().status;
+        if (liveStatus?.status !== 'unlocked') {
             showToast('error', 'Vault must be unlocked to store a pasted key.');
             return null;
         }
@@ -122,6 +135,8 @@ export function useAutoVault({
         });
         return {
             ...formData,
+            password: undefined,
+            privateKeyPath: undefined,
             authRef: {
                 vaultId,
                 credentialId: item.logicalId,
@@ -132,10 +147,10 @@ export function useAutoVault({
         };
     };
 
-    const buildPastedKeyConnection = async (): Promise<Connection | null> => {
+    const buildVaultKeyConnection = async (): Promise<Connection | null> => {
         if (!validationOk) return null;
         try {
-            const updatedData = await savePastedKey();
+            const updatedData = await savePastedKeyToVault();
             if (!updatedData) return null;
             const { connections } = useAppStore.getState();
             return buildConnectionSavePayload({
@@ -150,6 +165,56 @@ export function useAutoVault({
         }
     };
 
+    /** Non-vault paste: write PEM to managed keys dir and return path. */
+    const writePastedKeyAsManagedFile = async (): Promise<string | null> => {
+        const keyText = pastedKeyText;
+        if (!keyText.trim()) {
+            showToast('error', 'Please paste a private key.');
+            setPastedKeyError('Please paste a private key.');
+            return null;
+        }
+        if (!isValidPrivateKeyFormat(keyText)) {
+            const message = 'Pasted key must include valid BEGIN/END private key markers.';
+            setPastedKeyError(message);
+            showToast('error', message);
+            return null;
+        }
+        setPastedKeyError('');
+        try {
+            const suggestedName = (formData.name || formData.host || 'pasted_key').trim();
+            const path = await writeManagedKeyIpc({
+                content: keyText,
+                suggestedName,
+            });
+            return path;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            setPastedKeyError(message);
+            showToast('error', `Failed to save key file: ${message}`);
+            return null;
+        }
+    };
+
+    const loadKeyFileForVaultImport = async (path: string): Promise<boolean> => {
+        try {
+            const content = await readLocalKeyFileIpc(path);
+            setPastedKeyText(content);
+            setPastedKeyError('');
+            if (!keyVaultLabel.trim()) {
+                const base = path.split(/[/\\]/).pop() || 'imported-key';
+                // Strip a single trailing extension (id_ed25519 stays as-is; key.pem → key).
+                const withoutExt = base.replace(/\.[^.]+$/, '');
+                setKeyVaultLabel((withoutExt.trim() || base).trim());
+            }
+            return true;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            setPastedKeyError(message);
+            showToast('error', `Failed to read key file: ${message}`);
+            return false;
+        }
+    };
+
     return {
         vaultStatus, vaultItems, refreshItems,
         pastedKeyText, setPastedKeyText,
@@ -157,7 +222,11 @@ export function useAutoVault({
         pastedKeyError, setPastedKeyError,
         keyVaultLabel, setKeyVaultLabel,
         defaultKeyVaultLabel, keyVaultLabelConflict,
-        buildPastedKeyConnection,
+        buildVaultKeyConnection,
+        writePastedKeyAsManagedFile,
+        loadKeyFileForVaultImport,
         finalizeVaultReplacement,
+        keyInputMode,
+        vaultInputMode,
     };
 }

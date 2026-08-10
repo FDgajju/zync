@@ -84,3 +84,21 @@ export const disconnectVaultBackedIpc = async (): Promise<string[]> =>
     window.ipcRenderer.invoke('ssh:disconnectVaultBacked');
 export const getRemoteCwdIpc = async (connectionId: string): Promise<string> =>
     window.ipcRenderer.invoke('fs:cwd', connectionId);
+
+export const writeManagedKeyIpc = async (args: {
+    content: string;
+    suggestedName?: string | null;
+}): Promise<string> =>
+    window.ipcRenderer.invoke('ssh:write-managed-key', {
+        content: args.content,
+        suggestedName: args.suggestedName ?? null,
+    });
+
+export const readLocalKeyFileIpc = async (path: string): Promise<string> =>
+    window.ipcRenderer.invoke('ssh:read-local-key-file', path);
+
+export const writeEphemeralKeyIpc = async (content: string): Promise<string> =>
+    window.ipcRenderer.invoke('ssh:write-ephemeral-key', { content });
+
+export const deleteEphemeralKeyIpc = async (path: string): Promise<void> =>
+    window.ipcRenderer.invoke('ssh:delete-ephemeral-key', path);

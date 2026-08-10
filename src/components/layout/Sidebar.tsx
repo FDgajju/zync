@@ -243,8 +243,12 @@ export function Sidebar({ className }: { className?: string }) {
 
     // Live sessions live in a virtual "Connected" folder at the top of All Hosts
     // (not a second sidebar section) — exclude them from the rest of the tree.
+    //
+    // Only `connected` moves here — not `connecting`. Moving on the optimistic
+    // connecting update reorders the list under a still-in-progress click/dblclick,
+    // so the next click lands on the neighbor and opens/connects that host too.
     const isLiveConnection = useCallback(
-        (c: Connection) => c.status === 'connected' || c.status === 'connecting',
+        (c: Connection) => c.status === 'connected',
         [],
     );
 
@@ -258,14 +262,11 @@ export function Sidebar({ className }: { className?: string }) {
                 || Boolean(c.tags?.some((t) => t.toLowerCase().includes(normalizedSearch)))
             );
         });
-        const rank = (c: Connection) => (c.status === 'connected' ? 0 : 1);
-        return [...live].sort((a, b) => {
-            const d = rank(a) - rank(b);
-            if (d !== 0) return d;
-            return (a.name || a.host || '').localeCompare(b.name || b.host || '', undefined, {
+        return [...live].sort((a, b) =>
+            (a.name || a.host || '').localeCompare(b.name || b.host || '', undefined, {
                 sensitivity: 'base',
-            });
-        });
+            }),
+        );
     }, [catalogLocalConnections, isLiveConnection, searchTerm]);
 
     const treeConnections = useMemo(() => {
