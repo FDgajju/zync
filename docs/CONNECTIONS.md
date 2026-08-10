@@ -16,7 +16,7 @@ Canonical reference for **adding/editing hosts**, auth modes, where secrets live
 3. [Add / edit connection UI (today)](#3-add--edit-connection-ui-today)
 4. [Connect-time auth resolution](#4-connect-time-auth-resolution)
 5. [Known inconsistency (issue #90)](#5-known-inconsistency-issue-90)
-6. [Planned auth UX (approved direction)](#6-planned-auth-ux-approved-direction)
+6. [Auth UX — shipped vs remaining](#6-auth-ux--shipped-vs-remaining)
 7. [Non-goals](#7-non-goals)
 8. [File map](#8-file-map)
 9. [Related docs](#9-related-docs)
@@ -44,7 +44,7 @@ Keep **two stores by sensitivity** (do not merge hosts into `vault.redb`):
 
 | Store | Holds | Notes |
 |-------|--------|------|
-| `connections.json` | Hosts, folders, `privateKeyPath`, `authRef`, non-secret metadata | Always readable without vault unlock |
+| `connections.json` | Hosts, folders, `privateKeyPath`, `authRef`, and optionally **plaintext** host login passwords / key passphrases (non-vault auth) | Readable without vault unlock — treat as sensitive on disk; prefer vault for secrets |
 | `vault.redb` | Encrypted credentials (password / private key / optional key passphrase) | Passphrase-locked; exclusive redb lock |
 
 **File-key metadata:** only the **path string** (`privateKeyPath`) is persisted on the host. Zync does **not** store file mtime/size/hash as a key-file catalog in redb. Optional migration may copy a key into `{dataDir}/keys/` and rewrite the path — still path-only on the host.
@@ -101,22 +101,23 @@ Tracked as GitHub issue **#90** (`Prompt for passphrase`).
 
 ---
 
-## 6. Planned auth UX (approved direction)
+## 6. Auth UX — shipped vs remaining
 
-Goal: **Private key section = non-vault only**; **Vault section = all vault key intake**.
+**Shipped (current app):** Private Key = local file / paste→managed file + passphrase; Vault = existing / paste / import-file. See §3.
 
-### Target product model
+**Still planned / deferred:** system SSH agent; prefer vault over long-lived host-stored key passphrases; GitHub #90 close-out after a release verify.
+
+### Current product model
 
 **Password**
 - Password auth (unchanged).
 
-**Private key (local / non-vault)** — implemented
+**Private key (local / non-vault)** — shipped
 - Key **file** path (Browse).
 - Optional **paste** that **writes a key file** under `{dataDir}/keys/…`, then stores **`privateKeyPath` only**.
 - Optional **key passphrase** field (the `ssh-keygen` passphrase), wired through connect config via the host `password` field for key auth.
-- Later: system **SSH agent** option (separate follow-up).
 
-**Vault** — implemented
+**Vault** — shipped
 - Use **existing** vault credential.
 - **Paste** key content (+ optional passphrase) into vault.
 - **Import key file** into vault (read file → store encrypted; set `authRef`).

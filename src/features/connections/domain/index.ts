@@ -3,6 +3,7 @@ export * from './validation.js';
 export * from './folderTreeOps.js';
 export * from './merge.js';
 export * from './formTransforms.js';
+export * from './authMethodTransition.js';
 export * from './connectionConfig.js';
 export * from './credentialAssignments.js';
 export * from './credentialRef.js';

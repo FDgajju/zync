@@ -65,6 +65,7 @@ pub fn run() {
                 data_dir,
             )));
             commands::cleanup_stale_plugin_window_temp_files(&app_handle);
+            commands::cleanup_stale_ephemeral_key_files(&app_handle);
             Ok(())
         })
         .on_page_load(|webview, payload| {

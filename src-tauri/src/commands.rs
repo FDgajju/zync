@@ -1107,6 +1107,10 @@ pub async fn ssh_read_local_key_file(path: String) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("Key path is empty.".to_string());
     }
+    let metadata = std::fs::metadata(trimmed).map_err(|e| e.to_string())?;
+    if metadata.len() > MAX_IMPORT_TEXT_BYTES as u64 {
+        return Err("Private key file too large (max 1 MiB).".to_string());
+    }
     let content = std::fs::read_to_string(trimmed).map_err(|e| e.to_string())?;
     if !looks_like_private_key_pem(&content) {
         return Err("Selected file does not look like a private key.".to_string());
@@ -1116,6 +1120,39 @@ pub async fn ssh_read_local_key_file(path: String) -> Result<String, String> {
 
 fn ephemeral_keys_dir(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
     get_data_dir(app_handle).join("tmp-keys")
+}
+
+/// Remove leftover Test-only key files under `{dataDir}/tmp-keys` (e.g. after a crash).
+/// Missing directory is fine; individual delete failures are logged and skipped.
+pub fn cleanup_stale_ephemeral_key_files(app: &tauri::AppHandle) {
+    let dir = ephemeral_keys_dir(app);
+    if !dir.exists() {
+        return;
+    }
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            eprintln!(
+                "[ssh] Failed to scan ephemeral key dir {}: {}",
+                dir.display(),
+                error
+            );
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if let Err(error) = std::fs::remove_file(&path) {
+            eprintln!(
+                "[ssh] Failed to remove stale ephemeral key {}: {}",
+                path.display(),
+                error
+            );
+        }
+    }
 }
 
 /// Write a short-lived key file for connection Test only (not durable host auth).
@@ -1162,12 +1199,16 @@ pub async fn ssh_delete_ephemeral_key(
     }
     let target = std::path::PathBuf::from(trimmed);
     let dir = ephemeral_keys_dir(&app_handle);
-    let dir_canon = dir.canonicalize().map_err(|e| {
-        format!(
-            "Failed to resolve ephemeral key directory ({}): {e}",
-            dir.display()
-        )
-    })?;
+    let dir_canon = match dir.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "Failed to resolve ephemeral key directory ({}): {error}",
+                dir.display()
+            ));
+        }
+    };
     let target_canon = target.canonicalize().unwrap_or(target.clone());
     if !target_canon.starts_with(&dir_canon) {
         return Err("Refusing to delete a path outside the ephemeral key directory.".to_string());
