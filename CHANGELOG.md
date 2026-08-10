@@ -8,6 +8,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Host auth docs**: Canonical `docs/CONNECTIONS.md` for add/edit host auth modes, storage split, and connect-time resolution. ([0a182ef])
 - **Private Key paste → managed file**: Paste PEM under Private Key writes `{dataDir}/keys/` and stores only `privateKeyPath` on the host (optional key passphrase). ([0a182ef])
 - **Vault paste / import-file**: Vault tab can paste PEM or import a local key file into the vault on Save; Test uses ephemeral `{dataDir}/tmp-keys/`. ([0a182ef])
+- **Open File Manager Here**: Terminal context menu opens Files at the shell’s current directory (mirrors Files → Open Terminal Here). ([5ca57ee])
 
 ### Changed
 - **Private Key vs Vault UX**: Key auth is local file / paste-as-file + passphrase; Vault owns existing / paste / import. System ssh-agent still deferred (issue #90). ([0a182ef])
