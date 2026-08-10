@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useAppStore, Connection } from '../../store/useAppStore';
 import {
     validateConnectionDraft,
@@ -39,12 +39,16 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
         [connections, editingConnectionId]
     );
 
+    const authMethodRef = useRef(authMethod);
+    authMethodRef.current = authMethod;
+
     const setAuthMethod = useCallback((next: ConnectionAuthMode) => {
-        setAuthMethodState((prev) => {
-            if (prev === next) return prev;
-            setFormData((fd) => applyAuthMethodTransition(fd, prev, next));
-            return next;
-        });
+        const prev = authMethodRef.current;
+        if (prev === next) return;
+        // Keep the authMethod state updater pure — apply form secret clearing here.
+        authMethodRef.current = next;
+        setAuthMethodState(next);
+        setFormData((fd) => applyAuthMethodTransition(fd, prev, next));
     }, []);
 
     useEffect(() => {
