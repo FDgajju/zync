@@ -91,10 +91,15 @@ export const TerminalContextMenu = memo(function TerminalContextMenu({
               || term?.initialPath
               || connection?.homePath
               || '/';
-            void store.loadFiles(connectionId, targetPath);
-            if (store.activeTabId) {
-              store.setTabView(store.activeTabId, 'files');
-            }
+            const tabId = store.activeTabId;
+            void (async () => {
+              await store.loadFiles(connectionId, targetPath);
+              if (!tabId) return;
+              // Retarget only the tab that initiated the action (ignore mid-await tab switches).
+              if (useAppStore.getState().tabs.some((tab) => tab.id === tabId)) {
+                useAppStore.getState().setTabView(tabId, 'files');
+              }
+            })();
           },
         },
         {
