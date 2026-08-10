@@ -4,6 +4,21 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Host auth docs**: Canonical `docs/CONNECTIONS.md` for add/edit host auth modes, storage split, and connect-time resolution. ([0a182ef])
+- **Private Key paste → managed file**: Paste PEM under Private Key writes `{dataDir}/keys/` and stores only `privateKeyPath` on the host (optional key passphrase). ([0a182ef])
+- **Vault paste / import-file**: Vault tab can paste PEM or import a local key file into the vault on Save; Test uses ephemeral `{dataDir}/tmp-keys/`. ([0a182ef])
+
+### Changed
+- **Private Key vs Vault UX**: Key auth is local file / paste-as-file + passphrase; Vault owns existing / paste / import. System ssh-agent still deferred (issue #90). ([0a182ef])
+- **Connected folder membership**: Only fully `connected` hosts move into Connected — hosts stay in place while `connecting` so multi-click cannot retarget a neighbor. ([0a182ef])
+
+### Fixed
+- **Sidebar multi-click connects neighbors**: Double/triple-click no longer opens the next host after the list reorders under the pointer. ([0a182ef])
+- **Vault status camelCase**: Locked/Unlocked wire fields use `vaultId` / `itemCount` (with renderer normalize for legacy snake_case) so unlock UI and save no longer disagree. ([0a182ef])
+- **Locked vault empty credential list**: Existing-credential picker prompts to unlock instead of “No items in vault yet.” ([0a182ef])
+- **Key-paste Test leftovers**: Local paste Test uses ephemeral tmp-keys (deleted after) instead of writing durable managed keys before Save. ([0a182ef])
+
 ## [2.22.5] - 2026-08-09
 
 ### Added
