@@ -4,7 +4,18 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
-## [2.22.3] - 2026-08-07
+## [2.22.5] - 2026-08-09
+
+### Added
+- **Resume-session disconnect card**: Host-aware restore / offline / error UI for terminal and Files/SFTP with last-connected time, Enter-to-reconnect, Edit host, Open vault, and Files ↔ Terminal actions. Shared `relativeTime` helper; autofocus and Enter only when that surface is active so a hidden Files panel cannot steal input. ([481ad20])
+- **All Hosts create menu**: Section header **+** opens New host / New folder / New tunnel (same options on All Hosts context menu). ([fc9981c])
+- **Connected virtual folder**: Live sessions (`connected` / `connecting`) group at the top of All Hosts instead of a separate Active section; no host duplication. ([fc9981c])
+
+### Changed
+- **Sidebar host list polish**: Quieter host/remote row hover and selection, clearer search/filter hit targets, improved empty-state copy with **New host** CTA, Connected starts expanded with a visible count. ([946e94d])
+- **Session restore / tab switch auto-connect**: Restored host tabs no longer open SSH on app restart or when switching to them in the tab bar. Connections stay disconnected until an explicit sidebar open or **Reconnect**. ([bbab9ce])
+
+## [2.22.4] - 2026-08-07
 
 ### Added
 - **Brand asset kit**: Canonical SVGs under `assets/` — app mark (`logo-icon.svg`), legacy backup, square and circular variants, wordmark/horizontal lockups (light + dark), monochrome marks, and banner art for marketing/YouTube. ([60fc375])
@@ -941,7 +952,10 @@ All notable changes to Zync are documented in this file. The format is based on 
 - Auto-updates
 - Multiple themes (Dark, Light, Dracula)
 
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.22.1...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.22.5...HEAD
+[2.22.5]: https://github.com/zync-sh/zync/compare/v2.22.4...v2.22.5
+[2.22.4]: https://github.com/zync-sh/zync/compare/v2.22.2...v2.22.4
+[2.22.2]: https://github.com/zync-sh/zync/compare/v2.22.1...v2.22.2
 [2.22.1]: https://github.com/zync-sh/zync/compare/v2.22.0...v2.22.1
 [2.22.0]: https://github.com/zync-sh/zync/compare/v2.21.0...v2.22.0
 [2.21.0]: https://github.com/zync-sh/zync/compare/v2.20.1...v2.21.0

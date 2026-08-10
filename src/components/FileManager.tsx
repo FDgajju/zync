@@ -11,7 +11,6 @@ import {
   Server,
   Trash2,
   Upload,
-  Unplug,
   Terminal,
   Zap,
   Settings as SettingsIcon,
@@ -38,6 +37,7 @@ import { FileBottomToolbar } from './file-manager/FileBottomToolbar';
 import { usePlugins } from '../context/PluginContext';
 import { buildEditorProviderOptions, CODEMIRROR_EDITOR_ID } from './editor/providers';
 import { clearEditorOverlayOpen, markEditorOverlayOpen } from './editor/overlayState';
+import { TerminalDisconnectedView } from './terminal/TerminalDisconnectedView';
 
 export interface Conflict {
   source: string;
@@ -72,6 +72,22 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
   const { editorProviders } = usePlugins();
   const showToast = useAppStore((state) => state.showToast);
   const connect = useAppStore((state) => state.connect);
+  const openConnectionModal = useAppStore((state) => state.openConnectionModal);
+  const openVaultTab = useAppStore((state) => state.openVaultTab);
+  const setTabView = useAppStore((state) => state.setTabView);
+  const isPendingRestore = useAppStore((state) => {
+    if (!activeConnectionId || isLocal) return false;
+    const tabs = state.terminals[activeConnectionId];
+    return !!tabs?.some((t) => t.pendingRestore);
+  });
+  // Files panel stays mounted under `hidden`; only treat as active when this
+  // workspace is showing Files (same intent as isFileManagerPanelShown).
+  const isFilesSurfaceActive = useAppStore((state) => {
+    const tab = state.tabs.find((t) => t.id === state.activeTabId);
+    if (!tab || tab.view !== 'files') return false;
+    if (connectionId != null && tab.connectionId !== connectionId) return false;
+    return true;
+  });
 
   // Zustand Store Hooks
   const filesMap = useAppStore(state => state.files);
@@ -1394,6 +1410,8 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
 
   // Keyboard Navigation Handler
   useEffect(() => {
+    if (!isConnected) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't interfere with background tabs, modals, inputs, or when strict focus is needed
       if (!isFileManagerPanelShown(containerRef.current) || isNewFolderModalOpen || isNewFileModalOpen || isRenameModalOpen || editingFile || isCopyModalOpen || isPropertiesOpen) return;
@@ -1635,7 +1653,7 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
   }, [
     activeConnectionId, searchTerm, isSearchOpen, files, settings, isNewFolderModalOpen, isNewFileModalOpen, isRenameModalOpen,
     editingFile, selectedFiles, focusedFile, handleNavigate, handleCopy, handlePaste,
-    handleDelete, navigateBack, navigateForward, isCopyModalOpen, isPropertiesOpen, viewMode
+    handleDelete, navigateBack, navigateForward, isCopyModalOpen, isPropertiesOpen, viewMode, isConnected
   ]);
 
   // Focus when the files panel is shown (dispatched from TabContent — avoids isVisible prop churn).
@@ -1722,41 +1740,30 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
 
       {/* biome-ignore lint/a11y/noStaticElementInteractions: interactive div */}
       <div className="flex-1 overflow-hidden relative flex flex-col" onClick={() => setContextMenu(null)}>
-        {isReconnectPending ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-app-text p-8 text-center animate-in fade-in zoom-in-95 duration-300">
-            <div className="bg-app-surface/50 border border-app-border rounded-xl p-8 max-w-sm shadow-xl flex flex-col items-center">
-              <div className="bg-app-accent/10 text-app-accent p-4 rounded-full mb-4">
-                <RotateCw size={48} strokeWidth={1.5} className="animate-spin" />
-              </div>
-              <h2 className="text-xl font-bold mb-2">Connecting...</h2>
-              <p className="text-sm text-app-muted">
-                Re-establishing SFTP session. Please wait.
-              </p>
-            </div>
-          </div>
-        ) : (currentError === 'DISCONNECTED' || (!isConnected && !isLocal)) ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-app-text p-8 text-center animate-in fade-in zoom-in-95 duration-300">
-            <div className="bg-app-surface/50 border border-app-border rounded-xl p-8 max-w-sm shadow-xl flex flex-col items-center">
-              <div className="bg-red-500/10 text-red-500 p-4 rounded-full mb-4">
-                <Unplug size={48} strokeWidth={1.5} />
-              </div>
-              <h2 className="text-xl font-bold mb-2">
-                {currentError === 'DISCONNECTED' ? 'Connection Lost' : 'Not Connected'}
-              </h2>
-              <p className="text-sm text-app-muted mb-6">
-                {currentError === 'DISCONNECTED'
-                  ? 'Zync lost the connection to the server and could not automatically recover it. Please check your internet connection and try again.'
-                  : 'This host is currently disconnected. Reconnect to browse files over SFTP.'}
-              </p>
-              <Button
-                onClick={() => { void handleReconnect(); }}
-                className="w-full gap-2"
-              >
-                <RotateCw size={16} />
-                Reconnect
-              </Button>
-            </div>
-          </div>
+        {(isReconnectPending || currentError === 'DISCONNECTED' || (!isConnected && !isLocal)) ? (
+          <TerminalDisconnectedView
+            connection={connection}
+            isPendingRestore={isPendingRestore}
+            activeConnectionId={activeConnectionId || ''}
+            surface="files"
+            isSurfaceActive={isFilesSurfaceActive}
+            onReconnect={() => { void handleReconnect(); }}
+            onEditHost={
+              connection
+                ? () => openConnectionModal(connection.id)
+                : undefined
+            }
+            onOpenTerminal={
+              activeTabId
+                ? () => setTabView(activeTabId, 'terminal')
+                : undefined
+            }
+            onOpenVault={
+              connection
+                ? () => openVaultTab('local')
+                : undefined
+            }
+          />
         ) : (
           <FileGrid
             files={filteredFiles}

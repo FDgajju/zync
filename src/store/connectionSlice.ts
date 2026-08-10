@@ -97,9 +97,6 @@ export interface ConnectionSlice {
     disconnect: (id: string) => Promise<void>;
     /** WiFi drop / SSH EOF — stop active tunnels, keep terminal tabs and scrollback. */
     handleTransportLost: (id: string) => Promise<void>;
-    /** Connect when a host tab is opened or restored and the SSH session is not live. */
-    autoConnectIfNeeded: (connectionId: string) => void;
-
     // Tab Actions
     openTab: (connectionId: string, startView?: CoreTabView) => void;
     openPortForwardingTab: () => void;
@@ -633,17 +630,6 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
         });
     },
 
-    autoConnectIfNeeded: (connectionId) => {
-        if (connectionId === LOCAL_TERMINAL_CONNECTION_ID) {
-            return;
-        }
-        const state = get();
-        const conn = state.connections.find(c => c.id === connectionId);
-        if (conn && shouldAutoConnectOnOpenTab(state.connections, conn)) {
-            void get().connect(connectionId);
-        }
-    },
-
     openTab: (connectionId, startView: CoreTabView = 'terminal') => {
         let connectAfterOpen: string | null = null;
 
@@ -778,7 +764,6 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
 
     activateTab: (tabId) => {
         let didActivate = false;
-        let connectionIdToConnect: string | null = null;
         set(state => {
             const tab = state.tabs.find(t => t.id === tabId);
             if (!tab) return state;
@@ -786,17 +771,8 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             const newConnId = tab.connectionId || null;
             const isReal = newConnId !== null && newConnId !== GLOBAL_SNIPPETS_CONNECTION_ID;
 
-            if (
-                newConnId
-                && newConnId !== LOCAL_TERMINAL_CONNECTION_ID
-                && tab.type === 'connection'
-            ) {
-                const conn = state.connections.find(c => c.id === newConnId);
-                if (conn && shouldAutoConnectOnOpenTab(state.connections, conn)) {
-                    connectionIdToConnect = newConnId;
-                }
-            }
-
+            // Tab bar switch only focuses UI. Do not auto-connect restored/disconnected
+            // hosts — that requires explicit openTab (sidebar) or Reconnect.
             return {
                 activeTabId: tabId,
                 activeConnectionId: newConnId,
@@ -806,9 +782,6 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
         });
         if (!didActivate) return;
         scheduleSaveSession(() => get().saveSession());
-        if (connectionIdToConnect) {
-            void get().connect(connectionIdToConnect);
-        }
     },
 
     goHome: () => {

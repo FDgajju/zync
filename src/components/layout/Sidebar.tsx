@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useAppStore, Connection, Folder } from '../../store/useAppStore';
-import { Files, Info, Network, Pencil, Plus, Power, RefreshCw, Search, Server, TerminalIcon, Trash2 } from 'lucide-react';
+import { Files, FolderPlus, Info, Network, Pencil, Plus, Power, RefreshCw, Search, Server, TerminalIcon, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -8,6 +8,7 @@ import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { buildTree } from './sidebar/buildTree';
 import { SidebarSection } from './sidebar/SidebarSection';
 import { ConnectionItem } from './sidebar/ConnectionItem';
+import { ConnectedHostsGroup } from './sidebar/ConnectedHostsGroup';
 import { FolderItem } from './sidebar/FolderItem';
 import { FolderFormModal } from './sidebar/FolderFormModal';
 import { SidebarActionButton } from './sidebar/SidebarActionButton';
@@ -182,11 +183,6 @@ export function Sidebar({ className }: { className?: string }) {
         }
     }, [providerConnected, hostFilter, setHostFilter]);
 
-    // Active sessions stay visible regardless of All Hosts search/filter (those live inside All Hosts).
-    const activeConnections = useMemo(() => {
-        return connections.filter((c: Connection) => c.status === 'connected');
-    }, [connections]);
-
     const filteredHostCount = filteredEntries.length;
     const totalHostCount = catalogEntries.length;
     const hasAnyHosts = totalHostCount > 0;
@@ -245,10 +241,36 @@ export function Sidebar({ className }: { className?: string }) {
         };
     }, []);
 
-    // Filter out active connections for the main tree; respect catalog filter (local subset).
+    // Live sessions live in a virtual "Connected" folder at the top of All Hosts
+    // (not a second sidebar section) — exclude them from the rest of the tree.
+    const isLiveConnection = useCallback(
+        (c: Connection) => c.status === 'connected' || c.status === 'connecting',
+        [],
+    );
+
+    const connectedListHosts = useMemo(() => {
+        const normalizedSearch = searchTerm.toLowerCase();
+        const live = catalogLocalConnections.filter((c: Connection) => {
+            if (!isLiveConnection(c)) return false;
+            if (!searchTerm) return true;
+            return (
+                (c.name ?? c.host ?? '').toLowerCase().includes(normalizedSearch)
+                || Boolean(c.tags?.some((t) => t.toLowerCase().includes(normalizedSearch)))
+            );
+        });
+        const rank = (c: Connection) => (c.status === 'connected' ? 0 : 1);
+        return [...live].sort((a, b) => {
+            const d = rank(a) - rank(b);
+            if (d !== 0) return d;
+            return (a.name || a.host || '').localeCompare(b.name || b.host || '', undefined, {
+                sensitivity: 'base',
+            });
+        });
+    }, [catalogLocalConnections, isLiveConnection, searchTerm]);
+
     const treeConnections = useMemo(() => {
-        return catalogLocalConnections.filter((c: Connection) => c.status !== 'connected');
-    }, [catalogLocalConnections]);
+        return catalogLocalConnections.filter((c: Connection) => !isLiveConnection(c));
+    }, [catalogLocalConnections, isLiveConnection]);
 
     // Build Recursive Tree (search already applied in catalog; re-apply for tree safety)
     const treeRoot = useMemo(
@@ -458,15 +480,47 @@ export function Sidebar({ className }: { className?: string }) {
         ];
     }, [folderContextMenu, getExportableConnectionsForFolder, toFileBaseName]);
 
+    const hostsCreateMenu = useMemo(() => [
+        {
+            id: 'new-host',
+            label: 'New host',
+            icon: <Server size={14} />,
+            onSelect: () => openConnectionModal(),
+        },
+        {
+            id: 'new-folder',
+            label: 'New folder',
+            icon: <FolderPlus size={14} />,
+            onSelect: () => setIsFolderModalOpen(true),
+        },
+        {
+            id: 'new-tunnel',
+            label: 'New tunnel',
+            icon: <Network size={14} />,
+            onSelect: () => setIsAddTunnelModalOpen(true),
+        },
+    ], [openConnectionModal]);
+
     const allHostsContextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!allHostsContextMenu) return [];
         const allHostConnections = connections.filter((connection) => connection.id !== 'local');
         return [
             {
                 label: 'New host',
-                icon: <Plus size={14} />,
+                icon: <Server size={14} />,
                 action: () => openConnectionModal(),
             },
+            {
+                label: 'New folder',
+                icon: <FolderPlus size={14} />,
+                action: () => setIsFolderModalOpen(true),
+            },
+            {
+                label: 'New tunnel',
+                icon: <Network size={14} />,
+                action: () => setIsAddTunnelModalOpen(true),
+            },
+            { separator: true },
             {
                 label: 'Export...',
                 icon: <Files size={14} />,
@@ -523,7 +577,7 @@ export function Sidebar({ className }: { className?: string }) {
         if (searchTerm.trim()) {
             return {
                 title: 'No matches',
-                detail: 'Try a different search.',
+                detail: 'Try a different search or clear the filter.',
             };
         }
         if (providerConnected && hostFilter === 'local') {
@@ -567,13 +621,13 @@ export function Sidebar({ className }: { className?: string }) {
             return {
                 title: 'No hosts yet',
                 detail: providerConnected
-                    ? 'Use New host above, or refresh Remote after unlocking sync.'
-                    : 'Use New host above to get started.',
+                    ? 'Use + on All Hosts, or refresh Remote after unlocking sync.'
+                    : 'Use + on All Hosts to add a host, folder, or tunnel.',
             };
         }
         return {
             title: 'Nothing here',
-            detail: 'No hosts match the current view.',
+            detail: 'No hosts match this view. Try All, or clear search.',
         };
     }, [hasAnyHosts, hostFilter, inventoryError, inventoryStatus, providerConnected, searchTerm]);
 
@@ -585,13 +639,12 @@ export function Sidebar({ className }: { className?: string }) {
                     type="button"
                     onClick={() => openConnectionModal()}
                     className={cn(
-                        'flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5',
-                        'text-[11px] font-medium',
-                        'border border-app-border/40 bg-app-surface/50 text-app-text',
-                        'hover:bg-app-surface hover:border-app-border/60 transition-colors',
+                        'flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-2',
+                        'text-[12px] font-medium text-app-text',
+                        'bg-app-surface/55 hover:bg-app-surface/75 transition-colors',
                     )}
                 >
-                    <Plus size={13} aria-hidden />
+                    <Plus size={14} aria-hidden />
                     New host
                 </button>
             )}
@@ -599,8 +652,8 @@ export function Sidebar({ className }: { className?: string }) {
             {(hasAnyHosts || searchTerm.trim()) && (
                 <div className="relative">
                     <Search
-                        size={12}
-                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-app-muted/55"
+                        size={13}
+                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-app-muted/50"
                         aria-hidden="true"
                     />
                     <input
@@ -610,10 +663,10 @@ export function Sidebar({ className }: { className?: string }) {
                         aria-label="Search hosts"
                         placeholder={searchPlaceholder}
                         className={cn(
-                            'w-full rounded-md border border-app-border/30 bg-app-bg/50',
-                            'pl-8 pr-3 py-1.5 text-[11px] text-app-text',
-                            'placeholder:text-app-muted/50',
-                            'focus:outline-none focus:border-app-accent/50 focus:bg-app-bg/70',
+                            'w-full rounded-md border border-transparent bg-app-bg/55',
+                            'py-2 pl-8 pr-3 text-[12px] text-app-text',
+                            'placeholder:text-app-muted/45',
+                            'focus:border-app-border/40 focus:bg-app-bg/70 focus:outline-none',
                         )}
                     />
                 </div>
@@ -622,7 +675,7 @@ export function Sidebar({ className }: { className?: string }) {
             {providerConnected && (
                 <div className="flex items-center gap-1">
                     <div
-                        className="inline-flex flex-1 min-w-0 rounded-md border border-app-border/30 bg-app-bg/40 p-0.5"
+                        className="inline-flex min-w-0 flex-1 rounded-md bg-app-bg/45 p-0.5"
                         role="tablist"
                         aria-label="Host location filter"
                     >
@@ -634,7 +687,7 @@ export function Sidebar({ className }: { className?: string }) {
                                 aria-selected={hostFilter === item.id}
                                 onClick={() => setHostFilter(item.id)}
                                 className={cn(
-                                    'flex-1 min-w-0 truncate rounded px-1.5 py-1 text-[10px] font-medium transition-colors',
+                                    'min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
                                     hostFilter === item.id
                                         ? 'bg-app-surface text-app-text shadow-sm'
                                         : 'text-app-muted hover:text-app-text',
@@ -648,14 +701,13 @@ export function Sidebar({ className }: { className?: string }) {
                         type="button"
                         onClick={() => { void refreshInventory(); }}
                         className={cn(
-                            'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
-                            'border border-app-border/30 bg-app-bg/40 text-app-muted',
-                            'hover:text-app-text hover:bg-app-surface/60',
+                            'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+                            'text-app-muted hover:bg-app-surface/60 hover:text-app-text',
                         )}
                         title="Refresh provider host list"
                         aria-label="Refresh provider host list"
                     >
-                        <RefreshCw size={12} className={cn(inventoryStatus === 'loading' && 'animate-spin')} />
+                        <RefreshCw size={13} className={cn(inventoryStatus === 'loading' && 'animate-spin')} />
                     </button>
                 </div>
             )}
@@ -708,6 +760,13 @@ export function Sidebar({ className }: { className?: string }) {
                     onDragOver={handleAllHostsDragOver}
                     onDrop={handleAllHostsDrop}
                 >
+                    {/* Virtual folder — live sessions only (no duplicate Active section) */}
+                    <ConnectedHostsGroup
+                        connections={connectedListHosts}
+                        compactMode={compactMode}
+                        connectionItemProps={connectionItemProps}
+                    />
+
                     {Object.keys(treeRoot.children).sort().map(key => (
                         <FolderItem
                             key={key}
@@ -747,17 +806,28 @@ export function Sidebar({ className }: { className?: string }) {
                         />
                     ))}
 
-                    {showEmpty && (
-                        <div className="flex flex-col items-center gap-2 px-3 py-6 text-center">
-                            <Server size={18} className="text-app-muted/40" aria-hidden />
-                            <div className="space-y-0.5">
-                                <p className="text-[12px] font-medium text-app-muted/80">
-                                    {emptyListMessage.title}
-                                </p>
-                                <p className="text-[10px] leading-relaxed text-app-muted/55 max-w-[14rem]">
-                                    {emptyListMessage.detail}
-                                </p>
-                            </div>
+                    {showEmpty && connectedListHosts.length === 0 && (
+                        <div className="flex flex-col items-start gap-1.5 px-2 py-5">
+                            <p className="text-[13px] font-medium text-app-muted/85">
+                                {emptyListMessage.title}
+                            </p>
+                            <p className="text-[12px] leading-relaxed text-app-muted/55">
+                                {emptyListMessage.detail}
+                            </p>
+                            {!hasAnyHosts && (
+                                <button
+                                    type="button"
+                                    onClick={() => openConnectionModal()}
+                                    className={cn(
+                                        'mt-1 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5',
+                                        'text-[12px] font-medium text-app-text',
+                                        'bg-app-surface/60 hover:bg-app-surface/80 transition-colors',
+                                    )}
+                                >
+                                    <Plus size={13} aria-hidden />
+                                    New host
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
@@ -766,6 +836,7 @@ export function Sidebar({ className }: { className?: string }) {
     }, [
         allHostsToolbar,
         compactMode,
+        connectedListHosts,
         connectionItemProps,
         emptyListMessage,
         expandedFolders,
@@ -774,9 +845,11 @@ export function Sidebar({ className }: { className?: string }) {
         handleKeepAndConnect,
         handleKeepOnDevice,
         handleRenameFolder,
+        hasAnyHosts,
         inventoryHint,
         inventoryStatus,
         materializingIds,
+        openConnectionModal,
         remoteOnlyEntries,
         renameFolder,
         toggleFolder,
@@ -839,36 +912,11 @@ export function Sidebar({ className }: { className?: string }) {
 
                 <div className="h-px bg-app-border/20 mb-2 mx-4" />
 
-                {/* List: Active + All Hosts (header/search sticky; host list scrolls) */}
+                {/* Hosts list (Connected virtual folder sits at top of the list) */}
                 <div className={cn(
                     "flex-1 min-h-0 flex flex-col overflow-hidden pb-3",
                     compactMode ? "px-2 gap-1.5" : "px-3 gap-1.5"
                 )}>
-                    {activeConnections.length > 0 && (
-                        <div className="shrink-0 max-h-[30%] overflow-y-auto scrollbar-hide">
-                            <SidebarSection
-                                title="Active"
-                                count={activeConnections.length}
-                                compactMode={compactMode}
-                                variant="action"
-                                icon={<Power size={13} />}
-                            >
-                                <div className={cn("space-y-1 mb-1 pl-1", compactMode && "space-y-0.5")}>
-                                    {activeConnections.map((conn: Connection) => (
-                                        <ConnectionItem
-                                            key={`active-${conn.id}`}
-                                            conn={conn}
-                                            isCollapsed={false}
-                                            locations={connectionItemProps.getLocations?.(conn)}
-                                            onEdit={connectionItemProps.onEdit}
-                                            onOpenContextMenu={connectionItemProps.onOpenContextMenu}
-                                        />
-                                    ))}
-                                </div>
-                            </SidebarSection>
-                        </div>
-                    )}
-
                     <SidebarSection
                         title="All Hosts"
                         compactMode={compactMode}
@@ -876,6 +924,7 @@ export function Sidebar({ className }: { className?: string }) {
                         fill
                         icon={<Server size={13} />}
                         count={filteredEntries.length > 0 ? filteredEntries.length : undefined}
+                        createMenu={hostsCreateMenu}
                         onContextMenu={(event) => {
                             event.preventDefault();
                             setAllHostsContextMenu({ x: event.clientX, y: event.clientY });

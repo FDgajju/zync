@@ -106,17 +106,17 @@ export const ConnectionItem = memo(function ConnectionItem({ conn, isCollapsed, 
             <div
                 ref={rowRef}
                 className={cn(
-                    "group relative flex items-center transition-all cursor-pointer border select-none",
+                    "group relative flex cursor-pointer items-center select-none rounded-lg transition-colors",
                     isCollapsed
-                        ? "justify-center p-2 rounded-xl mx-auto w-12 h-12"
+                        ? "mx-auto h-10 w-10 justify-center p-2"
                         : compactMode
-                            ? "gap-2 px-2 py-1.5 rounded-lg"
-                            : "gap-2.5 px-2.5 py-2 rounded-lg",
-                    "border-transparent hover:bg-app-surface/45 hover:border-app-border/15",
+                            ? "gap-2 px-2 py-1.5"
+                            : "gap-2.5 px-2.5 py-2",
+                    "hover:bg-app-surface/40",
                     isActive
-                        ? "bg-app-accent/8 border-app-accent/15"
+                        ? "bg-app-surface/65 text-app-text"
                         : "text-app-muted hover:text-app-text",
-                    dropTargetId === conn.id && "bg-app-accent/20 border-app-accent ring-2 ring-app-accent/30"
+                    dropTargetId === conn.id && "bg-app-accent/15 ring-1 ring-app-accent/25"
                 )}
                 onClick={(e) => {
                     e.preventDefault();
@@ -160,69 +160,75 @@ export const ConnectionItem = memo(function ConnectionItem({ conn, isCollapsed, 
                 onDragLeave={() => setDropTargetId(null)}
                 onDrop={handleDrop}
             >
-                {/* Active Marker Line (Left) */}
                 {isActive && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 bg-app-accent shadow-[0_0_12px_rgba(var(--color-app-accent),0.6)] rounded-r-full" />
+                    <div
+                        className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-app-accent/80"
+                        aria-hidden
+                    />
                 )}
 
-                {/* Icon */}
-                <div className={cn(
-                    "relative shrink-0 flex items-center justify-center transition-all duration-300",
-                    compactMode ? "h-7 w-7" : "h-9 w-9",
-                    "bg-transparent"
-                )}>
+                <div
+                    className={cn(
+                        "relative flex shrink-0 items-center justify-center",
+                        compactMode ? "h-7 w-7" : "h-8 w-8",
+                    )}
+                >
                     <OSIcon
                         icon={conn.icon || 'Server'}
                         className={cn(
-                            "transition-transform duration-500",
-                            compactMode ? "w-4 h-4" : "w-4.5 h-4.5",
-                            isActive ? "text-app-accent" : "text-app-muted group-hover:text-app-text group-hover:scale-110"
+                            "h-4 w-4 transition-colors",
+                            isActive ? "text-app-text" : "text-app-muted group-hover:text-app-text",
                         )}
                     />
 
-                    {/* Status Dot */}
-                    {conn.status === 'connected' && (
-                        <div className={cn(
-                            "absolute -bottom-1 -right-1 h-3 w-3 rounded-full shadow-sm",
-                            hasTab
-                                ? "bg-app-success border-2 border-app-panel animate-pulse-slow"
-                                : "bg-transparent border-2 border-app-accent/60"
-                        )} title={hasTab ? "Connected" : "Tunnel/Background Active"} />
+                    {(conn.status === 'connected' || conn.status === 'connecting' || conn.status === 'error') && (
+                        <div
+                            className={cn(
+                                "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-app-panel",
+                                conn.status === 'connected' && (hasTab ? "bg-app-success" : "bg-app-success/70"),
+                                conn.status === 'connecting' && "bg-amber-400",
+                                conn.status === 'error' && "bg-app-danger",
+                            )}
+                            title={
+                                conn.status === 'connected'
+                                    ? (hasTab ? "Connected" : "Connected (background)")
+                                    : conn.status === 'connecting'
+                                        ? "Connecting…"
+                                        : "Connection error"
+                            }
+                        />
                     )}
                 </div>
 
                 {!isCollapsed && (
-                    <div className="flex flex-col overflow-hidden min-w-0 flex-1 gap-0.5">
-                        <div className="flex items-center justify-between gap-2 min-w-0">
-                            <span className={cn(
-                                "truncate font-medium leading-tight transition-colors min-w-0",
-                                compactMode ? "text-[13px]" : "text-[13px]",
-                                isActive ? "text-app-text font-semibold" : "text-app-text/85 group-hover:text-app-text"
-                            )}>
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
+                        <div className="flex min-w-0 items-center justify-between gap-2">
+                            <span
+                                className={cn(
+                                    "min-w-0 truncate text-[13px] font-medium leading-tight",
+                                    isActive ? "text-app-text" : "text-app-text/90 group-hover:text-app-text",
+                                )}
+                            >
                                 {primary}
                             </span>
 
-                            {/* Hover Actions */}
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                                 <button
-                                    className="p-1 rounded-md hover:bg-app-surface hover:text-app-text text-app-muted transition-colors"
+                                    type="button"
+                                    className="rounded-md p-1 text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onEdit(conn);
                                     }}
                                     aria-label="Edit connection"
-                                    title="Edit Connection"
+                                    title="Edit connection"
                                 >
                                     <Settings size={12} />
                                 </button>
                             </div>
                         </div>
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            <span className={cn(
-                                "truncate leading-tight min-w-0",
-                                compactMode ? "text-[10px]" : "text-[11px]",
-                                "text-app-muted/50 group-hover:text-app-muted/70 transition-colors"
-                            )}>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                            <span className="min-w-0 truncate text-[11px] leading-tight text-app-muted/50 group-hover:text-app-muted/65">
                                 {secondary}
                             </span>
                             {locations && locations.length > 0 && (
