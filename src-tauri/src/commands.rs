@@ -995,6 +995,189 @@ pub async fn ssh_extract_pem(app_handle: tauri::AppHandle, path: String) -> Resu
     Ok(dest_path.to_string_lossy().to_string())
 }
 
+fn looks_like_private_key_pem(content: &str) -> bool {
+    content.contains("-----BEGIN ") && content.contains("PRIVATE KEY-----") && content.contains("-----END ")
+}
+
+fn set_private_key_file_permissions(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(path)
+            .map_err(|e| e.to_string())?
+            .permissions();
+        perms.set_mode(0o600);
+        std::fs::set_permissions(path, perms).map_err(|e| e.to_string())?;
+    }
+    let _ = path;
+    Ok(())
+}
+
+/// Write private-key PEM with restrictive permissions.
+/// On Unix, `mode(0o600)` applies at create time; chmod afterward covers umask and existing files.
+fn write_private_key_file(path: &std::path::Path, content: &str) -> Result<(), String> {
+    use std::io::Write;
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path).map_err(|e| e.to_string())?;
+    file.write_all(content.as_bytes()).map_err(|e| e.to_string())?;
+    // Guarantee 0o600 even when umask softened create-time mode, or when truncating an older file.
+    set_private_key_file_permissions(path)?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteManagedKeyRequest {
+    pub content: String,
+    pub suggested_name: Option<String>,
+}
+
+/// Write pasted private-key PEM into the managed `{dataDir}/keys` folder and return the path.
+/// Used for non-vault "Paste" key auth — host stores only `privateKeyPath`.
+#[tauri::command]
+pub async fn ssh_write_managed_key(
+    app_handle: tauri::AppHandle,
+    request: WriteManagedKeyRequest,
+) -> Result<String, String> {
+    let trimmed = request.content.trim();
+    if trimmed.is_empty() {
+        return Err("Private key content is empty.".to_string());
+    }
+    if !looks_like_private_key_pem(trimmed) {
+        return Err("Pasted key must include valid BEGIN/END private key markers.".to_string());
+    }
+
+    let data_dir = get_data_dir(&app_handle);
+    let keys_dir = data_dir.join("keys");
+    if !keys_dir.exists() {
+        std::fs::create_dir_all(&keys_dir).map_err(|e| e.to_string())?;
+    }
+
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    trimmed.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    let raw_name = request
+        .suggested_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("pasted_key");
+    let safe_name: String = raw_name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let safe_name = if safe_name.is_empty() {
+        "pasted_key".to_string()
+    } else {
+        safe_name
+    };
+    let dest_filename = if safe_name.to_ascii_lowercase().ends_with(".pem")
+        || safe_name.starts_with("id_")
+    {
+        format!("{:x}_{}", hash, safe_name)
+    } else {
+        format!("{:x}_{}.pem", hash, safe_name)
+    };
+    let dest_path = keys_dir.join(dest_filename);
+
+    write_private_key_file(&dest_path, &format!("{trimmed}\n"))?;
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+/// Read a local private key file for vault import (returns PEM text).
+#[tauri::command]
+pub async fn ssh_read_local_key_file(path: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Key path is empty.".to_string());
+    }
+    let content = std::fs::read_to_string(trimmed).map_err(|e| e.to_string())?;
+    if !looks_like_private_key_pem(&content) {
+        return Err("Selected file does not look like a private key.".to_string());
+    }
+    Ok(content)
+}
+
+fn ephemeral_keys_dir(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
+    get_data_dir(app_handle).join("tmp-keys")
+}
+
+/// Write a short-lived key file for connection Test only (not durable host auth).
+/// Caller should delete via `ssh_delete_ephemeral_key` after the test.
+#[tauri::command]
+pub async fn ssh_write_ephemeral_key(
+    app_handle: tauri::AppHandle,
+    content: String,
+) -> Result<String, String> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Err("Private key content is empty.".to_string());
+    }
+    if !looks_like_private_key_pem(trimmed) {
+        return Err("Pasted key must include valid BEGIN/END private key markers.".to_string());
+    }
+
+    let dir = ephemeral_keys_dir(&app_handle);
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    }
+
+    let dest_path = dir.join(format!(
+        "test-{}-{}.pem",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+        uuid::Uuid::new_v4().simple()
+    ));
+    write_private_key_file(&dest_path, &format!("{trimmed}\n"))?;
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+/// Delete an ephemeral test key. Refuses paths outside `{dataDir}/tmp-keys`.
+#[tauri::command]
+pub async fn ssh_delete_ephemeral_key(
+    app_handle: tauri::AppHandle,
+    path: String,
+) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    let target = std::path::PathBuf::from(trimmed);
+    let dir = ephemeral_keys_dir(&app_handle);
+    let dir_canon = dir.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve ephemeral key directory ({}): {e}",
+            dir.display()
+        )
+    })?;
+    let target_canon = target.canonicalize().unwrap_or(target.clone());
+    if !target_canon.starts_with(&dir_canon) {
+        return Err("Refusing to delete a path outside the ephemeral key directory.".to_string());
+    }
+    if target_canon.is_file() {
+        let _ = std::fs::remove_file(&target_canon);
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn ssh_migrate_all_keys(app_handle: tauri::AppHandle) -> Result<usize, String> {
     let data_dir = get_data_dir(&app_handle);

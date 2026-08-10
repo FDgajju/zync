@@ -62,6 +62,44 @@ runTest('buildConnectionSavePayload throws on invalid port', () => {
   );
 });
 
+runTest('buildConnectionSavePayload keeps key passphrase for key auth', () => {
+  const payload = buildConnectionSavePayload({
+    formData: {
+      host: '10.0.0.2',
+      username: 'ubuntu',
+      port: 22,
+      privateKeyPath: '/tmp/id_ed25519',
+      password: '  key passphrase  ',
+    },
+    authMethod: 'key',
+    editingConnectionId: null,
+    connections: [],
+  });
+
+  assert.equal(payload.privateKeyPath, '/tmp/id_ed25519');
+  assert.equal(payload.password, '  key passphrase  ');
+  assert.equal(payload.authRef, undefined);
+});
+
+runTest('buildConnectionTestPayload passes key passphrase through PrivateKey auth', () => {
+  const payload = buildConnectionTestPayload({
+    formData: {
+      id: 'main',
+      name: 'main',
+      host: '192.168.0.10',
+      username: 'ec2-user',
+      port: 22,
+      privateKeyPath: '/tmp/key.pem',
+      password: 'enc-pass',
+    },
+    authMethod: 'key',
+    connections: [],
+  });
+
+  assert.equal(payload.auth_method.type, 'PrivateKey');
+  assert.equal(payload.auth_method.passphrase, 'enc-pass');
+});
+
 runTest('buildConnectionTestPayload builds key auth config and jump host', () => {
   const formData = {
     id: 'main',

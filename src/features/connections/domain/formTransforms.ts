@@ -13,7 +13,7 @@ interface ToBackendConfig {
     username: string;
     auth_method:
         | { type: 'Password'; password: string }
-        | { type: 'PrivateKey'; key_path: string; passphrase: null }
+        | { type: 'PrivateKey'; key_path: string; passphrase: string | null }
         | { type: 'VaultRef'; item_id: string; credential_id?: string };
     jump_host: ToBackendConfig | null;
 }
@@ -27,6 +27,10 @@ const requireNormalizedText = (value: unknown, fieldName: string): string => {
     }
     return normalized;
 };
+
+/** Key passphrase may intentionally include leading/trailing spaces — do not trim. */
+const optionalKeyPassphrase = (password: string | undefined): string | null =>
+    typeof password === 'string' && password.length > 0 ? password : null;
 
 const resolveAuthMethod = (
     candidate: ConfigCandidate,
@@ -49,7 +53,11 @@ const resolveAuthMethod = (
         }
         const normalizedKeyPath = normalizeText(keyPath);
         if (!normalizedKeyPath) throw new Error('Private key path is required for key auth.');
-        return { type: 'PrivateKey', key_path: normalizedKeyPath, passphrase: null };
+        return {
+            type: 'PrivateKey',
+            key_path: normalizedKeyPath,
+            passphrase: optionalKeyPassphrase(password),
+        };
     }
 
     // Use authRef as highest-priority discriminator for existing connections.
@@ -64,7 +72,11 @@ const resolveAuthMethod = (
     if (candidate.privateKeyPath) {
         const normalizedKeyPath = normalizeText(candidate.privateKeyPath);
         if (!normalizedKeyPath) throw new Error('Private key path is required for key auth.');
-        return { type: 'PrivateKey', key_path: normalizedKeyPath, passphrase: null };
+        return {
+            type: 'PrivateKey',
+            key_path: normalizedKeyPath,
+            passphrase: optionalKeyPassphrase(candidate.password),
+        };
     }
 
     const normalizedPassword = normalizeText(candidate.password);
@@ -144,7 +156,11 @@ export const buildConnectionSavePayload = ({
         host,
         username,
         port: portResult.normalizedPort,
-        password: authMethod === 'password' ? formData.password : undefined,
+        // Password auth: login password. Key auth: optional ssh-keygen passphrase (same field today).
+        password:
+            authMethod === 'password' || authMethod === 'key'
+                ? (formData.password || undefined)
+                : undefined,
         privateKeyPath: authMethod === 'key' ? formData.privateKeyPath : undefined,
         authRef: authMethod === 'vault' ? formData.authRef : undefined,
         status: editingConnectionId ? (connections.find((c) => c.id === editingConnectionId)?.status || 'disconnected') : 'disconnected',

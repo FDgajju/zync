@@ -150,7 +150,6 @@ export const ConnectionItem = memo(function ConnectionItem({ conn, isCollapsed, 
                         onOpenContextMenu(conn, x, y);
                     }
                 }}
-                onDoubleClick={() => openTab(conn.id)}
                 draggable
                 onDragStart={(e) => {
                     e.dataTransfer.setData('connection-id', conn.id);

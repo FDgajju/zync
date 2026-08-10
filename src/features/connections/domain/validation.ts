@@ -58,7 +58,11 @@ const isIpLiteral = (value: string): boolean => {
 export const hasRequiredHostAndUsername = (draft: ConnectionDraft): boolean =>
     !!normalizeText(draft.host) && !!normalizeText(draft.username);
 
-export const validateConnectionDraft = (draft: ConnectionDraft, authMode: AuthMode): ValidationResult => {
+export const validateConnectionDraft = (
+    draft: ConnectionDraft,
+    authMode: AuthMode,
+    options?: { deferKeyPath?: boolean },
+): ValidationResult => {
     const errors: string[] = [];
     const fieldErrors: ValidationResult['fieldErrors'] = {};
     const portResult = parsePort(draft.port);
@@ -85,7 +89,7 @@ export const validateConnectionDraft = (draft: ConnectionDraft, authMode: AuthMo
         errors.push(message);
         fieldErrors.username = message;
     }
-    if (authMode === 'key' && !normalizeText(draft.privateKeyPath)) {
+    if (authMode === 'key' && !options?.deferKeyPath && !normalizeText(draft.privateKeyPath)) {
         const message = 'Private key path is required for key auth.';
         errors.push(message);
         fieldErrors.privateKeyPath = message;
