@@ -7,21 +7,29 @@ export type VaultStatus =
   | { status: 'locked'; vaultId: string; itemCount: number; rememberedOnDevice: boolean }
   | { status: 'unlocked'; vaultId: string; itemCount: number };
 
-/** Normalize vault status payloads (handles legacy snake_case field names). */
+/// Normalize vault status payloads (handles legacy snake_case field names).
 export function normalizeVaultStatus(raw: VaultStatus | Record<string, unknown> | null | undefined): VaultStatus | null {
   if (!raw || typeof raw !== 'object') return null;
   const status = (raw as { status?: unknown }).status;
   if (status === 'uninitialized') return { status: 'uninitialized' };
   if (status === 'locked' || status === 'unlocked') {
     const record = raw as Record<string, unknown>;
-    const vaultId = String(record.vaultId ?? record.vault_id ?? '');
-    const itemCount = Number(record.itemCount ?? record.item_count ?? 0);
+    const vaultIdRaw = record.vaultId ?? record.vault_id;
+    if (typeof vaultIdRaw !== 'string' || !vaultIdRaw.trim()) return null;
+    const vaultId = vaultIdRaw.trim();
+
+    const itemCountRaw = record.itemCount ?? record.item_count;
+    const itemCount = typeof itemCountRaw === 'number' ? itemCountRaw : Number(itemCountRaw);
+    if (!Number.isFinite(itemCount) || itemCount < 0 || !Number.isInteger(itemCount)) return null;
+
     if (status === 'locked') {
+      const rememberedRaw = record.rememberedOnDevice ?? record.remembered_on_device;
+      if (rememberedRaw !== undefined && typeof rememberedRaw !== 'boolean') return null;
       return {
         status: 'locked',
         vaultId,
         itemCount,
-        rememberedOnDevice: Boolean(record.rememberedOnDevice ?? record.remembered_on_device),
+        rememberedOnDevice: Boolean(rememberedRaw),
       };
     }
     return { status: 'unlocked', vaultId, itemCount };

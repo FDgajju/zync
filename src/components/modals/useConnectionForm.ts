@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAppStore, Connection } from '../../store/useAppStore';
 import {
     validateConnectionDraft,
     getCredentialHealthChecks,
     buildConnectionSavePayload,
+    applyAuthMethodTransition,
+    type ConnectionAuthMode,
 } from '../../features/connections/domain';
 import { findDuplicateConnectionByEndpoint } from '../../features/connections/application/connectionService';
 
@@ -23,7 +25,7 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
     const editConnection = useAppStore(state => state.editConnection);
 
     const [formData, setFormData] = useState<Partial<Connection>>(EMPTY_FORM);
-    const [authMethod, setAuthMethod] = useState<'password' | 'key' | 'vault'>('password');
+    const [authMethod, setAuthMethodState] = useState<ConnectionAuthMode>('password');
     const [keyInputMode, setKeyInputMode] = useState<KeyInputMode>('file');
     const [vaultInputMode, setVaultInputMode] = useState<VaultInputMode>('existing');
     const [touched, setTouched] = useState({ host: false, username: false, port: false, keyPath: false });
@@ -36,6 +38,14 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
             : null,
         [connections, editingConnectionId]
     );
+
+    const setAuthMethod = useCallback((next: ConnectionAuthMode) => {
+        setAuthMethodState((prev) => {
+            if (prev === next) return prev;
+            setFormData((fd) => applyAuthMethodTransition(fd, prev, next));
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -56,12 +66,12 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
                     icon: conn.icon || 'Server',
                     tags: conn.tags || [],
                 });
-                setAuthMethod(conn.authRef ? 'vault' : conn.privateKeyPath ? 'key' : 'password');
+                setAuthMethodState(conn.authRef ? 'vault' : conn.privateKeyPath ? 'key' : 'password');
                 return;
             }
         }
         setFormData(EMPTY_FORM);
-        setAuthMethod('password');
+        setAuthMethodState('password');
     }, [activeEditingConnectionId, isOpen]);
 
     // Local key paste writes a managed file on save — path not required until then.

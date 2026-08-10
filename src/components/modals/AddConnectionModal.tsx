@@ -46,6 +46,31 @@ const THEMES = [
     { id: 'purple', label: 'App', color: 'bg-purple-500/20 border-purple-500' },
 ];
 
+function PastedKeyTextarea({
+    value,
+    error,
+    onChange,
+}: {
+    value: string;
+    error: string;
+    onChange: (value: string) => void;
+}) {
+    return (
+        <div className="space-y-2">
+            <textarea
+                value={value}
+                className="w-full h-28 rounded-lg border border-app-border bg-app-bg px-3 py-2 text-xs font-mono text-app-text placeholder:text-app-muted/50 resize-none focus:outline-none focus:ring-1 focus:ring-app-accent/50"
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
+                onChange={(event) => onChange(event.target.value)}
+                spellCheck={false}
+            />
+            {error && (
+                <p className="text-[10px] text-red-400">{error}</p>
+            )}
+        </div>
+    );
+}
+
 export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: AddConnectionModalProps) {
     const importConnections = useAppStore(state => state.importConnections);
     const showToast = useAppStore(state => state.showToast);
@@ -77,6 +102,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
         keyVaultLabel, setKeyVaultLabel,
         defaultKeyVaultLabel, keyVaultLabelConflict,
         buildVaultKeyConnection,
+        deleteCreatedVaultItemBestEffort,
         writePastedKeyAsManagedFile,
         loadKeyFileForVaultImport,
         finalizeVaultReplacement,
@@ -173,12 +199,19 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             }
 
             if (authMethod === 'vault' && vaultNeedsMaterialize) {
-                const connectionData = await buildVaultKeyConnection();
-                if (!connectionData) return null;
-                await (activeEditingConnectionId ? editConnection(connectionData) : addConnection(connectionData));
-                await finalizeVaultReplacement();
-                await refreshItems();
-                return connectionData;
+                const result = await buildVaultKeyConnection();
+                if (!result) return null;
+                try {
+                    await (activeEditingConnectionId
+                        ? editConnection(result.connection)
+                        : addConnection(result.connection));
+                    await finalizeVaultReplacement();
+                    await refreshItems();
+                    return result.connection;
+                } catch (persistError: unknown) {
+                    await deleteCreatedVaultItemBestEffort(result.createdItemId, persistError);
+                    throw persistError;
+                }
             }
 
             return await saveForm(canSave);
@@ -573,19 +606,14 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                             </div>
                                         ) : (
                                             <div className="space-y-2">
-                                                <textarea
+                                                <PastedKeyTextarea
                                                     value={pastedKeyText}
-                                                    className="w-full h-28 rounded-lg border border-app-border bg-app-bg px-3 py-2 text-xs font-mono text-app-text placeholder:text-app-muted/50 resize-none focus:outline-none focus:ring-1 focus:ring-app-accent/50"
-                                                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
-                                                    onChange={(event) => {
-                                                        setPastedKeyText(event.target.value);
+                                                    error={pastedKeyError}
+                                                    onChange={(next) => {
+                                                        setPastedKeyText(next);
                                                         if (pastedKeyError) setPastedKeyError('');
                                                     }}
-                                                    spellCheck={false}
                                                 />
-                                                {pastedKeyError && (
-                                                    <p className="text-[10px] text-red-400">{pastedKeyError}</p>
-                                                )}
                                                 <p className="text-[10px] text-app-muted/70">
                                                     On save, Zync writes this key into a managed local file and stores only the path on the host (not in vault).
                                                 </p>
@@ -733,15 +761,13 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                                     </div>
                                                 )}
                                                 {vaultInputMode === 'paste' && (
-                                                    <textarea
+                                                    <PastedKeyTextarea
                                                         value={pastedKeyText}
-                                                        className="w-full h-28 rounded-lg border border-app-border bg-app-bg px-3 py-2 text-xs font-mono text-app-text placeholder:text-app-muted/50 resize-none focus:outline-none focus:ring-1 focus:ring-app-accent/50"
-                                                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
-                                                        onChange={(event) => {
-                                                            setPastedKeyText(event.target.value);
+                                                        error={pastedKeyError}
+                                                        onChange={(next) => {
+                                                            setPastedKeyText(next);
                                                             if (pastedKeyError) setPastedKeyError('');
                                                         }}
-                                                        spellCheck={false}
                                                     />
                                                 )}
                                                 {vaultInputMode === 'import' && pastedKeyText.trim() && (
@@ -751,7 +777,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                                         className="w-full h-20 rounded-lg border border-app-border bg-app-bg/70 px-3 py-2 text-xs font-mono text-app-muted resize-none"
                                                     />
                                                 )}
-                                                {pastedKeyError && (
+                                                {vaultInputMode === 'import' && pastedKeyError && (
                                                     <p className="text-[10px] text-red-400">{pastedKeyError}</p>
                                                 )}
                                                 <Input
