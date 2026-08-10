@@ -234,6 +234,7 @@ export const TerminalComponent = memo(function TerminalComponent({
       contextMenu={contextMenu}
       onOpenContextMenu={setContextMenu}
       onCloseContextMenu={() => setContextMenu(null)}
+      connectionId={terminalKey}
       ghostSettings={ghostSettings}
       ghostSuggestion={ghostSuggestion}
       ghostLayout={ghostLayout}
