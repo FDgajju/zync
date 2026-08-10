@@ -143,7 +143,7 @@ flowchart TB
 | `TerminalHost.tsx` | Connected-state presentation: search bar, context menu, ghost overlays, xterm container |
 | `TerminalDisconnectedView.tsx` | Connecting / error / reconnect UI for remote hosts |
 | `TerminalSearchBar.tsx` | Find UI; removed from DOM when closed (a11y) |
-| `TerminalContextMenu.tsx` | Copy/paste via shared clipboard helper |
+| `TerminalContextMenu.tsx` | Copy/paste via shared clipboard helper; **Open File Manager Here** jumps to Files at the shell cwd |
 | `GhostSuggestionOverlay.tsx` | Inline ghost suffix at cursor |
 | `GhostSuggestionListOverlay.tsx` | Popup list (portal to `document.body`) |
 | `useTerminalLifecycle.ts` | xterm init, spawn/suspend, resize scheduler, renderer sync, output channel attach |
