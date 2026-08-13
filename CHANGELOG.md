@@ -7,25 +7,25 @@ All notable changes to Zync are documented in this file. The format is based on 
 ## [2.23.0] - 2026-08-13
 
 ### Added
-- **Host auth docs**: Canonical `docs/CONNECTIONS.md` for add/edit host auth modes, storage split, and connect-time resolution. ([0a182ef])
-- **Private Key paste → managed file**: Paste PEM under Private Key writes `{dataDir}/keys/` and stores only `privateKeyPath` on the host; new key passphrases are not written to the host record. ([0a182ef], [72fb11d])
-- **Passphrase retention choices**: Encrypted local keys can ask every time, remember the passphrase in the OS credential store, or move the key and passphrase into Vault. ([0a182ef], [72fb11d])
-- **Connect-time passphrase prompt**: Hosts with encrypted local keys can be saved without entering a passphrase; Zync prompts on the next connection and resumes the connection after the user responds. ([0a182ef], [72fb11d])
-- **Vault paste / import-file**: Vault tab can paste PEM or import a local key file into the vault on Save; Test uses ephemeral `{dataDir}/tmp-keys/`. ([0a182ef], [72fb11d])
-- **Open File Manager Here**: Terminal context menu opens Files at the shell’s current directory (mirrors Files → Open Terminal Here) and keeps the initiating tab stable while Files loads. ([5ca57ee], [dd6b74c])
+- **Host auth docs**: Canonical `docs/CONNECTIONS.md` for add/edit host auth modes, storage split, and connect-time resolution. ([b693366])
+- **Private Key paste → managed file**: Paste PEM under Private Key writes `{dataDir}/keys/` and stores only `privateKeyPath` on the host; new key passphrases are not written to the host record. ([b693366])
+- **Passphrase retention choices**: Encrypted local keys can ask every time, remember the passphrase in the OS credential store, or move the key and passphrase into Vault. ([b693366])
+- **Connect-time passphrase prompt**: Hosts with encrypted local keys can be saved without entering a passphrase; Zync prompts on the next connection and resumes the connection after the user responds. ([b693366])
+- **Vault paste / import-file**: Vault tab can paste PEM or import a local key file into the vault on Save; Test uses ephemeral `{dataDir}/tmp-keys/`. ([b693366])
+- **Open File Manager Here**: Terminal context menu opens Files at the shell’s current directory (mirrors Files → Open Terminal Here) and keeps the initiating tab stable while Files loads. ([b693366])
 
 ### Changed
-- **Private Key vs Vault UX**: Key auth is local file / paste-as-file with local inspection and explicit passphrase retention; Vault owns existing / paste / import credentials. Selecting an existing system SSH agent remains deferred (issue #90). ([0a182ef], [72fb11d], [dd6b74c])
-- **Connected folder membership**: Only fully `connected` hosts move into Connected — hosts stay in place while `connecting` so multi-click cannot retarget a neighbor. ([0a182ef])
+- **Private Key vs Vault UX**: Key auth is local file / paste-as-file with local inspection and explicit passphrase retention; Vault owns existing / paste / import credentials. Selecting an existing system SSH agent remains deferred (issue #90). ([b693366])
+- **Connected folder membership**: Only fully `connected` hosts move into Connected — hosts stay in place while `connecting` so multi-click cannot retarget a neighbor. ([b693366])
 
 ### Fixed
-- **Sidebar multi-click connects neighbors**: Double/triple-click no longer opens the next host after the list reorders under the pointer. ([0a182ef])
-- **Vault status camelCase**: Locked/Unlocked wire fields use `vaultId` / `itemCount` (with renderer normalize for legacy snake_case) so unlock UI and credential assignment no longer disagree. ([#92], [0a182ef], [72fb11d])
-- **Locked vault empty credential list**: Existing-credential picker prompts to unlock instead of “No items in vault yet.” ([0a182ef])
-- **Key-paste Test leftovers**: Local paste Test uses ephemeral tmp-keys (deleted after) instead of writing durable managed keys before Save. ([0a182ef], [72fb11d])
-- **Private key readiness errors**: Missing, unreadable, and invalid private keys surface as key-readiness states instead of raw command failures. ([0a182ef], [72fb11d])
-- **Shared key passphrase prompts**: Simultaneous jump-host and destination requests for the same encrypted key share one prompt instead of asking twice. ([0a182ef], [72fb11d])
-- **Vault conversion cleanup**: Moving a remembered local key passphrase into Vault forgets the device-stored copy after the host is saved. ([0a182ef], [72fb11d])
+- **Sidebar multi-click connects neighbors**: Double/triple-click no longer opens the next host after the list reorders under the pointer. ([b693366])
+- **Vault status camelCase**: Locked/Unlocked wire fields use `vaultId` / `itemCount` (with renderer normalize for legacy snake_case) so unlock UI and credential assignment no longer disagree. ([#92], [b693366])
+- **Locked vault empty credential list**: Existing-credential picker prompts to unlock instead of “No items in vault yet.” ([b693366])
+- **Key-paste Test leftovers**: Local paste Test uses ephemeral tmp-keys (deleted after) instead of writing durable managed keys before Save. ([b693366])
+- **Private key readiness errors**: Missing, unreadable, and invalid private keys surface as key-readiness states instead of raw command failures. ([b693366])
+- **Shared key passphrase prompts**: Simultaneous jump-host and destination requests for the same encrypted key share one prompt instead of asking twice. ([b693366])
+- **Vault conversion cleanup**: Moving a remembered local key passphrase into Vault forgets the device-stored copy after the host is saved. ([b693366])
 
 ## [2.22.5] - 2026-08-09
 
@@ -1148,6 +1148,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 [2.2.1]: https://github.com/zync-sh/zync/releases/tag/v2.2.1
 
 
+[b693366]: https://github.com/zync-sh/zync/commit/b693366
 [6e8dd42]: https://github.com/zync-sh/zync/commit/6e8dd42
 [d9d3663]: https://github.com/zync-sh/zync/commit/d9d3663
 [8cdb20d]: https://github.com/zync-sh/zync/commit/8cdb20d
