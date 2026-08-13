@@ -77,5 +77,7 @@ const groupedExpected = {
 };
 assert.deepEqual(await groupedFirstPromise, groupedExpected);
 assert.deepEqual(await groupedSecondPromise, groupedExpected);
+await new Promise(resolve => queueMicrotask(resolve));
+assert.equal(useKeyPassphrasePromptStore.getState().prompt, null);
 
 console.log('Key passphrase prompt queue tests passed.');

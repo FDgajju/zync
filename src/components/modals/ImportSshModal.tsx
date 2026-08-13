@@ -706,7 +706,7 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
                         {selectedKeyAttentionCount > 0 && (
                             <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-[11px] text-amber-200">
                                 <KeyRound size={13} className="shrink-0" />
-                                {selectedKeyAttentionCount} selected connection{selectedKeyAttentionCount === 1 ? '' : 's'} need key credentials checked after import.
+                                {selectedKeyAttentionCount} selected connection{selectedKeyAttentionCount === 1 ? '' : 's'} {selectedKeyAttentionCount === 1 ? 'needs' : 'need'} key credentials checked after import.
                             </div>
                         )}
                     </>

@@ -402,14 +402,19 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                     editingConnectionId: activeEditingConnectionId,
                     connections,
                 });
+                await (activeEditingConnectionId ? editConnection(connectionData) : addConnection(connectionData));
                 if (
                     localKeyInspection.encrypted
                     && keyPassphraseRetention === 'device'
                     && !keyRememberedOnDevice
                 ) {
-                    await rememberKeyPassphraseIpc(keyPath, passphrase);
+                    try {
+                        await rememberKeyPassphraseIpc(keyPath, passphrase);
+                    } catch (rememberError: unknown) {
+                        const message = rememberError instanceof Error ? rememberError.message : String(rememberError);
+                        showToast('error', `Host saved, but this key could not be remembered on this device: ${message}`);
+                    }
                 }
-                await (activeEditingConnectionId ? editConnection(connectionData) : addConnection(connectionData));
                 setPastedKeyText('');
                 return connectionData;
             }
