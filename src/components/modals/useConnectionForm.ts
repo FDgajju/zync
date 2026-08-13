@@ -7,7 +7,7 @@ import {
     applyAuthMethodTransition,
     type ConnectionAuthMode,
 } from '../../features/connections/domain';
-import { findDuplicateConnectionByEndpoint } from '../../features/connections/application/connectionService';
+import { findBlockingDuplicateConnectionByEndpoint } from '../../features/connections/application/connectionService';
 
 const EMPTY_FORM: Partial<Connection> = {
     name: '', host: '', username: '', port: 22, password: '',
@@ -100,7 +100,7 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
     const visibleKeyPathError = (submitAttempted || touched.keyPath) ? keyPathError : '';
 
     const duplicateConnection = useMemo(
-        () => findDuplicateConnectionByEndpoint(connections, formData, activeEditingConnectionId),
+        () => findBlockingDuplicateConnectionByEndpoint(connections, formData, activeEditingConnectionId),
         [activeEditingConnectionId, connections, formData]
     );
     const credentialHealthChecks = useMemo(

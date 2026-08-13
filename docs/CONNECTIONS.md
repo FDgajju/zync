@@ -1,7 +1,7 @@
 # Hosts & Connections — Architecture & Auth Reference
 
-**Last updated:** 2026-08-10  
-**Applies to:** Zync v2.22.5+  
+**Last updated:** 2026-08-13
+**Applies to:** main after Zync v2.23.0
 **User-facing guide:** [zync.thesudoer.in/docs/connections](https://zync.thesudoer.in/docs/connections)  
 **Related:** [VAULT.md](./VAULT.md) (credential identity / vault secrets), [VAULT_ROADMAP.md](./VAULT_ROADMAP.md)
 
@@ -30,7 +30,7 @@ Zync hosts are lightweight records. **Secrets should not live on the host** when
 | Auth path | Status | Where secret lives |
 |-----------|--------|--------------------|
 | Password on host | Shipped | Optional plaintext on host; secure-to-vault migrates |
-| Private key **file path** | Shipped | Path on host; file on disk; optional passphrase on host |
+| Private key **file path** | Shipped | Path on host; passphrase is per-connection memory, OS credential store, or Vault |
 | Private key **paste → managed file** | Shipped | PEM written to `{dataDir}/keys/`; path on host |
 | Paste / import key → vault | Shipped | Encrypted in `vault.redb` (+ optional key passphrase) |
 | Existing vault credential | Shipped | Vault item via `authRef` |
@@ -44,7 +44,7 @@ Keep **two stores by sensitivity** (do not merge hosts into `vault.redb`):
 
 | Store | Holds | Notes |
 |-------|--------|------|
-| `connections.json` | Hosts, folders, `privateKeyPath`, `authRef`, and optionally **plaintext** host login passwords / key passphrases (non-vault auth) | Readable without vault unlock — treat as sensitive on disk; prefer vault for secrets |
+| `connections.json` | Hosts, folders, `privateKeyPath`, `authRef`, optional plaintext login passwords, and legacy key passphrases pending migration | Readable without vault unlock — new local-key saves do not write passphrases here |
 | `vault.redb` | Encrypted credentials (password / private key / optional key passphrase) | Passphrase-locked; exclusive redb lock |
 
 **File-key metadata:** only the **path string** (`privateKeyPath`) is persisted on the host. Zync does **not** store file mtime/size/hash as a key-file catalog in redb. Optional migration may copy a key into `{dataDir}/keys/` and rewrite the path — still path-only on the host.
@@ -63,13 +63,14 @@ Auth method tabs:
 2. **Private Key (local / non-vault)**
    - **File** — browse for a key path; path stored on host; read at connect time.
    - **Paste** — paste PEM; on save Zync writes a managed file under `{dataDir}/keys/` and stores only `privateKeyPath`.
-   - **Passphrase** — optional `ssh-keygen` passphrase (stored on the host record in the existing `password` field for key auth).
+   - Zync inspects the key locally. The passphrase field appears only for encrypted keys. It may be left blank when saving a host; Zync asks on the first connection. Test requires a valid passphrase.
+   - Retention is explicit: ask on each new connection, remember in the OS credential store, or move the key and passphrase into Vault. Choosing Vault only selects the destination; the Vault item and host are written together when the user presses Create/Save.
 3. **Vault** (shown when vault exists — locked or unlocked)
    - **Existing** — pick a vault credential (`authRef`).
    - **Paste** — paste PEM (+ optional passphrase) into vault; set `authRef`.
    - **Import file** — read a local key file into vault; set `authRef`.
 
-Other flows: Import from SSH config, quick-connect / paste SSH command (welcome), secure-to-vault from Settings.
+Other flows: Import from SSH config, quick-connect / paste SSH command (welcome), secure-to-vault from Settings. SSH-config import inspects accessible `IdentityFile` entries and marks encrypted, invalid, or unavailable key files for attention; it does not import a passphrase.
 
 ---
 
@@ -81,7 +82,11 @@ Frontend builds a connect config (`buildConnectConfig` / form transforms):
 - Else `privateKeyPath` → `PrivateKey { key_path, passphrase }` — optional passphrase comes from the host `password` field when auth is key-based (same overloaded field used for login password vs `ssh-keygen` passphrase).
 - Else password → `Password`.
 
-Backend (`ssh.rs`) decodes file/vault key material with `russh_keys::decode_secret_key(..., passphrase)`. There is **no interactive unlock prompt** for a missing key passphrase today — if the key is encrypted and no passphrase is stored on the host, decode fails.
+Backend (`ssh.rs`) decodes file/vault key material with `russh_keys::decode_secret_key(..., passphrase)`. Add/edit host inspects selected or pasted key material locally. An encrypted local key may be saved without a passphrase, while Test requires a verified passphrase. Connect preflights local keys, prompts when an encrypted key has no usable passphrase, and retries with the verified value. This applies recursively to jump hosts.
+
+For **Remember this key on this device**, the renderer never reads the remembered value. Rust loads it from the OS credential store into the temporary connect configuration. The credential is keyed by normalized private-key path, so hosts sharing that key also share its remembered state. Normal host edits never delete it; **Forget this key from this device** is the explicit key-level removal action. The credential store is protected by the signed-in OS account; Windows normally does not request the device password again when Zync stores or reads the value. Other platforms may show their native keychain unlock prompt. For **Ask every time**, the value remains in the active in-memory connection handle only, which allows transport recovery without writing it to disk; a new connection prompts again.
+
+The add/edit form and connect-time prompt share the same retention control. Passphrase fields include show/hide and Caps Lock feedback. Connect-time Vault selection verifies the passphrase, unlocks Vault if needed, creates a uniquely named credential, updates the affected host (including a jump host), and resumes the original connection. Failed host persistence rolls back the newly created Vault item when possible.
 
 Zync’s “agent” in `ssh.rs` is a **virtual agent for ProxyJump key forwarding** after Zync has loaded a key — not “use keys already in the OS ssh-agent.”
 
@@ -103,9 +108,9 @@ Tracked as GitHub issue **#90** (`Prompt for passphrase`).
 
 ## 6. Auth UX — shipped vs remaining
 
-**Shipped (current app):** Private Key = local file / paste→managed file + passphrase; Vault = existing / paste / import-file. See §3.
+**Shipped (current app):** Private Key = local file / paste→managed file; Vault = existing / paste / import-file. File, paste, and vault-import flows detect encrypted keys and verify entered passphrases locally. A local key may be saved without entering its passphrase; Zync prompts when connecting. See §3.
 
-**Still planned / deferred:** system SSH agent; prefer vault over long-lived host-stored key passphrases; GitHub #90 close-out after a release verify.
+**Still planned / deferred:** system SSH agent; one-click migration reporting for any legacy records that have not connected or been edited; GitHub #90 close-out after a release verify.
 
 ### Current product model
 
@@ -124,10 +129,20 @@ Tracked as GitHub issue **#90** (`Prompt for passphrase`).
 
 ### Remaining follow-ups
 
-1. System ssh-agent option under Private Key.
-2. Prefer migrating local key passphrases into vault (secure-to-vault) rather than long-lived plaintext on the host.
+1. Add an in-import passphrase resolution step. Imports are marked when `IdentityFile` is encrypted, invalid, or unavailable; connecting now opens the global passphrase prompt.
+2. Add the system ssh-agent option under Private Key.
 3. Reply / close GitHub #90 once verified in a release build.
-4. Soft empty-vault guidance when user wants vault paste but vault is uninitialized.
+4. Add soft empty-vault guidance when user wants vault paste but vault is uninitialized.
+
+### Approved passphrase flow
+
+1. The user selects or pastes a private key.
+2. Rust inspects the key locally; private-key content and passphrase are not persisted by inspection.
+3. Unencrypted keys show no passphrase control. For encrypted local keys, the passphrase can be entered now or deferred until connection.
+4. Zync verifies any entered passphrase before Test or Save. A blank passphrase permits Save but not Test; connecting opens the global prompt.
+5. The retention choice is explicit: **Ask every time**, **Remember this key on this device**, or **Save to Vault**. Remembered credentials are removed only through the explicit forget action.
+
+New local-key saves clear the overloaded host `password` field. A successfully used legacy host-stored key passphrase is also removed from `connections.json`; the active connection retains its temporary in-memory copy until disconnect.
 
 ### Test-without-save (security note)
 
@@ -163,6 +178,9 @@ Tracked as GitHub issue **#90** (`Prompt for passphrase`).
 | Key path migrate into data dir | `src-tauri/src/commands.rs` (`ssh_migrate_all_keys`) |
 | Paste → managed key file | `src-tauri/src/commands.rs` (`ssh_write_managed_key`) |
 | Read local key for vault import | `src-tauri/src/commands.rs` (`ssh_read_local_key_file`) |
+| Inspect key encryption / verify passphrase | `src-tauri/src/commands.rs` (`ssh_inspect_private_key`) |
+| Device passphrase storage | `src-tauri/src/ssh_key_passphrase_cache.rs` |
+| Connect-time prompt | `src/components/connections/GlobalKeyPassphraseModal.tsx` |
 | Secure-to-vault | `src-tauri/src/vault/secure_to_vault.rs` |
 
 ---

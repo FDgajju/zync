@@ -783,7 +783,7 @@ Logical ID / credential ID is the identity anchor.
 
 **Canonical plan:** [CONNECTIONS.md §5–§6](./CONNECTIONS.md#5-known-inconsistency-issue-90)
 
-**Status (2026-08-10):** Core UX split shipped in app code — Private Key is local (file / paste→managed file + passphrase); Vault owns existing / paste / import-file. System ssh-agent still deferred.
+**Status (2026-08-13):** Core UX split and passphrase retention are implemented on main. File, paste, and vault-import flows detect encrypted keys and verify locally; connect-time prompting supports per-connection memory, key-level OS credential-store retention with explicit forgetting, and direct Vault conversion with automatic connection resume. System ssh-agent support remains deferred; see `CONNECTIONS.md`.
 
 Confirmed gap (original): file-key auth had no key-passphrase UI / no system ssh-agent; “Paste to Vault” mixed vault into the Key tab.
 
