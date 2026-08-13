@@ -201,3 +201,11 @@ export function buildDefaultKeyVaultLabel(
 
     return `${username} key`;
 }
+
+export function buildUniqueVaultLabel(baseLabel: string, existingLabels: Iterable<string>): string {
+    const labels = new Set(existingLabels);
+    if (!labels.has(baseLabel)) return baseLabel;
+    let suffix = 2;
+    while (labels.has(`${baseLabel} ${suffix}`)) suffix += 1;
+    return `${baseLabel} ${suffix}`;
+}

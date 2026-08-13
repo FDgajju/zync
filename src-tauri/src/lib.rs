@@ -10,6 +10,7 @@ mod shell_icons;
 mod snippets;
 mod ssh;
 mod ssh_config;
+mod ssh_key_passphrase_cache;
 mod ssh_parser;
 mod sync;
 mod tunnels;
@@ -125,6 +126,10 @@ pub fn run() {
             commands::ssh_extract_pem,
             commands::ssh_write_managed_key,
             commands::ssh_read_local_key_file,
+            commands::ssh_inspect_private_key,
+            commands::ssh_private_key_readiness,
+            commands::ssh_remember_key_passphrase,
+            commands::ssh_forget_key_passphrase,
             commands::ssh_write_ephemeral_key,
             commands::ssh_delete_ephemeral_key,
             commands::ssh_migrate_all_keys,

@@ -5,6 +5,11 @@ export type ConnectionAuthMode = 'password' | 'key' | 'vault';
 
 export type ConnectionFormDraft = Partial<Connection>;
 
+export const canSaveInspectedPrivateKey = (
+    status: 'idle' | 'checking' | 'valid' | 'passphraseRequired' | 'invalidPassphrase' | 'invalidKey' | 'unavailable',
+    passphrase: string,
+): boolean => status === 'valid' || (status === 'passphraseRequired' && passphrase.length === 0);
+
 interface ToBackendConfig {
     id: string;
     name: string;
@@ -156,11 +161,8 @@ export const buildConnectionSavePayload = ({
         host,
         username,
         port: portResult.normalizedPort,
-        // Password auth: login password. Key auth: optional ssh-keygen passphrase (same field today).
-        password:
-            authMethod === 'password' || authMethod === 'key'
-                ? (formData.password || undefined)
-                : undefined,
+        // Local-key passphrases are runtime/keychain credentials, never host-record fields.
+        password: authMethod === 'password' ? (formData.password || undefined) : undefined,
         privateKeyPath: authMethod === 'key' ? formData.privateKeyPath : undefined,
         authRef: authMethod === 'vault' ? formData.authRef : undefined,
         status: editingConnectionId ? (connections.find((c) => c.id === editingConnectionId)?.status || 'disconnected') : 'disconnected',

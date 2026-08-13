@@ -2,13 +2,15 @@ import type { Connection, Folder } from '../domain/types.js';
 import {
     addFolderExact,
     isFolderOrDescendant,
-    mergeImportedConnectionsByName,
+    remapFolderPath,
+    updateConnectionFolderExact,
+} from '../domain/folderTreeOps.js';
+import { mergeImportedConnectionsByName } from '../domain/merge.js';
+import {
     normalizeFolderPath,
     normalizePort,
     normalizeText,
-    remapFolderPath,
-    updateConnectionFolderExact,
-} from '../domain/index.js';
+} from '../domain/normalization.js';
 
 export interface ConnectionFolderState {
     connections: Connection[];
@@ -51,6 +53,25 @@ export const findDuplicateConnectionByEndpoint = (
             normalizePort(connection.port) === normalizedPort
         );
     }) || null;
+};
+
+export const findBlockingDuplicateConnectionByEndpoint = (
+    connections: Connection[],
+    draft: ConnectionEndpointDraft,
+    editingConnectionId?: string | null,
+): Connection | null => {
+    const duplicate = findDuplicateConnectionByEndpoint(connections, draft, editingConnectionId);
+    if (!duplicate || !editingConnectionId) return duplicate;
+
+    const originalConnection = connections.find((connection) => connection.id === editingConnectionId);
+    if (!originalConnection) return duplicate;
+
+    const originalEndpointStillMatches = findDuplicateConnectionByEndpoint(
+        [originalConnection],
+        draft,
+    ) !== null;
+
+    return originalEndpointStillMatches ? null : duplicate;
 };
 
 export const addFolderToState = (

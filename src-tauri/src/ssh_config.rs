@@ -12,6 +12,8 @@ pub struct ParsedSshConnection {
     pub username: String,
     pub port: u16,
     pub private_key_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub private_key_status: Option<String>,
     pub jump_server_alias: Option<String>,
     pub jump_server_id: Option<String>,
     pub aliases: Vec<String>, // Add full alias list
@@ -90,6 +92,7 @@ pub fn parse_config_text(content: &str) -> Result<Vec<ParsedSshConnection>> {
                 username: whoami::username(),
                 port: 22,
                 private_key_path: None,
+                private_key_status: None,
                 jump_server_alias: None,
                 jump_server_id: None,
                 aliases, // Store full alias list
