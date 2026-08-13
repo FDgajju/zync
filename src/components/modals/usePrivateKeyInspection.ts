@@ -49,7 +49,7 @@ export function usePrivateKeyInspection(
                 .catch((error: unknown) => {
                     if (requestId !== requestIdRef.current) return;
                     const message = error instanceof Error ? error.message : String(error);
-                    setState({ status: 'invalidKey', encrypted: false, message });
+                    setState({ status: 'unavailable', encrypted: false, message });
                 });
         }, 300);
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { normalizeKeyPathForRuntime } from './keyPathNormalization.js';
 
 export type KeyPassphraseRetention = 'once' | 'device' | 'vault';
 
@@ -33,7 +34,7 @@ let activePrompt: PendingPrompt | null = null;
 const queuedPrompts: PendingPrompt[] = [];
 let nextPromptId = 1;
 
-const promptKey = (keyPath: string): string => keyPath.trim();
+const promptKey = (keyPath: string): string => normalizeKeyPathForRuntime(keyPath);
 
 function showNextPrompt() {
     if (activePrompt || queuedPrompts.length === 0) return;

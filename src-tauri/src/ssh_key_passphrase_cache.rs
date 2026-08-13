@@ -35,8 +35,8 @@ fn normalized_key_path(path: &str) -> String {
     let absolute = if path.is_absolute() {
         path
     } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
             .join(path)
     };
     let normalized = normalize_lexically(&absolute)
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn account_is_stable_for_missing_relative_paths() {
-        let base = std::env::current_dir().expect("current dir");
+        let base = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
         let expected = base
             .join("missing-key")
             .to_string_lossy()

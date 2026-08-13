@@ -825,6 +825,20 @@ fn inject_remembered_key_passphrases(config: &mut ConnectionConfig) -> Result<()
     Ok(())
 }
 
+async fn inject_remembered_key_passphrases_blocking(
+    config: &mut ConnectionConfig,
+) -> Result<(), String> {
+    let mut moved = config.clone();
+    let moved = tokio::task::spawn_blocking(move || {
+        inject_remembered_key_passphrases(&mut moved)?;
+        Ok::<ConnectionConfig, String>(moved)
+    })
+    .await
+    .map_err(|error| format!("Remembered SSH key passphrase task failed: {error}"))??;
+    *config = moved;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn ssh_connect(
     app: AppHandle,
@@ -835,7 +849,7 @@ pub async fn ssh_connect(
     let original_config = config.clone();
     let uses_vault_auth = config_uses_vault_auth(&original_config);
     let relinked = resolve_vault_refs(&mut config, &vault).await?;
-    inject_remembered_key_passphrases(&mut config)?;
+    inject_remembered_key_passphrases_blocking(&mut config).await?;
     if !relinked.is_empty() {
         let app_handle = app.clone();
         let persist_result =
@@ -887,7 +901,7 @@ pub async fn ssh_test_connection(
     vault: State<'_, tokio::sync::Mutex<crate::vault::store::VaultService>>,
 ) -> Result<String, String> {
     let _relinked = resolve_vault_refs(&mut config, &vault).await?;
-    inject_remembered_key_passphrases(&mut config)?;
+    inject_remembered_key_passphrases_blocking(&mut config).await?;
     match state
         .ssh_manager
         .connect(config.clone(), Arc::new((*state.tunnel_manager).clone()))
@@ -1153,8 +1167,7 @@ fn inspect_private_key_content(
 }
 
 /// Inspect a private key locally and verify its passphrase without persisting either value.
-#[tauri::command]
-pub async fn ssh_inspect_private_key(
+fn ssh_inspect_private_key_sync(
     request: InspectPrivateKeyRequest,
 ) -> Result<InspectPrivateKeyResponse, String> {
     let content = match (request.path.as_deref(), request.content) {
@@ -1188,6 +1201,15 @@ pub async fn ssh_inspect_private_key(
     ))
 }
 
+#[tauri::command]
+pub async fn ssh_inspect_private_key(
+    request: InspectPrivateKeyRequest,
+) -> Result<InspectPrivateKeyResponse, String> {
+    tokio::task::spawn_blocking(move || ssh_inspect_private_key_sync(request))
+        .await
+        .map_err(|error| format!("Private key inspection task failed: {error}"))?
+}
+
 fn read_private_key_file(path: &str) -> Result<SecretString, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
@@ -1205,8 +1227,7 @@ fn read_private_key_file(path: &str) -> Result<SecretString, String> {
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn ssh_private_key_readiness(path: String) -> Result<InspectPrivateKeyResponse, String> {
+fn ssh_private_key_readiness_sync(path: String) -> Result<InspectPrivateKeyResponse, String> {
     let content = match read_private_key_file(&path) {
         Ok(content) => content,
         Err(error) => {
@@ -1242,8 +1263,19 @@ pub async fn ssh_private_key_readiness(path: String) -> Result<InspectPrivateKey
         return Ok(remembered);
     }
 
-    crate::ssh_key_passphrase_cache::clear(&path)?;
+    if let Err(error) = crate::ssh_key_passphrase_cache::clear(&path) {
+        log::warn!(
+            "Remembered SSH key passphrase could not be cleared after failed readiness check: {error}"
+        );
+    }
     Ok(initial)
+}
+
+#[tauri::command]
+pub async fn ssh_private_key_readiness(path: String) -> Result<InspectPrivateKeyResponse, String> {
+    tokio::task::spawn_blocking(move || ssh_private_key_readiness_sync(path))
+        .await
+        .map_err(|error| format!("Private key readiness task failed: {error}"))?
 }
 
 #[derive(serde::Deserialize)]
@@ -1253,8 +1285,7 @@ pub struct RememberKeyPassphraseRequest {
     pub passphrase: SecretString,
 }
 
-#[tauri::command]
-pub async fn ssh_remember_key_passphrase(
+fn ssh_remember_key_passphrase_sync(
     request: RememberKeyPassphraseRequest,
 ) -> Result<(), String> {
     let content = read_private_key_file(&request.path)?;
@@ -1266,6 +1297,15 @@ pub async fn ssh_remember_key_passphrase(
         return Err("Passphrase does not unlock this encrypted private key.".to_string());
     }
     crate::ssh_key_passphrase_cache::save(&request.path, &request.passphrase)
+}
+
+#[tauri::command]
+pub async fn ssh_remember_key_passphrase(
+    request: RememberKeyPassphraseRequest,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || ssh_remember_key_passphrase_sync(request))
+        .await
+        .map_err(|error| format!("Remember SSH key passphrase task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -2397,7 +2437,7 @@ async fn reconnect_stored_connection(
         }
     }
 
-    inject_remembered_key_passphrases(&mut connect_config)?;
+    inject_remembered_key_passphrases_blocking(&mut connect_config).await?;
 
     let mut new_handle = reconnect_connection(
         &connect_config,
@@ -4307,9 +4347,8 @@ pub async fn ssh_import_config(
 
     // println!("[SSH] Importing config from: {:?}", config_path);
 
-    let mut connections = crate::ssh_config::parse_config(&config_path).map_err(|e| e.to_string())?;
-    inspect_imported_connection_keys(&mut connections);
-    Ok(connections)
+    let connections = crate::ssh_config::parse_config(&config_path).map_err(|e| e.to_string())?;
+    inspect_imported_connection_keys_blocking(connections).await
 }
 
 fn inspect_imported_connection_keys(
@@ -4325,6 +4364,17 @@ fn inspect_imported_connection_keys(
             .unwrap_or_else(|| "unavailable".to_string());
         connection.private_key_status = Some(status);
     }
+}
+
+async fn inspect_imported_connection_keys_blocking(
+    mut connections: Vec<crate::ssh_config::ParsedSshConnection>,
+) -> Result<Vec<crate::ssh_config::ParsedSshConnection>, String> {
+    tokio::task::spawn_blocking(move || {
+        inspect_imported_connection_keys(&mut connections);
+        connections
+    })
+    .await
+    .map_err(|error| format!("SSH import key inspection task failed: {error}"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -4356,9 +4406,8 @@ pub async fn ssh_import_config_from_file(
     if metadata.len() > MAX_IMPORT_TEXT_BYTES as u64 {
         return Err("SSH config file too large (max 1 MiB).".to_string());
     }
-    let mut connections = crate::ssh_config::parse_config(config_path).map_err(|e| e.to_string())?;
-    inspect_imported_connection_keys(&mut connections);
-    Ok(connections)
+    let connections = crate::ssh_config::parse_config(config_path).map_err(|e| e.to_string())?;
+    inspect_imported_connection_keys_blocking(connections).await
 }
 
 #[tauri::command]
@@ -4373,9 +4422,8 @@ pub async fn ssh_import_config_from_text(
         return Err("Pasted SSH config is too large (max 1 MiB).".to_string());
     }
 
-    let mut connections = crate::ssh_config::parse_config_text(&content).map_err(|e| e.to_string())?;
-    inspect_imported_connection_keys(&mut connections);
-    Ok(connections)
+    let connections = crate::ssh_config::parse_config_text(&content).map_err(|e| e.to_string())?;
+    inspect_imported_connection_keys_blocking(connections).await
 }
 
 #[tauri::command]

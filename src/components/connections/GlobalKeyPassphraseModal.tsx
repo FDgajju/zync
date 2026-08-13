@@ -38,12 +38,18 @@ export function GlobalKeyPassphraseModal() {
         if (prompt && vaultStatus === null) void refreshVault().catch(() => {});
     }, [prompt, refreshVault, vaultStatus]);
 
+    useEffect(() => {
+        if (!vaultAvailable && retention === 'vault') {
+            setRetention('once');
+        }
+    }, [retention, vaultAvailable]);
+
     const submit = async () => {
         if (!prompt || !passphrase || progress !== 'idle') return;
         const promptId = prompt.promptId;
         const keyPath = prompt.keyPath;
         const submittedPassphrase = passphrase;
-        const submittedRetention = retention;
+        const submittedRetention = retention === 'vault' && !vaultAvailable ? 'once' : retention;
         const isStillCurrentPrompt = () =>
             useKeyPassphrasePromptStore.getState().prompt?.promptId === promptId;
         setProgress('verifying');

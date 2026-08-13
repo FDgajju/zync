@@ -10,6 +10,7 @@ const tests = [
   'tests/connectionFormTransforms.test.mjs',
   'tests/connectionLifecycleService.test.mjs',
   'tests/keyPassphrasePrompt.test.mjs',
+  'tests/keyPassphraseRuntime.test.mjs',
   'tests/connectionService.test.mjs',
   'tests/connectionTabService.test.mjs',
   'tests/ghostSuggestionsHelpers.test.mjs',

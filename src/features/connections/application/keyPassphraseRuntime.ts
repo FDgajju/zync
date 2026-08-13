@@ -3,19 +3,14 @@ import {
     inspectPrivateKeyIpc,
     privateKeyReadinessIpc,
 } from '../infrastructure/connectionIpc.js';
+import { normalizeKeyPathForRuntime } from './keyPathNormalization.js';
 import { requestKeyPassphrase } from './keyPassphrasePrompt.js';
 
 const stagedPassphrases = new Map<string, string>();
 const stagedPassphraseTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const vaultRequestedPassphrases = new Map<string, string>();
 const STAGED_PASSPHRASE_TTL_MS = 30_000;
-
-const normalizeKeyPathForRuntime = (path: string): string => {
-    const trimmed = path.trim();
-    if (typeof navigator !== 'undefined' && /win/i.test(navigator.platform)) {
-        return trimmed.toLowerCase();
-    }
-    return trimmed;
-};
+const MAX_KEY_PASSPHRASE_DEPTH = 10;
 
 const stagedPassphraseKey = (connectionId: string, path: string): string =>
     `${connectionId}\0${normalizeKeyPathForRuntime(path)}`;
@@ -33,10 +28,24 @@ export class KeyPassphraseVaultRequestedError extends Error {
     constructor(
         public readonly connectionId: string,
         public readonly keyPath: string,
-        public readonly passphrase: string,
     ) {
         super('Save this private key in Vault before connecting.');
     }
+}
+
+const vaultRequestedPassphraseKey = (connectionId: string, path: string): string =>
+    `${connectionId}\0${normalizeKeyPathForRuntime(path)}`;
+
+function stageVaultRequestedPassphrase(connectionId: string, path: string, passphrase: string) {
+    if (!connectionId || !path.trim() || !passphrase) return;
+    vaultRequestedPassphrases.set(vaultRequestedPassphraseKey(connectionId, path), passphrase);
+}
+
+export function consumeVaultRequestedPassphrase(connectionId: string, path: string): string | undefined {
+    const key = vaultRequestedPassphraseKey(connectionId, path);
+    const value = vaultRequestedPassphrases.get(key);
+    vaultRequestedPassphrases.delete(key);
+    return value;
 }
 
 export function stageKeyPassphraseForNextConnect(
@@ -74,9 +83,15 @@ const privateKeyUnavailableError = (connectionName: string): Error =>
 async function prepareNode(
     config: ConnectConfig,
     attemptPassphrases: Map<string, string>,
+    visited: Set<string>,
+    depth = 0,
 ): Promise<void> {
+    if (depth > MAX_KEY_PASSPHRASE_DEPTH || visited.has(config.id)) {
+        throw new Error('Jump-host chain has a cycle or is too deep.');
+    }
+    visited.add(config.id);
     if (config.jump_host) {
-        await prepareNode(config.jump_host, attemptPassphrases);
+        await prepareNode(config.jump_host, attemptPassphrases, visited, depth + 1);
     }
 
     if (config.auth_method.type !== 'PrivateKey') return;
@@ -124,18 +139,15 @@ async function prepareNode(
     });
     if (!result) throw new KeyPassphrasePromptCancelledError('Key passphrase entry was cancelled.');
     if (result.retention === 'vault') {
-        throw new KeyPassphraseVaultRequestedError(
-            config.id,
-            auth.key_path,
-            result.passphrase,
-        );
+        stageVaultRequestedPassphrase(config.id, auth.key_path, result.passphrase);
+        throw new KeyPassphraseVaultRequestedError(config.id, auth.key_path);
     }
     auth.passphrase = result.passphrase;
     attemptPassphrases.set(cacheKey, result.passphrase);
 }
 
 export async function prepareConnectKeyPassphrases(config: ConnectConfig): Promise<void> {
-    await prepareNode(config, new Map());
+    await prepareNode(config, new Map(), new Set());
 }
 
 export const __keyPassphraseRuntimeTest = {
@@ -143,11 +155,13 @@ export const __keyPassphraseRuntimeTest = {
     stagedPassphraseKey,
     consumeStagedPassphrase,
     stagedPassphrases,
+    vaultRequestedPassphrases,
     clearAll() {
         for (const timer of stagedPassphraseTimers.values()) {
             clearTimeout(timer);
         }
         stagedPassphraseTimers.clear();
         stagedPassphrases.clear();
+        vaultRequestedPassphrases.clear();
     },
 };

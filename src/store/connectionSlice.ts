@@ -77,6 +77,7 @@ import type { TabSnapshot } from './sessionPersistence';
 import { DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS } from '../features/connections/domain/connectionDisplay.js';
 import { DEFAULT_VAULT_PROFILE_ID, isVaultProfileId, type VaultProfileId } from '../vault/profileTypes';
 import {
+    consumeVaultRequestedPassphrase,
     KeyPassphrasePromptCancelledError,
     KeyPassphraseVaultRequestedError,
     prepareConnectKeyPassphrases,
@@ -451,7 +452,13 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             }
             const fullConfig = configResult.config;
             const legacyLocalKeyPassphraseIds = new Set<string>();
-            const collectLegacyKeyPassphrases = (config: typeof fullConfig) => {
+            const collectLegacyKeyPassphrases = (
+                config: typeof fullConfig,
+                visited: Set<string> = new Set(),
+                depth = 0,
+            ) => {
+                if (depth > 10 || visited.has(config.id)) return;
+                visited.add(config.id);
                 const source = connections.find(connection => connection.id === config.id);
                 if (
                     config.auth_method.type === 'PrivateKey'
@@ -461,7 +468,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 ) {
                     legacyLocalKeyPassphraseIds.add(source.id);
                 }
-                if (config.jump_host) collectLegacyKeyPassphrases(config.jump_host);
+                if (config.jump_host) collectLegacyKeyPassphrases(config.jump_host, visited, depth + 1);
             };
             collectLegacyKeyPassphrases(fullConfig);
 
@@ -503,6 +510,13 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 saveToMain(newConns, state.folders);
                 return { connections: newConns };
             });
+            if (legacyLocalKeyPassphraseIds.size > 0) {
+                get().showToast(
+                    'info',
+                    'Legacy key passphrases were removed from host records. Choose remember on device or save to Vault the next time Zync asks.',
+                    8000,
+                );
+            }
 
             // Clear pendingRestore so SSH terminal tabs can now spawn their PTYs.
             get().clearPendingRestore(id);
@@ -604,9 +618,13 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                     ]);
                     const baseLabel = buildDefaultKeyVaultLabel(target);
                     const label = buildUniqueVaultLabel(baseLabel, existingItems.map(item => item.label));
+                    const passphrase = consumeVaultRequestedPassphrase(error.connectionId, error.keyPath);
+                    if (!passphrase) {
+                        throw new Error('The private-key passphrase expired before it could be saved to Vault. Try connecting again.');
+                    }
                     const item = await vaultIpc.itemCreate(label, 'ssh-private-key', {
                         privateKey,
-                        passphrase: error.passphrase,
+                        passphrase,
                     });
                     createdVaultItemId = item.id;
                     await get().editConnection({
