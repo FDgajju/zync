@@ -39,8 +39,7 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
         [connections, editingConnectionId]
     );
 
-    const authMethodRef = useRef(authMethod);
-    authMethodRef.current = authMethod;
+    const authMethodRef = useRef<ConnectionAuthMode>('password');
 
     const setAuthMethod = useCallback((next: ConnectionAuthMode) => {
         const prev = authMethodRef.current;
@@ -62,6 +61,11 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
         if (activeEditingConnectionId) {
             const conn = useAppStore.getState().connections.find(c => c.id === activeEditingConnectionId);
             if (conn) {
+                const nextAuthMethod: ConnectionAuthMode = conn.authRef
+                    ? 'vault'
+                    : conn.privateKeyPath
+                        ? 'key'
+                        : 'password';
                 setFormData({
                     ...conn,
                     password: conn.password || '',
@@ -70,11 +74,13 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
                     icon: conn.icon || 'Server',
                     tags: conn.tags || [],
                 });
-                setAuthMethodState(conn.authRef ? 'vault' : conn.privateKeyPath ? 'key' : 'password');
+                authMethodRef.current = nextAuthMethod;
+                setAuthMethodState(nextAuthMethod);
                 return;
             }
         }
         setFormData(EMPTY_FORM);
+        authMethodRef.current = 'password';
         setAuthMethodState('password');
     }, [activeEditingConnectionId, isOpen]);
 
