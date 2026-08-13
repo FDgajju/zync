@@ -9,6 +9,7 @@ import { requestKeyPassphrase } from './keyPassphrasePrompt.js';
 const stagedPassphrases = new Map<string, string>();
 const stagedPassphraseTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const vaultRequestedPassphrases = new Map<string, string>();
+const vaultRequestedPassphraseTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const STAGED_PASSPHRASE_TTL_MS = 30_000;
 const MAX_KEY_PASSPHRASE_DEPTH = 10;
 
@@ -36,15 +37,33 @@ export class KeyPassphraseVaultRequestedError extends Error {
 const vaultRequestedPassphraseKey = (connectionId: string, path: string): string =>
     `${connectionId}\0${normalizeKeyPathForRuntime(path)}`;
 
+export function clearVaultRequestedPassphrase(connectionId: string, path: string) {
+    const key = vaultRequestedPassphraseKey(connectionId, path);
+    const timer = vaultRequestedPassphraseTimers.get(key);
+    if (timer) clearTimeout(timer);
+    vaultRequestedPassphraseTimers.delete(key);
+    vaultRequestedPassphrases.delete(key);
+}
+
 function stageVaultRequestedPassphrase(connectionId: string, path: string, passphrase: string) {
     if (!connectionId || !path.trim() || !passphrase) return;
-    vaultRequestedPassphrases.set(vaultRequestedPassphraseKey(connectionId, path), passphrase);
+    clearVaultRequestedPassphrase(connectionId, path);
+    const key = vaultRequestedPassphraseKey(connectionId, path);
+    vaultRequestedPassphrases.set(key, passphrase);
+    vaultRequestedPassphraseTimers.set(
+        key,
+        setTimeout(() => {
+            vaultRequestedPassphraseTimers.delete(key);
+            vaultRequestedPassphrases.delete(key);
+        }, STAGED_PASSPHRASE_TTL_MS),
+    );
 }
 
 export function consumeVaultRequestedPassphrase(connectionId: string, path: string): string | undefined {
     const key = vaultRequestedPassphraseKey(connectionId, path);
     const value = vaultRequestedPassphrases.get(key);
-    vaultRequestedPassphrases.delete(key);
+    if (!value) return undefined;
+    clearVaultRequestedPassphrase(connectionId, path);
     return value;
 }
 
@@ -156,12 +175,18 @@ export const __keyPassphraseRuntimeTest = {
     consumeStagedPassphrase,
     stagedPassphrases,
     vaultRequestedPassphrases,
+    stageVaultRequestedPassphrase,
+    STAGED_PASSPHRASE_TTL_MS,
     clearAll() {
         for (const timer of stagedPassphraseTimers.values()) {
             clearTimeout(timer);
         }
         stagedPassphraseTimers.clear();
         stagedPassphrases.clear();
+        for (const timer of vaultRequestedPassphraseTimers.values()) {
+            clearTimeout(timer);
+        }
+        vaultRequestedPassphraseTimers.clear();
         vaultRequestedPassphrases.clear();
     },
 };
