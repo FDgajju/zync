@@ -77,6 +77,7 @@ import type { TabSnapshot } from './sessionPersistence';
 import { DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS } from '../features/connections/domain/connectionDisplay.js';
 import { DEFAULT_VAULT_PROFILE_ID, isVaultProfileId, type VaultProfileId } from '../vault/profileTypes';
 import {
+    clearVaultRequestedPassphrase,
     consumeVaultRequestedPassphrase,
     KeyPassphrasePromptCancelledError,
     KeyPassphraseVaultRequestedError,
@@ -590,12 +591,14 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 }));
                 const target = get().connections.find(connection => connection.id === error.connectionId);
                 if (!target || target.privateKeyPath !== error.keyPath) {
+                    clearVaultRequestedPassphrase(error.connectionId, error.keyPath);
                     get().showToast('error', 'The private-key host changed before it could be saved to Vault.');
                     return;
                 }
 
                 const unlocked = await useVaultStore.getState().requestUnlock();
                 if (!unlocked) {
+                    clearVaultRequestedPassphrase(error.connectionId, error.keyPath);
                     if (isVaultInUseError(useVaultStore.getState().error)) {
                         get().showToast('error', VAULT_IN_USE_USER_MESSAGE, 8000);
                     }
@@ -648,6 +651,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                     get().showToast('success', `Saved "${label}" to Vault. Connecting...`);
                     queueMicrotask(() => { void get().connect(id); });
                 } catch (vaultError: unknown) {
+                    clearVaultRequestedPassphrase(error.connectionId, error.keyPath);
                     if (createdVaultItemId) {
                         try {
                             await vaultIpc.itemDelete(createdVaultItemId);

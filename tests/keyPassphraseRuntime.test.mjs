@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   __keyPassphraseRuntimeTest,
   clearStagedKeyPassphrase,
+  clearVaultRequestedPassphrase,
   consumeVaultRequestedPassphrase,
   stageKeyPassphraseForNextConnect,
 } from '../.tmp-agent-tests/src/features/connections/application/keyPassphraseRuntime.js';
@@ -31,7 +32,11 @@ assert.equal(
   undefined,
 );
 
-__keyPassphraseRuntimeTest.vaultRequestedPassphrases.set('host-vault\0/keys/vault-me', 'vault-secret');
+__keyPassphraseRuntimeTest.stageVaultRequestedPassphrase(
+  'host-vault',
+  '/keys/vault-me',
+  'vault-secret',
+);
 assert.equal(
   consumeVaultRequestedPassphrase('host-vault', '/keys/vault-me'),
   'vault-secret',
@@ -40,6 +45,36 @@ assert.equal(
   consumeVaultRequestedPassphrase('host-vault', '/keys/vault-me'),
   undefined,
 );
+
+__keyPassphraseRuntimeTest.stageVaultRequestedPassphrase(
+  'host-vault',
+  '/keys/clear-vault',
+  'vault-clear',
+);
+assert.equal(__keyPassphraseRuntimeTest.vaultRequestedPassphrases.size, 1);
+clearVaultRequestedPassphrase('host-vault', '/keys/clear-vault');
+assert.equal(
+  consumeVaultRequestedPassphrase('host-vault', '/keys/clear-vault'),
+  undefined,
+);
+assert.equal(__keyPassphraseRuntimeTest.vaultRequestedPassphrases.size, 0);
+
+// Re-stage replaces the prior entry; clearAll drops staged vault secrets + timers.
+__keyPassphraseRuntimeTest.stageVaultRequestedPassphrase(
+  'host-vault',
+  '/keys/replace-me',
+  'first',
+);
+__keyPassphraseRuntimeTest.stageVaultRequestedPassphrase(
+  'host-vault',
+  '/keys/replace-me',
+  'second',
+);
+assert.equal(
+  consumeVaultRequestedPassphrase('host-vault', '/keys/replace-me'),
+  'second',
+);
+assert.equal(__keyPassphraseRuntimeTest.STAGED_PASSPHRASE_TTL_MS, 30_000);
 
 __keyPassphraseRuntimeTest.clearAll();
 console.log('Key passphrase runtime staging tests passed.');
