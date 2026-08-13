@@ -4,21 +4,23 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.6] - 2026-08-13
+
 ### Added
 - **Host auth docs**: Canonical `docs/CONNECTIONS.md` for add/edit host auth modes, storage split, and connect-time resolution. ([0a182ef])
-- **Private Key paste → managed file**: Paste PEM under Private Key writes `{dataDir}/keys/` and stores only `privateKeyPath` on the host (optional key passphrase). ([0a182ef])
-- **Vault paste / import-file**: Vault tab can paste PEM or import a local key file into the vault on Save; Test uses ephemeral `{dataDir}/tmp-keys/`. ([0a182ef])
-- **Open File Manager Here**: Terminal context menu opens Files at the shell’s current directory (mirrors Files → Open Terminal Here). ([5ca57ee])
+- **Private Key paste → managed file**: Paste PEM under Private Key writes `{dataDir}/keys/` and stores only `privateKeyPath` on the host (optional key passphrase). ([0a182ef], [72fb11d])
+- **Vault paste / import-file**: Vault tab can paste PEM or import a local key file into the vault on Save; Test uses ephemeral `{dataDir}/tmp-keys/`. ([0a182ef], [72fb11d])
+- **Open File Manager Here**: Terminal context menu opens Files at the shell’s current directory (mirrors Files → Open Terminal Here) and keeps the initiating tab stable while Files loads. ([5ca57ee], [dd6b74c])
 
 ### Changed
-- **Private Key vs Vault UX**: Key auth is local file / paste-as-file + passphrase; Vault owns existing / paste / import. System ssh-agent still deferred (issue #90). ([0a182ef])
+- **Private Key vs Vault UX**: Key auth is local file / paste-as-file + passphrase; Vault owns existing / paste / import. System ssh-agent still deferred (issue #90). ([0a182ef], [72fb11d], [dd6b74c])
 - **Connected folder membership**: Only fully `connected` hosts move into Connected — hosts stay in place while `connecting` so multi-click cannot retarget a neighbor. ([0a182ef])
 
 ### Fixed
 - **Sidebar multi-click connects neighbors**: Double/triple-click no longer opens the next host after the list reorders under the pointer. ([0a182ef])
-- **Vault status camelCase**: Locked/Unlocked wire fields use `vaultId` / `itemCount` (with renderer normalize for legacy snake_case) so unlock UI and save no longer disagree. ([0a182ef])
+- **Vault status camelCase**: Locked/Unlocked wire fields use `vaultId` / `itemCount` (with renderer normalize for legacy snake_case) so unlock UI and credential assignment no longer disagree. ([#92], [0a182ef], [72fb11d])
 - **Locked vault empty credential list**: Existing-credential picker prompts to unlock instead of “No items in vault yet.” ([0a182ef])
-- **Key-paste Test leftovers**: Local paste Test uses ephemeral tmp-keys (deleted after) instead of writing durable managed keys before Save. ([0a182ef])
+- **Key-paste Test leftovers**: Local paste Test uses ephemeral tmp-keys (deleted after) instead of writing durable managed keys before Save. ([0a182ef], [72fb11d])
 
 ## [2.22.5] - 2026-08-09
 
@@ -968,7 +970,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 - Auto-updates
 - Multiple themes (Dark, Light, Dracula)
 
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.22.5...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.22.6...HEAD
+[2.22.6]: https://github.com/zync-sh/zync/compare/v2.22.5...v2.22.6
 [2.22.5]: https://github.com/zync-sh/zync/compare/v2.22.4...v2.22.5
 [2.22.4]: https://github.com/zync-sh/zync/compare/v2.22.2...v2.22.4
 [2.22.2]: https://github.com/zync-sh/zync/compare/v2.22.1...v2.22.2
@@ -979,6 +982,11 @@ All notable changes to Zync are documented in this file. The format is based on 
 [2.19.2]: https://github.com/zync-sh/zync/compare/v2.19.1...v2.19.2
 [2.19.1]: https://github.com/zync-sh/zync/compare/v2.18.0...v2.19.1
 [2.18.0]: https://github.com/zync-sh/zync/compare/v2.17.0...v2.18.0
+[#92]: https://github.com/zync-sh/zync/issues/92
+[0a182ef]: https://github.com/zync-sh/zync/commit/0a182ef
+[72fb11d]: https://github.com/zync-sh/zync/commit/72fb11d
+[5ca57ee]: https://github.com/zync-sh/zync/commit/5ca57ee
+[dd6b74c]: https://github.com/zync-sh/zync/commit/dd6b74c
 [3e024e4]: https://github.com/zync-sh/zync/commit/3e024e4
 [4e1408c]: https://github.com/zync-sh/zync/commit/4e1408c
 [2d709ca]: https://github.com/zync-sh/zync/commit/2d709ca
