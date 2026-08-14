@@ -1,0 +1,88 @@
+# Snap package for Zync (https://snapcraft.io/zync)
+# Build path: npm → tauri deb → unpack into the snap (Tauri-recommended).
+name: zync
+base: core22
+version: '2.23.0'
+summary: SSH client with terminal, files, vault, and tunnels
+description: |
+  Zync is a desktop SSH client with an integrated terminal, file manager,
+  encrypted credential vault, and port-forwarding tunnels.
+
+grade: devel
+confinement: strict
+
+# Keep private/edge until first package is validated.
+# grade: stable is for store-stable after review.
+
+layout:
+  /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1:
+    bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1
+
+apps:
+  zync:
+    command: usr/bin/zync
+    desktop: usr/share/applications/zync.desktop
+    extensions: [gnome]
+    plugs:
+      - network
+      - network-bind
+      - home
+      - ssh-keys
+      - password-manager-service
+      - opengl
+      - wayland
+      - x11
+      - desktop
+      - desktop-legacy
+      - gsettings
+
+parts:
+  build-app:
+    plugin: dump
+    build-snaps:
+      - node/24/stable
+      - rustup/latest/stable
+    build-packages:
+      - libwebkit2gtk-4.1-dev
+      - build-essential
+      - curl
+      - wget
+      - file
+      - libxdo-dev
+      - libssl-dev
+      - libayatana-appindicator3-dev
+      - librsvg2-dev
+      - dpkg
+      - patchelf
+    stage-packages:
+      - libwebkit2gtk-4.1-0
+      - libayatana-appindicator3-1
+    # Passed from CI (secrets) when building on GitHub Actions.
+    build-environment:
+      - GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+    source: .
+    override-build: |
+      set -eu
+
+      # Release builds require a real Google OAuth client id (see src-tauri/build.rs).
+      if [ -z "${GOOGLE_CLIENT_ID:-}" ] || [ "${GOOGLE_CLIENT_ID}" = "ci-known-answer-test-client-id" ]; then
+        echo "GOOGLE_CLIENT_ID must be set to a real client id for the snap build." >&2
+        exit 1
+      fi
+      export GOOGLE_CLIENT_ID
+      if [ -n "${GOOGLE_CLIENT_SECRET:-}" ]; then
+        export GOOGLE_CLIENT_SECRET
+      fi
+
+      rustup default stable
+      npm ci --legacy-peer-deps
+      npm run tauri build -- --bundles deb
+
+      deb_path=$(ls -1 src-tauri/target/release/bundle/deb/*.deb | head -n1)
+      dpkg -x "$deb_path" "$SNAPCRAFT_PART_INSTALL/"
+
+      desktop="$SNAPCRAFT_PART_INSTALL/usr/share/applications/zync.desktop"
+      if [ -f "$desktop" ]; then
+        sed -i -e 's|^Icon=.*|Icon=/usr/share/icons/hicolor/32x32/apps/zync.png|g' "$desktop"
+      fi

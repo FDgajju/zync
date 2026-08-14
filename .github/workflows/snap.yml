@@ -1,0 +1,73 @@
+# Snap only — does not touch GitHub Releases / deb / AppImage / RPM.
+# Manual only: workflow_dispatch (no push/tag triggers).
+#
+# Run: Actions → Snap → Run workflow
+#   git_ref: v2.23.0
+#   publish: false  → build + GitHub artifact only (safe first run)
+#   publish: true   → also upload to Snap Store channel
+name: Snap
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: Git tag or branch to package (e.g. v2.23.0)
+        required: true
+        default: v2.23.0
+        type: string
+      publish:
+        description: Upload to Snap Store after build
+        required: true
+        default: false
+        type: boolean
+      channel:
+        description: Snap Store channel (only if publish is true)
+        required: true
+        default: edge
+        type: choice
+        options:
+          - edge
+          - beta
+          - candidate
+          - stable
+
+concurrency:
+  group: snap-${{ inputs.git_ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  snap:
+    name: Build snap (${{ inputs.git_ref }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Build snap
+        id: build
+        uses: snapcore/action-build@v1
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+
+      - name: Upload snap artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zync-snap-${{ inputs.git_ref }}
+          path: ${{ steps.build.outputs.snap }}
+          if-no-files-found: error
+
+      - name: Publish to Snap Store
+        if: ${{ inputs.publish }}
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: ${{ inputs.channel }}
