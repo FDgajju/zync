@@ -28,6 +28,9 @@ src-tauri/target-agent-check/
 release/
 .tmp-agent-tests/
 .npm-cache/
+# Written by Snap CI on the runner only — never commit
+snap/ci-build-env.sh
+
 # Added by code-review-graph
 .code-review-graph/
 /AGENTS.md
