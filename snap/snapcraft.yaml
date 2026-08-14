@@ -80,6 +80,11 @@ parts:
       if [ -n "${GOOGLE_CLIENT_SECRET:-}" ]; then
         export GOOGLE_CLIENT_SECRET
       fi
+      # tauri.conf has createUpdaterArtifacts + pubkey; signing key must be present.
+      if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+        export TAURI_SIGNING_PRIVATE_KEY
+        export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+      fi
 
       # gnome-*-sdk puts an older libstdc++ on LD_LIBRARY_PATH and breaks the Node snap.
       if [ -n "${LD_LIBRARY_PATH:-}" ]; then

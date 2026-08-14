@@ -71,18 +71,26 @@ jobs:
 
       # Snapcraft builds inside LXD — GHA step env is not available there.
       # Write a short-lived env file into the project so override-build can source it.
-      - name: Prepare Google OAuth env for LXD build
+      - name: Prepare build secrets for LXD
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           if [ -z "${GOOGLE_CLIENT_ID:-}" ]; then
             echo "::error::GOOGLE_CLIENT_ID secret is empty on this repository."
             exit 1
           fi
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is empty (required because tauri.conf has a pubkey / createUpdaterArtifacts)."
+            exit 1
+          fi
           {
             echo "export GOOGLE_CLIENT_ID=$(printf %q "$GOOGLE_CLIENT_ID")"
             echo "export GOOGLE_CLIENT_SECRET=$(printf %q "${GOOGLE_CLIENT_SECRET:-}")"
+            echo "export TAURI_SIGNING_PRIVATE_KEY=$(printf %q "$TAURI_SIGNING_PRIVATE_KEY")"
+            echo "export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$(printf %q "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}")"
           } > snap/ci-build-env.sh
           echo "Wrote snap/ci-build-env.sh for the snapcraft LXD build."
 
