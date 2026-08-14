@@ -30,6 +30,8 @@ release/
 .npm-cache/
 # Written by Snap CI on the runner only — never commit
 snap/ci-build-env.sh
+# Prebuilt .deb downloaded for snap packaging — never commit
+prebuilt/
 
 # Added by code-review-graph
 .code-review-graph/

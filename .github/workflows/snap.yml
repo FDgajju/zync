@@ -1,42 +1,41 @@
-# Snap only — does not touch GitHub Releases / deb / AppImage / RPM.
-# Manual only: workflow_dispatch (no push/tag triggers).
+# Snap Store only — does not rebuild the desktop app or touch GitHub Releases.
+# Manual: Actions → Snap → Run workflow
 #
-# IMPORTANT: git_ref must include snap/snapcraft.yaml.
-# Tag v2.23.0 was cut before Snap packaging existed — use main for 2.23.0
-# (package.json / snapcraft version stay 2.23.0 on that branch).
-#
-# Run: Actions → Snap → Run workflow
-#   git_ref: main
-#   publish: false  → build + GitHub artifact only
-#   publish: true   → also upload to Snap Store channel
+# Default: package the existing Release .deb and publish to stable.
+# Optimization: no Node/Rust/Tauri compile — reuses deb from release.yml.
 name: Snap
 
 on:
   workflow_dispatch:
     inputs:
-      git_ref:
-        description: "Git ref that includes snap/snapcraft.yaml (use main for 2.23.0; not the old v2.23.0 tag alone)"
+      release_tag:
+        description: GitHub Release tag that already has a .deb asset (e.g. v2.23.0)
+        required: true
+        default: v2.23.0
+        type: string
+      recipe_ref:
+        description: Git ref that contains snap/snapcraft.yaml (usually main)
         required: true
         default: main
         type: string
       publish:
-        description: Upload to Snap Store after build
+        description: Upload to Snap Store after packaging
         required: true
-        default: false
+        default: true
         type: boolean
       channel:
-        description: Snap Store channel (only if publish is true)
+        description: Snap Store channel
         required: true
-        default: edge
+        default: stable
         type: choice
         options:
-          - edge
-          - beta
-          - candidate
           - stable
+          - candidate
+          - beta
+          - edge
 
 concurrency:
-  group: snap-${{ inputs.git_ref }}
+  group: snap-${{ inputs.release_tag }}-${{ inputs.channel }}
   cancel-in-progress: false
 
 permissions:
@@ -44,67 +43,57 @@ permissions:
 
 jobs:
   snap:
-    name: Build snap (${{ inputs.git_ref }})
+    name: Snap ${{ inputs.release_tag }} → ${{ inputs.channel }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
+    timeout-minutes: 45
     steps:
-      - name: Checkout
+      - name: Checkout snap recipe
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.git_ref }}
+          ref: ${{ inputs.recipe_ref }}
 
-      - name: Ensure snap recipe exists on this ref
+      - name: Ensure snap recipe exists
         run: |
-          if [ -f snap/snapcraft.yaml ]; then
-            echo "Found snap/snapcraft.yaml"
-            head -n 8 snap/snapcraft.yaml
-          elif [ -f snapcraft.yaml ]; then
-            echo "Found snapcraft.yaml at repo root"
-            head -n 8 snapcraft.yaml
-          else
-            echo "::error::No snapcraft.yaml on ref '${{ inputs.git_ref }}'."
-            echo "Tag v2.23.0 was created before Snap packaging was added."
-            echo "Use git_ref=main (version in snapcraft.yaml is still 2.23.0)."
-            ls -la
+          test -f snap/snapcraft.yaml || {
+            echo "::error::snap/snapcraft.yaml missing on recipe_ref=${{ inputs.recipe_ref }}"
             exit 1
-          fi
+          }
 
-      # Snapcraft builds inside LXD — GHA step env is not available there.
-      # Write a short-lived env file into the project so override-build can source it.
-      - name: Prepare build secrets for LXD
+      - name: Download .deb from GitHub Release
         env:
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "${GOOGLE_CLIENT_ID:-}" ]; then
-            echo "::error::GOOGLE_CLIENT_ID secret is empty on this repository."
+          set -euo pipefail
+          mkdir -p prebuilt
+          echo "Downloading *.deb from release ${{ inputs.release_tag }}..."
+          gh release download "${{ inputs.release_tag }}" \
+            --repo "${{ github.repository }}" \
+            -p "*.deb" \
+            -D prebuilt
+          ls -la prebuilt
+          test -n "$(ls -1 prebuilt/*.deb 2>/dev/null | head -n1)" || {
+            echo "::error::No .deb on release ${{ inputs.release_tag }}. Ship with release.yml first."
             exit 1
-          fi
-          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is empty (required because tauri.conf has a pubkey / createUpdaterArtifacts)."
-            exit 1
-          fi
-          {
-            echo "export GOOGLE_CLIENT_ID=$(printf %q "$GOOGLE_CLIENT_ID")"
-            echo "export GOOGLE_CLIENT_SECRET=$(printf %q "${GOOGLE_CLIENT_SECRET:-}")"
-            echo "export TAURI_SIGNING_PRIVATE_KEY=$(printf %q "$TAURI_SIGNING_PRIVATE_KEY")"
-            echo "export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$(printf %q "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}")"
-          } > snap/ci-build-env.sh
-          echo "Wrote snap/ci-build-env.sh for the snapcraft LXD build."
+          }
 
-      - name: Build snap
+      - name: Align snap version with release tag
+        run: |
+          set -euo pipefail
+          ver="${{ inputs.release_tag }}"
+          ver="${ver#v}"
+          sed -i -E "s/^version: .*/version: '${ver}'/" snap/snapcraft.yaml
+          grep -E '^version:' snap/snapcraft.yaml
+
+      - name: Build snap (pack prebuilt deb only)
         id: build
         uses: snapcore/action-build@v1
         env:
-          # Silence Node 20 deprecation noise from the action runtime (not the app build).
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
       - name: Upload snap artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zync-snap-${{ inputs.git_ref }}
+          name: zync-snap-${{ inputs.release_tag }}
           path: ${{ steps.build.outputs.snap }}
           if-no-files-found: error
 

@@ -1,5 +1,9 @@
 # Snap package for Zync (https://snapcraft.io/zync)
-# Build path: npm → tauri deb → unpack into the snap (Tauri-recommended).
+#
+# Fast path (CI default): unpack a prebuilt .deb from GitHub Releases into the snap.
+# Place the file at prebuilt/*.deb before running snapcraft (workflow does this).
+#
+# No Node/Rust rebuild — that already ran in release.yml.
 name: zync
 base: core22
 version: '2.23.0'
@@ -8,11 +12,8 @@ description: |
   Zync is a desktop SSH client with an integrated terminal, file manager,
   encrypted credential vault, and port-forwarding tunnels.
 
-grade: devel
+grade: stable
 confinement: strict
-
-# Keep private/edge until first package is validated.
-# grade: stable is for store-stable after review.
 
 layout:
   /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1:
@@ -37,71 +38,27 @@ apps:
       - gsettings
 
 parts:
-  build-app:
+  zync-deb:
     plugin: dump
-    # Node 24 snap needs GLIBC 2.38+ / newer libstdc++ than core22 + gnome-42 SDK.
-    # Node 20 matches Tauri's snap docs and runs on core22.
-    build-snaps:
-      - node/20/stable
-      - rustup/latest/stable
+    source: .
     build-packages:
-      - libwebkit2gtk-4.1-dev
-      - build-essential
-      - curl
-      - wget
-      - file
-      - libxdo-dev
-      - libssl-dev
-      - libayatana-appindicator3-dev
-      - librsvg2-dev
       - dpkg
-      - patchelf
     stage-packages:
       - libwebkit2gtk-4.1-0
       - libayatana-appindicator3-1
-    source: .
     override-build: |
       set -eu
-
-      # CI writes snap/ci-build-env.sh on the runner before snapcraft starts.
-      # Host env vars are NOT visible inside the LXD build (causes unbound GOOGLE_CLIENT_ID).
       root="${CRAFT_PART_SRC:-${SNAPCRAFT_PART_SRC:-.}}"
-      if [ -f "$root/snap/ci-build-env.sh" ]; then
-        # shellcheck disable=SC1091
-        . "$root/snap/ci-build-env.sh"
-      fi
-
-      # Release builds require a real Google OAuth client id (see src-tauri/build.rs).
-      if [ -z "${GOOGLE_CLIENT_ID:-}" ] || [ "${GOOGLE_CLIENT_ID}" = "ci-known-answer-test-client-id" ]; then
-        echo "GOOGLE_CLIENT_ID must be set for the snap build (CI: snap/ci-build-env.sh)." >&2
+      deb="$(ls -1 "$root"/prebuilt/*.deb 2>/dev/null | head -n1 || true)"
+      if [ -z "${deb}" ]; then
+        echo "No prebuilt/*.deb found." >&2
+        echo "CI should download the GitHub Release .deb into prebuilt/ before snapcraft." >&2
         exit 1
       fi
-      export GOOGLE_CLIENT_ID
-      if [ -n "${GOOGLE_CLIENT_SECRET:-}" ]; then
-        export GOOGLE_CLIENT_SECRET
-      fi
-      # tauri.conf has createUpdaterArtifacts + pubkey; signing key must be present.
-      if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
-        export TAURI_SIGNING_PRIVATE_KEY
-        export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
-      fi
+      echo "Packaging deb: $deb"
+      dpkg -x "$deb" "$CRAFT_PART_INSTALL"
 
-      # gnome-*-sdk puts an older libstdc++ on LD_LIBRARY_PATH and breaks the Node snap.
-      if [ -n "${LD_LIBRARY_PATH:-}" ]; then
-        LD_LIBRARY_PATH="$(printf '%s' "$LD_LIBRARY_PATH" | tr ':' '\n' | grep -v 'gnome-.*-sdk' | paste -sd: - || true)"
-        export LD_LIBRARY_PATH
-      fi
-
-      rustup default stable
-      node --version
-      npm --version
-      npm ci --legacy-peer-deps
-      npm run tauri build -- --bundles deb
-
-      deb_path=$(ls -1 src-tauri/target/release/bundle/deb/*.deb | head -n1)
-      dpkg -x "$deb_path" "$SNAPCRAFT_PART_INSTALL/"
-
-      desktop="$SNAPCRAFT_PART_INSTALL/usr/share/applications/zync.desktop"
+      desktop="$CRAFT_PART_INSTALL/usr/share/applications/zync.desktop"
       if [ -f "$desktop" ]; then
         sed -i -e 's|^Icon=.*|Icon=/usr/share/icons/hicolor/32x32/apps/zync.png|g' "$desktop"
       fi
