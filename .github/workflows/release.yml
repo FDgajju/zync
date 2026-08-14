@@ -5,13 +5,65 @@ on:
       - 'v*'
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pages: write
   id-token: write
 
+env:
+  # Optional repo secret RELEASE_TOKEN (classic PAT with repo/contents write).
+  # Falls back to the automatic GITHUB_TOKEN — same pattern as Typepad.
+  RELEASE_GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+
 jobs:
+  create-release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: meta
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Using existing release $TAG"
+          else
+            gh release create "$TAG" \
+              --draft \
+              --title "Zync $TAG" \
+              --notes "See the assets to download this version and install."
+          fi
+          ID=$(gh release view "$TAG" --json databaseId --jq .databaseId)
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+
   release:
+    name: Build (${{ matrix.platform }})
+    needs: create-release
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -52,21 +104,26 @@ jobs:
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
-          releaseName: "Zync v__VERSION__"
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: ${{ needs.create-release.outputs.tag }}
+          releaseName: "Zync ${{ needs.create-release.outputs.tag }}"
           releaseBody: "See the assets to download this version and install."
           releaseDraft: true
           prerelease: false
 
   apt-repo:
-    needs: release
+    needs: [create-release, release]
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
       - name: Checkout gh-pages branch
         uses: actions/checkout@v4
@@ -87,10 +144,10 @@ jobs:
 
       - name: Download .deb from release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
         run: |
           mkdir -p /tmp/debs
-          gh release download ${{ github.ref_name }} -p "*.deb" -D /tmp/debs/
+          gh release download ${{ needs.create-release.outputs.tag }} -p "*.deb" -D /tmp/debs/
 
       - name: Setup reprepro config
         run: |
@@ -124,5 +181,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "APT repo update: ${{ github.ref_name }}"
+          git commit -m "APT repo update: ${{ needs.create-release.outputs.tag }}"
           git push
