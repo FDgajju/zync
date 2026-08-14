@@ -39,8 +39,10 @@ apps:
 parts:
   build-app:
     plugin: dump
+    # Node 24 snap needs GLIBC 2.38+ / newer libstdc++ than core22 + gnome-42 SDK.
+    # Node 20 matches Tauri's snap docs and runs on core22.
     build-snaps:
-      - node/24/stable
+      - node/20/stable
       - rustup/latest/stable
     build-packages:
       - libwebkit2gtk-4.1-dev
@@ -79,7 +81,15 @@ parts:
         export GOOGLE_CLIENT_SECRET
       fi
 
+      # gnome-*-sdk puts an older libstdc++ on LD_LIBRARY_PATH and breaks the Node snap.
+      if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+        LD_LIBRARY_PATH="$(printf '%s' "$LD_LIBRARY_PATH" | tr ':' '\n' | grep -v 'gnome-.*-sdk' | paste -sd: - || true)"
+        export LD_LIBRARY_PATH
+      fi
+
       rustup default stable
+      node --version
+      npm --version
       npm ci --legacy-peer-deps
       npm run tauri build -- --bundles deb
 
