@@ -8,8 +8,21 @@ import { useAppStore, Connection } from '../../store/useAppStore';
 import { open } from '@tauri-apps/plugin-dialog';
 import { cn } from '../../lib/utils';
 import { ShieldCheck, CheckCircle2, AlertCircle, Loader2, FileText, Laptop, Files, ChevronDown, ChevronRight, Shield, KeyRound } from 'lucide-react';
-import { testConnectionIpc, type ConnectionConfigPayload } from '../../features/connections/infrastructure/connectionIpc';
-import { buildConnectionTestPayload } from '../../features/connections/domain';
+import {
+    deleteEphemeralKeyIpc,
+    forgetKeyPassphraseIpc,
+    readLocalKeyFileIpc,
+    rememberKeyPassphraseIpc,
+    testConnectionIpc,
+    type ConnectionConfigPayload,
+    writeEphemeralKeyIpc,
+} from '../../features/connections/infrastructure/connectionIpc';
+import {
+    buildConnectionSavePayload,
+    buildConnectionTestPayload,
+    canSaveInspectedPrivateKey,
+    shouldAutoConnectOnOpenTab,
+} from '../../features/connections/domain';
 import {
     importConnectionsFromFileIpc,
     type ConnectionExchangeImportFormat,
@@ -19,6 +32,18 @@ import { useAutoVault } from './useAutoVault';
 import { useVaultStore } from '../../vault/useVaultStore';
 import { isVaultInUseError, VAULT_IN_USE_USER_MESSAGE } from '../../vault/vaultLoading';
 import { isVaultLockedError } from '../../vault/vaultUnlockPrompt';
+import {
+    usePrivateKeyInspection,
+    type PrivateKeyInspectionState,
+} from './usePrivateKeyInspection';
+import {
+    stageKeyPassphraseForNextConnect,
+} from '../../features/connections/application/keyPassphraseRuntime';
+import {
+    KeyPassphraseRetentionOptions,
+} from '../connections/KeyPassphraseRetentionOptions';
+import { KeyPassphraseInput } from '../connections/KeyPassphraseInput';
+import type { KeyPassphraseRetention } from '../../features/connections/application/keyPassphrasePrompt';
 
 const ImportSshModal = lazy(async () => {
     const module = await import('./ImportSshModal');
@@ -46,17 +71,97 @@ const THEMES = [
     { id: 'purple', label: 'App', color: 'bg-purple-500/20 border-purple-500' },
 ];
 
+function PastedKeyTextarea({
+    value,
+    error,
+    onChange,
+}: {
+    value: string;
+    error: string;
+    onChange: (value: string) => void;
+}) {
+    return (
+        <div className="space-y-2">
+            <textarea
+                value={value}
+                className="w-full h-28 rounded-lg border border-app-border bg-app-bg px-3 py-2 text-xs font-mono text-app-text placeholder:text-app-muted/50 resize-none focus:outline-none focus:ring-1 focus:ring-app-accent/50"
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
+                onChange={(event) => onChange(event.target.value)}
+                spellCheck={false}
+            />
+            {error && (
+                <p className="text-[10px] text-red-400">{error}</p>
+            )}
+        </div>
+    );
+}
+
+function PrivateKeyInspectionFeedback({
+    inspection,
+    allowDeferredPassphrase = false,
+}: {
+    inspection: PrivateKeyInspectionState;
+    allowDeferredPassphrase?: boolean;
+}) {
+    if (inspection.status === 'idle') return null;
+    if (inspection.status === 'checking') {
+        return (
+            <p className="flex items-center gap-1 text-[10px] text-app-muted">
+                <Loader2 size={10} className="animate-spin" /> Checking private key...
+            </p>
+        );
+    }
+    if (inspection.status === 'valid') {
+        return (
+            <p className="flex items-center gap-1 text-[10px] text-emerald-400/80">
+                <CheckCircle2 size={10} />
+                {inspection.remembered
+                    ? "Passphrase available from this device's credential store."
+                    : inspection.encrypted
+                        ? 'Passphrase verified locally.'
+                        : 'Valid unencrypted private key.'}
+            </p>
+        );
+    }
+    if (inspection.status === 'passphraseRequired') {
+        return (
+            <p className="flex items-center gap-1 text-[10px] text-amber-400/90">
+                <KeyRound size={10} />
+                {allowDeferredPassphrase
+                    ? 'This key is encrypted. Enter its passphrase now, or leave it blank to be asked when connecting.'
+                    : 'This key is encrypted. Enter its passphrase to continue.'}
+            </p>
+        );
+    }
+    return (
+        <p className="flex items-center gap-1 text-[10px] text-red-400">
+            <AlertCircle size={10} />
+            {inspection.status === 'invalidPassphrase'
+                ? 'The passphrase could not unlock this key.'
+                : inspection.status === 'unavailable'
+                    ? 'This private key is missing or cannot be read.'
+                : inspection.message || 'This file is not a supported private key.'}
+        </p>
+    );
+}
+
 export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: AddConnectionModalProps) {
     const importConnections = useAppStore(state => state.importConnections);
     const showToast = useAppStore(state => state.showToast);
     const openTab = useAppStore(state => state.openTab);
     const requestVaultUnlock = useVaultStore(state => state.requestUnlock);
+    const [keyPassphraseRetention, setKeyPassphraseRetention] = useState<KeyPassphraseRetention>('once');
+    const [keyInspectionRevision, setKeyInspectionRevision] = useState(0);
+    const [isForgettingKeyPassphrase, setIsForgettingKeyPassphrase] = useState(false);
+    const [rememberedKeyPath, setRememberedKeyPath] = useState<string | null>(null);
+    const retentionDefaultedKeyPathRef = useRef<string | null>(null);
 
     const {
         connections, folders, addConnection, editConnection,
         formData, setFormData,
         authMethod, setAuthMethod,
         keyInputMode, setKeyInputMode,
+        vaultInputMode, setVaultInputMode,
         setTouched,
         submitAttempted: _submitAttempted, setSubmitAttempted,
         allowDuplicateEndpoint, setAllowDuplicateEndpoint,
@@ -73,17 +178,23 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
         setPastedKeyText,
         pastedPassphrase, setPastedPassphrase,
         pastedKeyError, setPastedKeyError,
+        localKeyVaultError,
         keyVaultLabel, setKeyVaultLabel,
         defaultKeyVaultLabel, keyVaultLabelConflict,
-        buildPastedKeyConnection,
+        buildVaultKeyConnection,
+        deleteCreatedVaultItemBestEffort,
+        writePastedKeyAsManagedFile,
+        loadKeyFileForVaultImport,
         finalizeVaultReplacement,
     } = useAutoVault({
         isOpen,
         formData,
         authMethod,
         keyInputMode,
+        vaultInputMode,
         activeEditingConnectionId,
         validationOk: validation.ok,
+        materializeLocalKeyToVault: authMethod === 'key' && keyPassphraseRetention === 'vault',
         showToast,
     });
 
@@ -96,6 +207,38 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const lastImportPlaintextCountRef = useRef(0);
+    const vaultNeedsMaterialize = authMethod === 'vault'
+        && (vaultInputMode === 'paste' || vaultInputMode === 'import');
+
+    const localKeySource = authMethod === 'key'
+        ? keyInputMode === 'file'
+            ? (formData.privateKeyPath ? { path: formData.privateKeyPath } : null)
+            : (pastedKeyText.trim() ? { content: pastedKeyText } : null)
+        : null;
+    const vaultKeySource = authMethod === 'vault' && vaultNeedsMaterialize && pastedKeyText.trim()
+        ? { content: pastedKeyText }
+        : null;
+    const localKeyInspection = usePrivateKeyInspection(
+        localKeySource,
+        formData.password || '',
+        keyInputMode === 'file',
+        keyInspectionRevision,
+    );
+    const currentKeyPath = formData.privateKeyPath?.trim() || null;
+    const keyRememberedOnDevice = Boolean(
+        currentKeyPath && (localKeyInspection.remembered || rememberedKeyPath === currentKeyPath),
+    );
+    const vaultKeyInspection = usePrivateKeyInspection(vaultKeySource, pastedPassphrase);
+    const activeKeyInspection = authMethod === 'key' ? localKeyInspection : vaultKeyInspection;
+    const requiresKeyInspection = authMethod === 'key' || vaultNeedsMaterialize;
+    const keyInspectionReady = !requiresKeyInspection || activeKeyInspection.status === 'valid';
+    const keyInspectionSaveReady = authMethod === 'key'
+        ? canSaveInspectedPrivateKey(localKeyInspection.status, formData.password || '')
+        : keyInspectionReady;
+    const willStoreLocalKeyInVault = authMethod === 'key' && keyPassphraseRetention === 'vault';
+    const localVaultPassphraseReady = !willStoreLocalKeyInVault
+        || !localKeyInspection.encrypted
+        || (Boolean(formData.password) && localKeyInspection.status === 'valid');
 
     useEffect(() => {
         if (!isOpen) return;
@@ -106,10 +249,55 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
         setShowAllIcons(false);
         setEntryMode(activeEditingConnectionId ? 'manual' : 'chooser');
         setIsSaving(false);
+        setIsForgettingKeyPassphrase(false);
+        setKeyInspectionRevision(0);
+        setRememberedKeyPath(null);
+        setKeyPassphraseRetention('once');
+        retentionDefaultedKeyPathRef.current = null;
     }, [activeEditingConnectionId, isOpen]);
 
-    const canSave = (!duplicateConnection || allowDuplicateEndpoint) && !keyVaultLabelConflict;
-    const canTest = validation.ok && testStatus !== 'testing' && !(authMethod === 'key' && keyInputMode === 'paste');
+    useEffect(() => {
+        if (authMethod !== 'key' || localKeyInspection.status !== 'valid' || localKeyInspection.encrypted) return;
+        if (!formData.password) return;
+        setFormData(previous => ({ ...previous, password: undefined }));
+    }, [authMethod, formData.password, localKeyInspection.encrypted, localKeyInspection.status, setFormData]);
+
+    useEffect(() => {
+        if (!vaultNeedsMaterialize || vaultKeyInspection.status !== 'valid' || vaultKeyInspection.encrypted) return;
+        if (!pastedPassphrase) return;
+        setPastedPassphrase('');
+    }, [pastedPassphrase, setPastedPassphrase, vaultKeyInspection.encrypted, vaultKeyInspection.status, vaultNeedsMaterialize]);
+
+    useEffect(() => {
+        if (
+            localKeyInspection.remembered
+            && currentKeyPath
+            && retentionDefaultedKeyPathRef.current !== currentKeyPath
+        ) {
+            setRememberedKeyPath(currentKeyPath);
+            setKeyPassphraseRetention('device');
+            retentionDefaultedKeyPathRef.current = currentKeyPath;
+        }
+        else if (localKeyInspection.status === 'valid' && !localKeyInspection.encrypted) {
+            setKeyPassphraseRetention('once');
+            retentionDefaultedKeyPathRef.current = null;
+        }
+    }, [currentKeyPath, localKeyInspection.encrypted, localKeyInspection.remembered, localKeyInspection.status]);
+
+    const canSave = validation.ok
+        && (!duplicateConnection || allowDuplicateEndpoint)
+        && !keyVaultLabelConflict
+        && !(authMethod === 'vault' && vaultInputMode === 'existing' && !formData.authRef?.itemId)
+        && !(authMethod === 'vault' && vaultNeedsMaterialize && !pastedKeyText.trim())
+        && !(authMethod === 'key' && keyInputMode === 'paste' && !pastedKeyText.trim())
+        && keyInspectionSaveReady
+        && localVaultPassphraseReady;
+    const canTest = validation.ok
+        && testStatus !== 'testing'
+        && !(authMethod === 'key' && keyInputMode === 'paste' && !pastedKeyText.trim())
+        && !(authMethod === 'vault' && vaultNeedsMaterialize && !pastedKeyText.trim())
+        && !(authMethod === 'vault' && vaultInputMode === 'existing' && !formData.authRef?.itemId)
+        && keyInspectionReady;
     const selectedIcon = formData.icon || 'Server';
     const compactIcons = ICONS.slice(0, 12);
     const visibleIcons = showAllIcons
@@ -118,11 +306,33 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             ? compactIcons
             : [...compactIcons, selectedIcon];
 
-    const needsVaultUnlock = authMethod === 'vault' || Boolean(formData.authRef?.itemId);
+    const needsVaultUnlock = authMethod === 'vault'
+        || Boolean(formData.authRef?.itemId)
+        || willStoreLocalKeyInVault;
+    const vaultAvailable = vaultStatus?.status === 'unlocked' || vaultStatus?.status === 'locked';
 
     const notifyVaultBlocked = () => {
         if (isVaultInUseError(useVaultStore.getState().error)) {
             showToast('error', VAULT_IN_USE_USER_MESSAGE, 8000);
+        }
+    };
+
+    const forgetCurrentDevicePassphrase = async () => {
+        const keyPath = formData.privateKeyPath?.trim();
+        if (!keyPath || isForgettingKeyPassphrase) return;
+        setIsForgettingKeyPassphrase(true);
+        try {
+            await forgetKeyPassphraseIpc(keyPath);
+            setFormData(previous => ({ ...previous, password: undefined }));
+            setKeyPassphraseRetention('once');
+            setRememberedKeyPath(null);
+            setKeyInspectionRevision(current => current + 1);
+            showToast('success', 'Forgot this key passphrase on this device.');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            showToast('error', `Could not forget this key passphrase: ${message}`);
+        } finally {
+            setIsForgettingKeyPassphrase(false);
         }
     };
 
@@ -131,22 +341,102 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
         setIsSaving(true);
         setSubmitAttempted(true);
         try {
-            if (needsVaultUnlock) {
+            if (!validation.ok || !canSave) return null;
+
+            if (needsVaultUnlock || vaultNeedsMaterialize) {
                 const unlocked = await requestVaultUnlock();
                 if (!unlocked) {
                     notifyVaultBlocked();
                     return null;
                 }
             }
-            if (authMethod === 'key' && keyInputMode === 'paste') {
-                const connectionData = await buildPastedKeyConnection();
-                if (!connectionData) return null;
+
+            if (willStoreLocalKeyInVault) {
+                const keyText = keyInputMode === 'file'
+                    ? await readLocalKeyFileIpc(formData.privateKeyPath || '')
+                    : pastedKeyText;
+                const result = await buildVaultKeyConnection({
+                    keyText,
+                    passphrase: formData.password || '',
+                    source: keyInputMode === 'file' ? 'file' : 'paste',
+                });
+                if (!result) return null;
+                try {
+                    await (activeEditingConnectionId
+                        ? editConnection(result.connection)
+                        : addConnection(result.connection));
+                    if (keyInputMode === 'file' && formData.privateKeyPath) {
+                        try {
+                            await forgetKeyPassphraseIpc(formData.privateKeyPath);
+                            setRememberedKeyPath(null);
+                            retentionDefaultedKeyPathRef.current = null;
+                        } catch (forgetError: unknown) {
+                            const message = forgetError instanceof Error ? forgetError.message : String(forgetError);
+                            showToast('error', `Saved to Vault, but could not forget this key from the device: ${message}`);
+                        }
+                    }
+                    await finalizeVaultReplacement();
+                    await refreshItems();
+                    return result.connection;
+                } catch (persistError: unknown) {
+                    await deleteCreatedVaultItemBestEffort(result.createdItemId, persistError);
+                    throw persistError;
+                }
+            }
+
+            if (authMethod === 'key') {
+                const keyPath = keyInputMode === 'paste'
+                    ? await writePastedKeyAsManagedFile()
+                    : formData.privateKeyPath;
+                if (!keyPath) return null;
+                const passphrase = formData.password || '';
+                const withPath = {
+                    ...formData,
+                    password: undefined,
+                    privateKeyPath: keyPath,
+                    authRef: undefined,
+                };
+                const connectionData = buildConnectionSavePayload({
+                    formData: withPath,
+                    authMethod: 'key',
+                    editingConnectionId: activeEditingConnectionId,
+                    connections,
+                });
                 await (activeEditingConnectionId ? editConnection(connectionData) : addConnection(connectionData));
-                await finalizeVaultReplacement();
-                await refreshItems();
+                if (
+                    localKeyInspection.encrypted
+                    && keyPassphraseRetention === 'device'
+                    && !keyRememberedOnDevice
+                ) {
+                    try {
+                        await rememberKeyPassphraseIpc(keyPath, passphrase);
+                    } catch (rememberError: unknown) {
+                        const message = rememberError instanceof Error ? rememberError.message : String(rememberError);
+                        showToast('error', `Host saved, but this key could not be remembered on this device: ${message}`);
+                    }
+                }
+                setPastedKeyText('');
                 return connectionData;
             }
-            return await saveForm(canSave);
+
+            if (authMethod === 'vault' && vaultNeedsMaterialize) {
+                const result = await buildVaultKeyConnection();
+                if (!result) return null;
+                try {
+                    await (activeEditingConnectionId
+                        ? editConnection(result.connection)
+                        : addConnection(result.connection));
+                    await finalizeVaultReplacement();
+                    await refreshItems();
+                    return result.connection;
+                } catch (persistError: unknown) {
+                    await deleteCreatedVaultItemBestEffort(result.createdItemId, persistError);
+                    throw persistError;
+                }
+            }
+
+            const saved = await saveForm(canSave);
+            return saved;
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
             if (isVaultLockedError(message)) {
@@ -166,11 +456,27 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
     };
 
     const handleSaveAndConnect = async () => {
+        const oneTimePassphrase = authMethod === 'key'
+            && localKeyInspection.encrypted
+            && keyPassphraseRetention === 'once'
+            ? formData.password || ''
+            : '';
         const saved = await performSave();
         if (!saved) return;
+        if (
+            oneTimePassphrase
+            && saved.privateKeyPath
+            && shouldAutoConnectOnOpenTab(connections, saved)
+        ) {
+            stageKeyPassphraseForNextConnect(saved.id, saved.privateKeyPath, oneTimePassphrase);
+        }
         openTab(saved.id, 'terminal');
         onClose();
     };
+
+    const testDisabledReason = !keyInspectionReady
+        ? 'Select a valid private key and verify its passphrase before testing.'
+        : '';
 
     const handleTestConnection = async () => {
         setSubmitAttempted(true);
@@ -179,10 +485,29 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             setTestMessage(validation.errors[0] || 'Please fill required fields.');
             return;
         }
+        if (authMethod === 'key' && keyInputMode === 'paste' && !pastedKeyText.trim()) {
+            setTestStatus('error');
+            setTestMessage('Please paste a private key first.');
+            return;
+        }
+        if (authMethod === 'vault' && vaultNeedsMaterialize && !pastedKeyText.trim()) {
+            setTestStatus('error');
+            setTestMessage(vaultInputMode === 'import'
+                ? 'Please import a private key file first.'
+                : 'Please paste a private key first.');
+            return;
+        }
+        if (!keyInspectionReady) {
+            setTestStatus('error');
+            setTestMessage('Select a valid private key and verify its passphrase first.');
+            return;
+        }
         setTestStatus('testing');
         setTestMessage('');
+        let ephemeralTestPath: string | null = null;
         try {
-            if (authMethod === 'vault' || formData.authRef?.itemId) {
+            // Existing vault credential still needs unlock; paste/import test uses ephemeral file (no vault write).
+            if (authMethod === 'vault' && vaultInputMode === 'existing') {
                 const unlocked = await requestVaultUnlock();
                 if (!unlocked) {
                     notifyVaultBlocked();
@@ -190,7 +515,35 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                     return;
                 }
             }
-            const config = buildConnectionTestPayload({ formData, authMethod, connections });
+
+            let testForm = formData;
+            let testAuthMethod = authMethod;
+
+            if (authMethod === 'key' && keyInputMode === 'paste') {
+                // Ephemeral tmp-keys for Test only; deleted after. Managed file is written on Save.
+                ephemeralTestPath = await writeEphemeralKeyIpc(pastedKeyText);
+                testForm = {
+                    ...formData,
+                    privateKeyPath: ephemeralTestPath,
+                    authRef: undefined,
+                };
+            } else if (authMethod === 'vault' && vaultNeedsMaterialize) {
+                // Security: ephemeral tmp-keys file for Test only; deleted after. Vault write happens on Save.
+                ephemeralTestPath = await writeEphemeralKeyIpc(pastedKeyText);
+                testAuthMethod = 'key';
+                testForm = {
+                    ...formData,
+                    privateKeyPath: ephemeralTestPath,
+                    password: pastedPassphrase || undefined,
+                    authRef: undefined,
+                };
+            }
+
+            const config = buildConnectionTestPayload({
+                formData: testForm,
+                authMethod: testAuthMethod,
+                connections,
+            });
             await testConnectionIpc(config as ConnectionConfigPayload);
             setTestStatus('success');
             setTestMessage('Connection successful!');
@@ -206,6 +559,14 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             }
             setTestStatus('error');
             setTestMessage(message.replace('Error: ', ''));
+        } finally {
+            if (ephemeralTestPath) {
+                try {
+                    await deleteEphemeralKeyIpc(ephemeralTestPath);
+                } catch {
+                    // Best-effort cleanup; tmp-keys is refused outside that dir by the backend.
+                }
+            }
         }
     };
 
@@ -216,11 +577,24 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             const path = Array.isArray(selected) ? selected[0] : selected;
             if (!path) return;
             setTouched((prev) => ({ ...prev, keyPath: true }));
-            setFormData((prev) => ({ ...prev, privateKeyPath: path }));
+            setFormData((prev) => ({ ...prev, privateKeyPath: path, password: undefined }));
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
             setTouched((prev) => ({ ...prev, keyPath: true }));
             setFormData((prev) => ({ ...prev, privateKeyPath: '' }));
+            showToast('error', `Failed to select key: ${message}`);
+        }
+    };
+
+    const handleBrowseVaultImportKey = async () => {
+        try {
+            const selected = await open({ multiple: false, directory: false });
+            if (!selected) return;
+            const path = Array.isArray(selected) ? selected[0] : selected;
+            if (!path || typeof path !== 'string') return;
+            await loadKeyFileForVaultImport(path);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
             showToast('error', `Failed to select key: ${message}`);
         }
     };
@@ -405,8 +779,9 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                         >
                                             Private Key
                                         </button>
-                                        {vaultStatus?.status === 'unlocked' && (
+                                        {vaultAvailable && (
                                             <button
+                                                type="button"
                                                 onClick={() => setAuthMethod('vault')}
                                                 className={cn(
                                                     "px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5",
@@ -433,6 +808,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                     <div className="space-y-3">
                                         <div className="flex gap-1 p-0.5 bg-app-surface/50 rounded-lg w-fit border border-app-border">
                                             <button
+                                                type="button"
                                                 onClick={() => setKeyInputMode('file')}
                                                 className={cn(
                                                     "px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5",
@@ -442,13 +818,14 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                                 <FileText size={11} /> File
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={() => setKeyInputMode('paste')}
                                                 className={cn(
                                                     "px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5",
                                                     keyInputMode === 'paste' ? "bg-app-accent text-white shadow-sm" : "text-app-muted hover:text-app-text"
                                                 )}
                                             >
-                                                <KeyRound size={11} /> Paste to Vault
+                                                <KeyRound size={11} /> Paste
                                             </button>
                                         </div>
                                         {keyInputMode === 'file' ? (
@@ -467,6 +844,156 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                                     <p className="text-[10px] text-app-muted/70">
                                                         Key file path is stored and read at connect time.
                                                         {vaultStatus?.status !== 'uninitialized' ? ' Open Vault tab to secure it later.' : ''}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                <PastedKeyTextarea
+                                                    value={pastedKeyText}
+                                                    error={pastedKeyError}
+                                                    onChange={(next) => {
+                                                        setPastedKeyText(next);
+                                                        if (pastedKeyError) setPastedKeyError('');
+                                                    }}
+                                                />
+                                                <p className="text-[10px] text-app-muted/70">
+                                                    On save, Zync writes this key into a managed local file and stores only the path on the host (not in vault).
+                                                </p>
+                                            </div>
+                                        )}
+                                        <PrivateKeyInspectionFeedback
+                                            inspection={localKeyInspection}
+                                            allowDeferredPassphrase
+                                        />
+                                        {localKeyVaultError && (
+                                            <p className="text-[10px] text-red-400">{localKeyVaultError}</p>
+                                        )}
+                                        {localKeyInspection.encrypted
+                                            && (!keyRememberedOnDevice || keyPassphraseRetention === 'vault')
+                                            && (
+                                            <KeyPassphraseInput
+                                                placeholder={keyPassphraseRetention === 'vault'
+                                                    ? 'Required to save this key in Vault'
+                                                    : 'Enter the passphrase'}
+                                                value={formData.password || ''}
+                                                onChange={password => setFormData({ ...formData, password })}
+                                            />
+                                        )}
+                                        {localKeyInspection.encrypted && ((formData.password || '').length > 0 || localKeyInspection.remembered) && (
+                                            <div className="space-y-2">
+                                                <KeyPassphraseRetentionOptions
+                                                    value={keyPassphraseRetention}
+                                                    onChange={setKeyPassphraseRetention}
+                                                    vaultAvailable={vaultAvailable}
+                                                    rememberedOnDevice={keyRememberedOnDevice}
+                                                    isForgetting={isForgettingKeyPassphrase}
+                                                    onForgetFromDevice={() => { void forgetCurrentDevicePassphrase(); }}
+                                                />
+                                                {keyPassphraseRetention === 'vault' && (
+                                                    <Input
+                                                        label="Vault credential name"
+                                                        value={keyVaultLabel}
+                                                        placeholder={defaultKeyVaultLabel}
+                                                        error={keyVaultLabelConflict ? 'A Vault item with this name already exists.' : undefined}
+                                                        onChange={event => setKeyVaultLabel(event.target.value)}
+                                                    />
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <div className="flex flex-wrap gap-1 p-0.5 bg-app-surface/50 rounded-lg w-fit border border-app-border">
+                                            <button
+                                                type="button"
+                                                onClick={() => setVaultInputMode('existing')}
+                                                className={cn(
+                                                    "px-3 py-1 rounded-md text-xs font-medium transition-all",
+                                                    vaultInputMode === 'existing' ? "bg-app-accent text-white shadow-sm" : "text-app-muted hover:text-app-text"
+                                                )}
+                                            >
+                                                Existing
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setVaultInputMode('paste')}
+                                                className={cn(
+                                                    "px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5",
+                                                    vaultInputMode === 'paste' ? "bg-app-accent text-white shadow-sm" : "text-app-muted hover:text-app-text"
+                                                )}
+                                            >
+                                                <KeyRound size={11} /> Paste
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setVaultInputMode('import')}
+                                                className={cn(
+                                                    "px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5",
+                                                    vaultInputMode === 'import' ? "bg-app-accent text-white shadow-sm" : "text-app-muted hover:text-app-text"
+                                                )}
+                                            >
+                                                <FileText size={11} /> Import file
+                                            </button>
+                                        </div>
+
+                                        {vaultInputMode === 'existing' ? (
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-semibold text-app-muted uppercase tracking-wider block">Vault Credential</label>
+                                                {vaultItems.length === 0 ? (
+                                                    vaultStatus?.status === 'locked' ? (
+                                                        <div className="space-y-2 rounded-lg border border-app-border bg-app-bg/50 px-3 py-2.5">
+                                                            <p className="text-xs text-app-muted">
+                                                                Unlock the vault to choose an existing credential.
+                                                            </p>
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="secondary"
+                                                                onClick={() => { void requestVaultUnlock(); }}
+                                                            >
+                                                                Unlock vault
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-xs text-app-muted rounded-lg border border-app-border bg-app-bg/50 px-3 py-2.5">
+                                                            No items in vault yet. Use Paste or Import file, or add credentials in the Vault tab.
+                                                        </p>
+                                                    )
+                                                ) : (
+                                                    <Select
+                                                        value={formData.authRef?.itemId || ''}
+                                                        onChange={(val) => {
+                                                            const item = vaultItems.find(i => i.id === val);
+                                                            if (!item) return;
+                                                            if (vaultStatus?.status !== 'unlocked') return;
+                                                            const vaultId = vaultStatus.vaultId;
+                                                            setFormData({
+                                                                ...formData,
+                                                                password: undefined,
+                                                                privateKeyPath: undefined,
+                                                                authRef: {
+                                                                    vaultId,
+                                                                    credentialId: item.logicalId,
+                                                                    itemId: item.id,
+                                                                    itemKind: item.kind as NonNullable<Connection['authRef']>['itemKind'],
+                                                                    purpose: 'ssh-auth',
+                                                                },
+                                                            });
+                                                        }}
+                                                        options={vaultItems.map(item => ({
+                                                            value: item.id,
+                                                            label: item.label,
+                                                            description: item.kind,
+                                                            icon: <div className="flex h-6 w-6 items-center justify-center rounded-md bg-app-surface border border-app-border text-app-muted"><Shield className="w-3 h-3" /></div>,
+                                                        }))}
+                                                        placeholder="Select a vault credential…"
+                                                        portal
+                                                    />
+                                                )}
+                                                {formData.authRef && (
+                                                    <p className="text-[10px] text-emerald-400/80">
+                                                        Using vault item · {formData.authRef.itemId.slice(0, 8)}
                                                     </p>
                                                 )}
                                             </div>
@@ -491,29 +1018,51 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                                         )}
                                                     </div>
                                                 )}
-                                                <textarea
-                                                    value={pastedKeyText}
-                                                    className="w-full h-28 rounded-lg border border-app-border bg-app-bg px-3 py-2 text-xs font-mono text-app-text placeholder:text-app-muted/50 resize-none focus:outline-none focus:ring-1 focus:ring-app-accent/50"
-                                                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
-                                                    onChange={(event) => {
-                                                        setPastedKeyText(event.target.value);
-                                                        if (pastedKeyError) setPastedKeyError('');
-                                                    }}
-                                                    spellCheck={false}
-                                                />
-                                                {pastedKeyError && (
+                                                {vaultInputMode === 'import' && (
+                                                    <div className="flex gap-2">
+                                                        <Button variant="secondary" onClick={handleBrowseVaultImportKey}>
+                                                            Choose key file
+                                                        </Button>
+                                                        {pastedKeyText.trim() && (
+                                                            <p className="text-[10px] text-app-muted self-center truncate">
+                                                                Key loaded · ready to store in vault
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {vaultInputMode === 'paste' && (
+                                                    <PastedKeyTextarea
+                                                        value={pastedKeyText}
+                                                        error={pastedKeyError}
+                                                        onChange={(next) => {
+                                                            setPastedKeyText(next);
+                                                            if (pastedKeyError) setPastedKeyError('');
+                                                        }}
+                                                    />
+                                                )}
+                                                {vaultInputMode === 'import' && pastedKeyText.trim() && (
+                                                    <textarea
+                                                        value={pastedKeyText}
+                                                        readOnly
+                                                        className="w-full h-20 rounded-lg border border-app-border bg-app-bg/70 px-3 py-2 text-xs font-mono text-app-muted resize-none"
+                                                    />
+                                                )}
+                                                {vaultInputMode === 'import' && pastedKeyError && (
                                                     <p className="text-[10px] text-red-400">{pastedKeyError}</p>
                                                 )}
-                                                <Input
-                                                    label="Passphrase (if key is encrypted)"
-                                                    type="password"
-                                                    placeholder="Leave empty if none"
-                                                    value={pastedPassphrase}
-                                                    onChange={e => setPastedPassphrase(e.target.value)}
-                                                />
+                                                <PrivateKeyInspectionFeedback inspection={vaultKeyInspection} />
+                                                {vaultKeyInspection.encrypted && (
+                                                    <Input
+                                                        label="Key passphrase"
+                                                        type="password"
+                                                        placeholder="Enter the passphrase"
+                                                        value={pastedPassphrase}
+                                                        onChange={e => setPastedPassphrase(e.target.value)}
+                                                    />
+                                                )}
                                                 {vaultStatus?.status !== 'unlocked' && (
                                                     <p className="text-[10px] text-amber-400/80 flex items-center gap-1">
-                                                        <Shield size={10} /> Vault must be unlocked to store a pasted key.
+                                                        <Shield size={10} /> Vault must be unlocked to store this key.
                                                     </p>
                                                 )}
                                                 {vaultStatus?.status === 'unlocked' && (
@@ -522,48 +1071,6 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                                     </p>
                                                 )}
                                             </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-app-muted uppercase tracking-wider block">Vault Credential</label>
-                                        {vaultItems.length === 0 ? (
-                                            <p className="text-xs text-app-muted rounded-lg border border-app-border bg-app-bg/50 px-3 py-2.5">
-                                                No items in vault. Secure existing connections to vault to populate it.
-                                            </p>
-                                        ) : (
-                                            <Select
-                                                value={formData.authRef?.itemId || ''}
-                                                onChange={(val) => {
-                                                    const item = vaultItems.find(i => i.id === val);
-                                                    if (!item) return;
-                                                    if (vaultStatus?.status !== 'unlocked') return;
-                                                    const vaultId = vaultStatus.vaultId;
-                                                    setFormData({
-                                                        ...formData,
-                                                        authRef: {
-                                                            vaultId,
-                                                            credentialId: item.logicalId,
-                                                            itemId: item.id,
-                                                            itemKind: item.kind as NonNullable<Connection['authRef']>['itemKind'],
-                                                            purpose: 'ssh-auth',
-                                                        },
-                                                    });
-                                                }}
-                                                options={vaultItems.map(item => ({
-                                                    value: item.id,
-                                                    label: item.label,
-                                                    description: item.kind,
-                                                    icon: <div className="flex h-6 w-6 items-center justify-center rounded-md bg-app-surface border border-app-border text-app-muted"><Shield className="w-3 h-3" /></div>,
-                                                }))}
-                                                placeholder="Select a vault credential…"
-                                                portal
-                                            />
-                                        )}
-                                        {formData.authRef && (
-                                            <p className="text-[10px] text-emerald-400/80">
-                                                Using vault item · {formData.authRef.itemId.slice(0, 8)}
-                                            </p>
                                         )}
                                     </div>
                                 )}
@@ -745,20 +1252,20 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                         </div>
 
                         <div className="shrink-0 border-t border-app-border bg-app-bg/95 backdrop-blur-sm">
-                            {(testMessage || (authMethod === 'key' && keyInputMode === 'paste')) && (
+                            {testMessage && (
                                 <div className="px-4 pt-2.5 pb-0 space-y-1">
-                                    {testMessage && (
-                                        <p className={cn(
-                                            "text-xs",
-                                            testStatus === 'success' ? 'text-green-400' :
-                                                testStatus === 'error' ? 'text-red-400' : 'text-app-muted'
-                                        )}>
-                                            {testMessage}
-                                        </p>
-                                    )}
-                                    {authMethod === 'key' && keyInputMode === 'paste' && (
-                                        <p className="text-[10px] text-app-muted">Save first so the pasted key is encrypted in the vault before testing.</p>
-                                    )}
+                                    <p className={cn(
+                                        "text-xs",
+                                        testStatus === 'success' ? 'text-green-400' :
+                                            testStatus === 'error' ? 'text-red-400' : 'text-app-muted'
+                                    )}>
+                                        {testMessage}
+                                    </p>
+                                </div>
+                            )}
+                            {!testMessage && testDisabledReason && (
+                                <div className="px-4 pt-2.5 pb-0">
+                                    <p className="text-xs text-amber-400/90">{testDisabledReason}</p>
                                 </div>
                             )}
                             <div className="flex items-center justify-between gap-3 px-4 py-2.5">

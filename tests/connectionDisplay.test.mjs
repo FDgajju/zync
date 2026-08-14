@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS,
   buildDefaultKeyVaultLabel,
+  buildUniqueVaultLabel,
   formatConnectionEndpoint,
   formatConnectionListEndpoint,
   formatPrivacyAwareLabel,
@@ -200,4 +201,12 @@ runTest('isLikelyIpAddress treats bracketed IPv6 as IP', () => {
   assert.equal(isLikelyIpAddress('[fe80::1]'), true);
   assert.equal(isLikelyIpAddress('fe80::1'), true);
   assert.equal(isLikelyIpAddress('prod.local'), false);
+});
+
+runTest('buildUniqueVaultLabel adds the first available numeric suffix', () => {
+  assert.equal(buildUniqueVaultLabel('production key', []), 'production key');
+  assert.equal(
+    buildUniqueVaultLabel('production key', ['production key', 'production key 2', 'other']),
+    'production key 3',
+  );
 });

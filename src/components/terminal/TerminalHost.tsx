@@ -25,6 +25,7 @@ export interface TerminalHostProps {
   contextMenu: { x: number; y: number } | null;
   onOpenContextMenu: (position: { x: number; y: number }) => void;
   onCloseContextMenu: () => void;
+  connectionId: string;
   ghostSettings: AppSettings['ghostSuggestions'];
   ghostSuggestion: string;
   ghostLayout?: GhostLayoutHint | null;
@@ -50,6 +51,7 @@ export const TerminalHost = memo(function TerminalHost({
   contextMenu,
   onOpenContextMenu,
   onCloseContextMenu,
+  connectionId,
   ghostSettings,
   ghostSuggestion,
   ghostLayout,
@@ -79,6 +81,7 @@ export const TerminalHost = memo(function TerminalHost({
       {contextMenu && (
         <TerminalContextMenu
           position={contextMenu}
+          connectionId={connectionId}
           sessionId={sessionId}
           ghostSettings={ghostSettings}
           ghostSuggestion={ghostSuggestion}

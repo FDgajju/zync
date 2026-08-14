@@ -22,6 +22,7 @@ export interface Connection {
     host: string;
     username: string;
     port: number;
+    /** SSH login password, plus legacy key passphrases until their next successful connect/edit. */
     password?: string;
     privateKeyPath?: string;
     /** Vault credential reference — when set, password/privateKeyPath are ignored for SSH auth. */

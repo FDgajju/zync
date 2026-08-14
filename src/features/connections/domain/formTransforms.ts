@@ -5,6 +5,11 @@ export type ConnectionAuthMode = 'password' | 'key' | 'vault';
 
 export type ConnectionFormDraft = Partial<Connection>;
 
+export const canSaveInspectedPrivateKey = (
+    status: 'idle' | 'checking' | 'valid' | 'passphraseRequired' | 'invalidPassphrase' | 'invalidKey' | 'unavailable',
+    passphrase: string,
+): boolean => status === 'valid' || (status === 'passphraseRequired' && passphrase.length === 0);
+
 interface ToBackendConfig {
     id: string;
     name: string;
@@ -13,7 +18,7 @@ interface ToBackendConfig {
     username: string;
     auth_method:
         | { type: 'Password'; password: string }
-        | { type: 'PrivateKey'; key_path: string; passphrase: null }
+        | { type: 'PrivateKey'; key_path: string; passphrase: string | null }
         | { type: 'VaultRef'; item_id: string; credential_id?: string };
     jump_host: ToBackendConfig | null;
 }
@@ -27,6 +32,10 @@ const requireNormalizedText = (value: unknown, fieldName: string): string => {
     }
     return normalized;
 };
+
+/** Key passphrase may intentionally include leading/trailing spaces — do not trim. */
+const optionalKeyPassphrase = (password: string | undefined): string | null =>
+    typeof password === 'string' && password.length > 0 ? password : null;
 
 const resolveAuthMethod = (
     candidate: ConfigCandidate,
@@ -49,7 +58,11 @@ const resolveAuthMethod = (
         }
         const normalizedKeyPath = normalizeText(keyPath);
         if (!normalizedKeyPath) throw new Error('Private key path is required for key auth.');
-        return { type: 'PrivateKey', key_path: normalizedKeyPath, passphrase: null };
+        return {
+            type: 'PrivateKey',
+            key_path: normalizedKeyPath,
+            passphrase: optionalKeyPassphrase(password),
+        };
     }
 
     // Use authRef as highest-priority discriminator for existing connections.
@@ -64,7 +77,11 @@ const resolveAuthMethod = (
     if (candidate.privateKeyPath) {
         const normalizedKeyPath = normalizeText(candidate.privateKeyPath);
         if (!normalizedKeyPath) throw new Error('Private key path is required for key auth.');
-        return { type: 'PrivateKey', key_path: normalizedKeyPath, passphrase: null };
+        return {
+            type: 'PrivateKey',
+            key_path: normalizedKeyPath,
+            passphrase: optionalKeyPassphrase(candidate.password),
+        };
     }
 
     const normalizedPassword = normalizeText(candidate.password);
@@ -144,7 +161,8 @@ export const buildConnectionSavePayload = ({
         host,
         username,
         port: portResult.normalizedPort,
-        password: authMethod === 'password' ? formData.password : undefined,
+        // Local-key passphrases are runtime/keychain credentials, never host-record fields.
+        password: authMethod === 'password' ? (formData.password || undefined) : undefined,
         privateKeyPath: authMethod === 'key' ? formData.privateKeyPath : undefined,
         authRef: authMethod === 'vault' ? formData.authRef : undefined,
         status: editingConnectionId ? (connections.find((c) => c.id === editingConnectionId)?.status || 'disconnected') : 'disconnected',

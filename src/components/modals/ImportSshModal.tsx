@@ -3,7 +3,7 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { useAppStore } from '../../store/useAppStore';
-import { CheckCircle2, AlertCircle, Loader2, FolderOpen, Search, X, ArrowRight } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Loader2, FolderOpen, Search, X, ArrowRight, KeyRound } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { OSIcon } from '../icons/OSIcon';
 import { registerModal } from '../../lib/modalRegistry';
@@ -353,6 +353,7 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
     const [sourceDiagnostics, setSourceDiagnostics] = useState<{ severity: 'info' | 'success' | 'error'; message: string } | null>(null);
     const [importReport, setImportReport] = useState<ImportReport | null>(null);
     const [bulkConflictDecision, setBulkConflictDecision] = useState<ImportResolution>('update');
+    const [keyStatusById, setKeyStatusById] = useState<Record<string, ImportedConnectionPayload['privateKeyStatus']>>({});
     const loadRequestIdRef = useRef(0);
     const importRequestIdRef = useRef(0);
     const isModalActiveRef = useRef(false);
@@ -391,6 +392,7 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
             setSourceDiagnostics(null);
             setImportReport(null);
             setBulkConflictDecision('update');
+            setKeyStatusById({});
         }
     }, [isOpen]);
 
@@ -418,6 +420,11 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
 
             if (Array.isArray(result)) {
                 const normalizedConnections = result.map(normalizeImportedConnectionPayload);
+                setKeyStatusById(Object.fromEntries(
+                    result
+                        .filter(connection => connection.privateKeyStatus)
+                        .map(connection => [connection.id, connection.privateKeyStatus])
+                ));
                 setConfigs(normalizedConnections);
                 setSelectedIds(new Set(normalizedConnections.map(c => c.id)));
                 setDecisions(createDefaultDecisionMap(baselineConnections, normalizedConnections));
@@ -430,6 +437,7 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
                 setConfigs([]);
                 setSelectedIds(new Set());
                 setDecisions({});
+                setKeyStatusById({});
                 setSourceDiagnostics({
                     severity: 'info',
                     message: `No connections were parsed from ${IMPORT_SOURCE_LABELS[source]}.`,
@@ -448,6 +456,7 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
             setConfigs([]);
             setSelectedIds(new Set());
             setDecisions({});
+            setKeyStatusById({});
         } finally {
             if (isRequestActive(requestId, 'load')) {
                 setIsLoadingConfigs(false);
@@ -467,6 +476,7 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
         setConfigs([]);
         setSelectedIds(new Set());
         setDecisions({});
+        setKeyStatusById({});
         setSearchQuery('');
         setIsSourceBarExpanded(true);
         if (nextSource === 'default_ssh') {
@@ -526,6 +536,10 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
 
     const visibleCount = filteredRowIds.length;
     const selectedCount = selectedIds.size;
+    const selectedKeyAttentionCount = [...selectedIds].filter(id => {
+        const status = keyStatusById[id];
+        return status === 'passphraseRequired' || status === 'invalidKey' || status === 'unavailable';
+    }).length;
     const hasConfigs = configs.length > 0;
     const allVisibleSelected = visibleCount > 0 && filteredRowIds.every((id) => selectedIds.has(id));
 
@@ -667,27 +681,35 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
                 />
 
                 {!isLoadingConfigs && !error && hasConfigs && (
-                    <ImportSummaryBar
-                        totalCount={configs.length}
-                        selectedCount={selectedCount}
-                        createdCount={planSummary.created}
-                        updatedCount={planSummary.updated}
-                        skippedCount={planSummary.skipped}
-                        conflictCount={conflictRows.length}
-                        allVisibleSelected={allVisibleSelected}
-                        isSearchOpen={isSearchOpen}
-                        searchQuery={searchQuery}
-                        onSearchOpen={() => setIsSearchOpen(true)}
-                        onSearchClose={() => {
-                            setSearchQuery('');
-                            setIsSearchOpen(false);
-                        }}
-                        onSearchChange={(value) => setSearchQuery(value)}
-                        onToggleAll={toggleAll}
-                        bulkConflictDecision={bulkConflictDecision}
-                        onBulkConflictDecisionChange={setBulkConflictDecision}
-                        onApplyConflictDecision={applyConflictDecision}
-                    />
+                    <>
+                        <ImportSummaryBar
+                            totalCount={configs.length}
+                            selectedCount={selectedCount}
+                            createdCount={planSummary.created}
+                            updatedCount={planSummary.updated}
+                            skippedCount={planSummary.skipped}
+                            conflictCount={conflictRows.length}
+                            allVisibleSelected={allVisibleSelected}
+                            isSearchOpen={isSearchOpen}
+                            searchQuery={searchQuery}
+                            onSearchOpen={() => setIsSearchOpen(true)}
+                            onSearchClose={() => {
+                                setSearchQuery('');
+                                setIsSearchOpen(false);
+                            }}
+                            onSearchChange={(value) => setSearchQuery(value)}
+                            onToggleAll={toggleAll}
+                            bulkConflictDecision={bulkConflictDecision}
+                            onBulkConflictDecisionChange={setBulkConflictDecision}
+                            onApplyConflictDecision={applyConflictDecision}
+                        />
+                        {selectedKeyAttentionCount > 0 && (
+                            <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-[11px] text-amber-200">
+                                <KeyRound size={13} className="shrink-0" />
+                                {selectedKeyAttentionCount} selected connection{selectedKeyAttentionCount === 1 ? '' : 's'} {selectedKeyAttentionCount === 1 ? 'needs' : 'need'} key credentials checked after import.
+                            </div>
+                        )}
+                    </>
                 )}
 
                 <div className="min-h-0 flex-1 overflow-y-auto pt-0 pb-3">
@@ -770,6 +792,7 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
                                 const matchedConnection = row.matchedByName || row.matchedByEndpoint;
                                 const hasConflict = !!matchedConnection;
                                 const statusLabel = hasConflict ? 'Conflict' : 'New';
+                                const keyStatus = keyStatusById[config.id];
 
                                 return (
                                     <div
@@ -821,6 +844,16 @@ export function ImportSshModal({ isOpen, onClose, onImport, onImportReport }: Im
                                             {hasConflict && (
                                                 <div className="mt-0.5 text-[11px] text-app-muted truncate">
                                                     Existing: {matchedConnection?.name || matchedConnection?.host}
+                                                </div>
+                                            )}
+                                            {keyStatus === 'passphraseRequired' && (
+                                                <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-amber-300">
+                                                    <KeyRound size={10} /> Encrypted key needs a passphrase
+                                                </div>
+                                            )}
+                                            {(keyStatus === 'invalidKey' || keyStatus === 'unavailable') && (
+                                                <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-amber-300">
+                                                    <AlertCircle size={10} /> Key file needs attention
                                                 </div>
                                             )}
                                         </div>

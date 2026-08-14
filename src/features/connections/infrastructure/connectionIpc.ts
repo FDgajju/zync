@@ -41,10 +41,28 @@ export interface ImportedConnectionPayload {
     username: string;
     port: number;
     privateKeyPath?: string;
+    privateKeyStatus?: 'valid' | 'passphraseRequired' | 'invalidKey' | 'unavailable';
     jumpServerAlias?: string;
     jumpServerId?: string;
     aliases?: string[];
 }
+
+export type PrivateKeyInspectionStatus =
+    | 'valid'
+    | 'passphraseRequired'
+    | 'invalidPassphrase'
+    | 'invalidKey'
+    | 'unavailable';
+
+export interface PrivateKeyInspectionResult {
+    status: PrivateKeyInspectionStatus;
+    encrypted: boolean;
+    remembered?: boolean;
+}
+
+export type PrivateKeyInspectionRequest =
+    | { path: string; content?: never; passphrase?: string | null }
+    | { content: string; path?: never; passphrase?: string | null };
 export type SshImportSourceType = 'default_ssh' | 'file' | 'text';
 export type SshImportSourceRequest =
     | { sourceType: 'default_ssh' }
@@ -84,3 +102,35 @@ export const disconnectVaultBackedIpc = async (): Promise<string[]> =>
     window.ipcRenderer.invoke('ssh:disconnectVaultBacked');
 export const getRemoteCwdIpc = async (connectionId: string): Promise<string> =>
     window.ipcRenderer.invoke('fs:cwd', connectionId);
+
+export const writeManagedKeyIpc = async (args: {
+    content: string;
+    suggestedName?: string | null;
+}): Promise<string> =>
+    window.ipcRenderer.invoke('ssh:write-managed-key', {
+        content: args.content,
+        suggestedName: args.suggestedName ?? null,
+    });
+
+export const readLocalKeyFileIpc = async (path: string): Promise<string> =>
+    window.ipcRenderer.invoke('ssh:read-local-key-file', path);
+
+export const inspectPrivateKeyIpc = async (
+    request: PrivateKeyInspectionRequest,
+): Promise<PrivateKeyInspectionResult> =>
+    window.ipcRenderer.invoke('ssh:inspect-private-key', request);
+
+export const privateKeyReadinessIpc = async (path: string): Promise<PrivateKeyInspectionResult> =>
+    window.ipcRenderer.invoke('ssh:private-key-readiness', path);
+
+export const rememberKeyPassphraseIpc = async (path: string, passphrase: string): Promise<void> =>
+    window.ipcRenderer.invoke('ssh:remember-key-passphrase', { path, passphrase });
+
+export const forgetKeyPassphraseIpc = async (path: string): Promise<void> =>
+    window.ipcRenderer.invoke('ssh:forget-key-passphrase', path);
+
+export const writeEphemeralKeyIpc = async (content: string): Promise<string> =>
+    window.ipcRenderer.invoke('ssh:write-ephemeral-key', { content });
+
+export const deleteEphemeralKeyIpc = async (path: string): Promise<void> =>
+    window.ipcRenderer.invoke('ssh:delete-ephemeral-key', path);

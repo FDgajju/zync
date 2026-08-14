@@ -1,7 +1,8 @@
 # Zync Vault & Sync — Roadmap & Future Plans
 
-**Last updated:** 2026-06-15  
-**Current implementation reference:** [VAULT.md](./VAULT.md)
+**Last updated:** 2026-08-10  
+**Current implementation reference:** [VAULT.md](./VAULT.md)  
+**Host auth / add-connection plan:** [CONNECTIONS.md](./CONNECTIONS.md)
 
 Plans, deferred work, and long-term direction. Not required for day-to-day implementation of shipped features.
 
@@ -777,6 +778,20 @@ Logical ID / credential ID is the identity anchor.
 ---
 
 ## 6. Credential Model Deferred Work
+
+### Host auth UX (issue #90) — core shipped; system ssh-agent deferred
+
+**Canonical plan:** [CONNECTIONS.md §5–§6](./CONNECTIONS.md#5-known-inconsistency-issue-90)
+
+**Status (2026-08-13):** Core UX split and passphrase retention are implemented on main. File, paste, and vault-import flows detect encrypted keys and verify locally; connect-time prompting supports per-connection memory, key-level OS credential-store retention with explicit forgetting, and direct Vault conversion with automatic connection resume. System ssh-agent support remains deferred; see `CONNECTIONS.md`.
+
+Confirmed gap (original): file-key auth had no key-passphrase UI / no system ssh-agent; “Paste to Vault” mixed vault into the Key tab.
+
+Approved direction (summary):
+
+- **Private key (non-vault):** file path (+ optional paste→save-as-file), optional `ssh-keygen` passphrase; later system agent.
+- **Vault:** existing credential, paste into vault, import file into vault.
+- Do not store PEM on `connections.json`; do not merge hosts into `vault.redb`.
 
 ### Not yet fully implemented
 

@@ -12,8 +12,9 @@ interface ConnectedHostsGroupProps {
 }
 
 /**
- * Virtual folder at the top of All Hosts — live sessions only.
- * Always starts expanded; hides entirely when empty.
+ * Virtual folder at the top of All Hosts — fully connected sessions only.
+ * Hosts stay in the main tree while `connecting` so click/dblclick cannot
+ * retarget a neighbor after the list reorders. Always starts expanded; hides when empty.
  */
 export const ConnectedHostsGroup = memo(function ConnectedHostsGroup({
     connections,

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   buildConnectionSavePayload,
   buildConnectionTestPayload,
+  canSaveInspectedPrivateKey,
 } from '../.tmp-agent-tests/src/features/connections/domain/formTransforms.js';
 
 function runTest(name, fn) {
@@ -60,6 +61,52 @@ runTest('buildConnectionSavePayload throws on invalid port', () => {
       }),
     /Port must be an integer between 1 and 65535/
   );
+});
+
+runTest('buildConnectionSavePayload never persists key passphrase on the host', () => {
+  const payload = buildConnectionSavePayload({
+    formData: {
+      host: '10.0.0.2',
+      username: 'ubuntu',
+      port: 22,
+      privateKeyPath: '/tmp/id_ed25519',
+      password: '  key passphrase  ',
+    },
+    authMethod: 'key',
+    editingConnectionId: null,
+    connections: [],
+  });
+
+  assert.equal(payload.privateKeyPath, '/tmp/id_ed25519');
+  assert.equal(payload.password, undefined);
+  assert.equal(payload.authRef, undefined);
+});
+
+runTest('encrypted keys can be saved without a passphrase for connect-time prompting', () => {
+  assert.equal(canSaveInspectedPrivateKey('passphraseRequired', ''), true);
+  assert.equal(canSaveInspectedPrivateKey('passphraseRequired', 'partial'), false);
+  assert.equal(canSaveInspectedPrivateKey('valid', 'correct passphrase'), true);
+  assert.equal(canSaveInspectedPrivateKey('invalidPassphrase', 'wrong passphrase'), false);
+  assert.equal(canSaveInspectedPrivateKey('invalidKey', ''), false);
+});
+
+runTest('buildConnectionTestPayload passes key passphrase through PrivateKey auth', () => {
+  const payload = buildConnectionTestPayload({
+    formData: {
+      id: 'main',
+      name: 'main',
+      host: '192.168.0.10',
+      username: 'ec2-user',
+      port: 22,
+      privateKeyPath: '/tmp/key.pem',
+      password: 'enc-pass',
+    },
+    authMethod: 'key',
+    connections: [],
+  });
+
+  assert.equal(payload.auth_method.type, 'PrivateKey');
+  assert.equal(payload.auth_method.passphrase, 'enc-pass');
 });
 
 runTest('buildConnectionTestPayload builds key auth config and jump host', () => {

@@ -1,17 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useAppStore, Connection } from '../../store/useAppStore';
 import {
     validateConnectionDraft,
     getCredentialHealthChecks,
     buildConnectionSavePayload,
+    applyAuthMethodTransition,
+    type ConnectionAuthMode,
 } from '../../features/connections/domain';
-import { findDuplicateConnectionByEndpoint } from '../../features/connections/application/connectionService';
+import { findBlockingDuplicateConnectionByEndpoint } from '../../features/connections/application/connectionService';
 
 const EMPTY_FORM: Partial<Connection> = {
     name: '', host: '', username: '', port: 22, password: '',
     privateKeyPath: '', jumpServerId: undefined, icon: 'Server',
     folder: '', theme: '', tags: [],
 };
+
+export type KeyInputMode = 'file' | 'paste';
+export type VaultInputMode = 'existing' | 'paste' | 'import';
 
 export function useConnectionForm(isOpen: boolean, editingConnectionId: string | null) {
     const connections = useAppStore(state => state.connections);
@@ -20,8 +25,9 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
     const editConnection = useAppStore(state => state.editConnection);
 
     const [formData, setFormData] = useState<Partial<Connection>>(EMPTY_FORM);
-    const [authMethod, setAuthMethod] = useState<'password' | 'key' | 'vault'>('password');
-    const [keyInputMode, setKeyInputMode] = useState<'file' | 'paste'>('file');
+    const [authMethod, setAuthMethodState] = useState<ConnectionAuthMode>('password');
+    const [keyInputMode, setKeyInputMode] = useState<KeyInputMode>('file');
+    const [vaultInputMode, setVaultInputMode] = useState<VaultInputMode>('existing');
     const [touched, setTouched] = useState({ host: false, username: false, port: false, keyPath: false });
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [allowDuplicateEndpoint, setAllowDuplicateEndpoint] = useState(false);
@@ -33,16 +39,33 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
         [connections, editingConnectionId]
     );
 
+    const authMethodRef = useRef<ConnectionAuthMode>('password');
+
+    const setAuthMethod = useCallback((next: ConnectionAuthMode) => {
+        const prev = authMethodRef.current;
+        if (prev === next) return;
+        // Keep the authMethod state updater pure — apply form secret clearing here.
+        authMethodRef.current = next;
+        setAuthMethodState(next);
+        setFormData((fd) => applyAuthMethodTransition(fd, prev, next));
+    }, []);
+
     useEffect(() => {
         if (!isOpen) return;
         setAllowDuplicateEndpoint(false);
         setSubmitAttempted(false);
         setTouched({ host: false, username: false, port: false, keyPath: false });
         setKeyInputMode('file');
+        setVaultInputMode('existing');
 
         if (activeEditingConnectionId) {
             const conn = useAppStore.getState().connections.find(c => c.id === activeEditingConnectionId);
             if (conn) {
+                const nextAuthMethod: ConnectionAuthMode = conn.authRef
+                    ? 'vault'
+                    : conn.privateKeyPath
+                        ? 'key'
+                        : 'password';
                 setFormData({
                     ...conn,
                     password: conn.password || '',
@@ -51,19 +74,21 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
                     icon: conn.icon || 'Server',
                     tags: conn.tags || [],
                 });
-                setAuthMethod(conn.authRef ? 'vault' : conn.privateKeyPath ? 'key' : 'password');
+                authMethodRef.current = nextAuthMethod;
+                setAuthMethodState(nextAuthMethod);
                 return;
             }
         }
         setFormData(EMPTY_FORM);
-        setAuthMethod('password');
+        authMethodRef.current = 'password';
+        setAuthMethodState('password');
     }, [activeEditingConnectionId, isOpen]);
 
-    // Paste mode stores key in vault — treat as vault for field validation.
-    const effectiveAuthMode = authMethod === 'key' && keyInputMode === 'paste' ? 'vault' : authMethod;
+    // Local key paste writes a managed file on save — path not required until then.
+    const deferKeyPath = authMethod === 'key' && keyInputMode === 'paste';
     const validation = useMemo(
-        () => validateConnectionDraft(formData, effectiveAuthMode),
-        [formData, effectiveAuthMode]
+        () => validateConnectionDraft(formData, authMethod, { deferKeyPath }),
+        [formData, authMethod, deferKeyPath]
     );
     const hostError = validation.fieldErrors.host || '';
     const usernameError = validation.fieldErrors.username || '';
@@ -75,12 +100,12 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
     const visibleKeyPathError = (submitAttempted || touched.keyPath) ? keyPathError : '';
 
     const duplicateConnection = useMemo(
-        () => findDuplicateConnectionByEndpoint(connections, formData, activeEditingConnectionId),
+        () => findBlockingDuplicateConnectionByEndpoint(connections, formData, activeEditingConnectionId),
         [activeEditingConnectionId, connections, formData]
     );
     const credentialHealthChecks = useMemo(
-        () => getCredentialHealthChecks(formData, effectiveAuthMode),
-        [formData, effectiveAuthMode]
+        () => getCredentialHealthChecks(formData, authMethod),
+        [formData, authMethod]
     );
     const jumpCycleWarning = useMemo(() => {
         if (!formData.jumpServerId || !activeEditingConnectionId) return false;
@@ -116,6 +141,7 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
         formData, setFormData,
         authMethod, setAuthMethod,
         keyInputMode, setKeyInputMode,
+        vaultInputMode, setVaultInputMode,
         touched, setTouched,
         submitAttempted, setSubmitAttempted,
         allowDuplicateEndpoint, setAllowDuplicateEndpoint,

@@ -5,6 +5,7 @@ use crate::types::*;
 use anyhow::Result;
 use russh::client::{Handle, Msg};
 use russh::Channel;
+use secrecy::{ExposeSecret, SecretString};
 use std::collections::{HashMap, HashSet};
 use std::io::ErrorKind;
 use std::path::Path;
@@ -798,6 +799,46 @@ fn persist_relinked_vault_refs(
     Ok(())
 }
 
+fn inject_remembered_key_passphrases(config: &mut ConnectionConfig) -> Result<(), String> {
+    if let crate::types::AuthMethod::PrivateKey {
+        key_path,
+        passphrase,
+    } = &mut config.auth_method
+    {
+        if passphrase.is_none() {
+            match crate::ssh_key_passphrase_cache::load(key_path) {
+                Ok(Some(remembered)) => {
+                    *passphrase = Some(remembered.expose_secret().to_string());
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    log::warn!(
+                        "Remembered SSH key passphrase could not be read for configured key path: {error}"
+                    );
+                }
+            }
+        }
+    }
+    if let Some(jump) = config.jump_host.as_mut() {
+        inject_remembered_key_passphrases(jump)?;
+    }
+    Ok(())
+}
+
+async fn inject_remembered_key_passphrases_blocking(
+    config: &mut ConnectionConfig,
+) -> Result<(), String> {
+    let mut moved = config.clone();
+    let moved = tokio::task::spawn_blocking(move || {
+        inject_remembered_key_passphrases(&mut moved)?;
+        Ok::<ConnectionConfig, String>(moved)
+    })
+    .await
+    .map_err(|error| format!("Remembered SSH key passphrase task failed: {error}"))??;
+    *config = moved;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn ssh_connect(
     app: AppHandle,
@@ -808,6 +849,7 @@ pub async fn ssh_connect(
     let original_config = config.clone();
     let uses_vault_auth = config_uses_vault_auth(&original_config);
     let relinked = resolve_vault_refs(&mut config, &vault).await?;
+    inject_remembered_key_passphrases_blocking(&mut config).await?;
     if !relinked.is_empty() {
         let app_handle = app.clone();
         let persist_result =
@@ -859,6 +901,7 @@ pub async fn ssh_test_connection(
     vault: State<'_, tokio::sync::Mutex<crate::vault::store::VaultService>>,
 ) -> Result<String, String> {
     let _relinked = resolve_vault_refs(&mut config, &vault).await?;
+    inject_remembered_key_passphrases_blocking(&mut config).await?;
     match state
         .ssh_manager
         .connect(config.clone(), Arc::new((*state.tunnel_manager).clone()))
@@ -993,6 +1036,505 @@ pub async fn ssh_extract_pem(app_handle: tauri::AppHandle, path: String) -> Resu
     }
 
     Ok(dest_path.to_string_lossy().to_string())
+}
+
+fn looks_like_private_key_pem(content: &str) -> bool {
+    content.contains("-----BEGIN ") && content.contains("PRIVATE KEY-----") && content.contains("-----END ")
+}
+
+fn set_private_key_file_permissions(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(path)
+            .map_err(|e| e.to_string())?
+            .permissions();
+        perms.set_mode(0o600);
+        std::fs::set_permissions(path, perms).map_err(|e| e.to_string())?;
+    }
+    let _ = path;
+    Ok(())
+}
+
+/// Write private-key PEM with restrictive permissions.
+/// On Unix, `mode(0o600)` applies at create time; chmod afterward covers umask and existing files.
+fn write_private_key_file(path: &std::path::Path, content: &str) -> Result<(), String> {
+    use std::io::Write;
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path).map_err(|e| e.to_string())?;
+    file.write_all(content.as_bytes()).map_err(|e| e.to_string())?;
+    // Guarantee 0o600 even when umask softened create-time mode, or when truncating an older file.
+    set_private_key_file_permissions(path)?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteManagedKeyRequest {
+    pub content: String,
+    pub suggested_name: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InspectPrivateKeyRequest {
+    pub path: Option<String>,
+    pub content: Option<SecretString>,
+    pub passphrase: Option<SecretString>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InspectPrivateKeyResponse {
+    pub status: String,
+    pub encrypted: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remembered: bool,
+}
+
+fn private_key_uses_encrypted_pem_container(content: &str) -> bool {
+    content.contains("-----BEGIN ENCRYPTED PRIVATE KEY-----")
+        || content.contains("Proc-Type: 4,ENCRYPTED")
+}
+
+fn inspect_private_key_content(
+    content: &str,
+    passphrase: Option<&str>,
+) -> InspectPrivateKeyResponse {
+    let encrypted_container = private_key_uses_encrypted_pem_container(content);
+    if encrypted_container {
+        let Some(passphrase) = passphrase.filter(|value| !value.is_empty()) else {
+            return InspectPrivateKeyResponse {
+                status: "passphraseRequired".to_string(),
+                encrypted: true,
+                remembered: false,
+            };
+        };
+        return match russh_keys::decode_secret_key(content, Some(passphrase)) {
+            Ok(_) => InspectPrivateKeyResponse {
+                status: "valid".to_string(),
+                encrypted: true,
+                remembered: false,
+            },
+            Err(_) => InspectPrivateKeyResponse {
+                status: "invalidPassphrase".to_string(),
+                encrypted: true,
+                remembered: false,
+            },
+        };
+    }
+
+    match russh_keys::decode_secret_key(content, None) {
+        Ok(_) => InspectPrivateKeyResponse {
+            status: "valid".to_string(),
+            encrypted: false,
+            remembered: false,
+        },
+        Err(russh_keys::Error::KeyIsEncrypted) => {
+            let Some(passphrase) = passphrase.filter(|value| !value.is_empty()) else {
+                return InspectPrivateKeyResponse {
+                    status: "passphraseRequired".to_string(),
+                    encrypted: true,
+                    remembered: false,
+                };
+            };
+            match russh_keys::decode_secret_key(content, Some(passphrase)) {
+                Ok(_) => InspectPrivateKeyResponse {
+                    status: "valid".to_string(),
+                    encrypted: true,
+                    remembered: false,
+                },
+                Err(_) => InspectPrivateKeyResponse {
+                    status: "invalidPassphrase".to_string(),
+                    encrypted: true,
+                    remembered: false,
+                },
+            }
+        }
+        Err(_) => InspectPrivateKeyResponse {
+            status: "invalidKey".to_string(),
+            encrypted: false,
+            remembered: false,
+        },
+    }
+}
+
+/// Inspect a private key locally and verify its passphrase without persisting either value.
+fn ssh_inspect_private_key_sync(
+    request: InspectPrivateKeyRequest,
+) -> Result<InspectPrivateKeyResponse, String> {
+    let content = match (request.path.as_deref(), request.content) {
+        (Some(path), None) if !path.trim().is_empty() => {
+            let metadata = std::fs::metadata(path.trim()).map_err(|e| e.to_string())?;
+            if metadata.len() > MAX_IMPORT_TEXT_BYTES as u64 {
+                return Err("Private key file too large (max 1 MiB).".to_string());
+            }
+            SecretString::from(std::fs::read_to_string(path.trim()).map_err(|e| e.to_string())?)
+        }
+        (None, Some(content)) if !content.expose_secret().trim().is_empty() => {
+            if content.expose_secret().len() > MAX_IMPORT_TEXT_BYTES {
+                return Err("Private key content too large (max 1 MiB).".to_string());
+            }
+            content
+        }
+        _ => return Err("Provide exactly one private key path or key content.".to_string()),
+    };
+
+    if !looks_like_private_key_pem(content.expose_secret()) {
+        return Ok(InspectPrivateKeyResponse {
+            status: "invalidKey".to_string(),
+            encrypted: false,
+            remembered: false,
+        });
+    }
+
+    Ok(inspect_private_key_content(
+        content.expose_secret(),
+        request.passphrase.as_ref().map(ExposeSecret::expose_secret),
+    ))
+}
+
+#[tauri::command]
+pub async fn ssh_inspect_private_key(
+    request: InspectPrivateKeyRequest,
+) -> Result<InspectPrivateKeyResponse, String> {
+    tokio::task::spawn_blocking(move || ssh_inspect_private_key_sync(request))
+        .await
+        .map_err(|error| format!("Private key inspection task failed: {error}"))?
+}
+
+fn read_private_key_file(path: &str) -> Result<SecretString, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Key path is empty.".to_string());
+    }
+    let metadata = std::fs::metadata(trimmed).map_err(|e| e.to_string())?;
+    if !metadata.is_file() {
+        return Err("Private key path is not a file.".to_string());
+    }
+    if metadata.len() > MAX_IMPORT_TEXT_BYTES as u64 {
+        return Err("Private key file too large (max 1 MiB).".to_string());
+    }
+    std::fs::read_to_string(trimmed)
+        .map(SecretString::from)
+        .map_err(|e| e.to_string())
+}
+
+fn ssh_private_key_readiness_sync(path: String) -> Result<InspectPrivateKeyResponse, String> {
+    let content = match read_private_key_file(&path) {
+        Ok(content) => content,
+        Err(error) => {
+            log::warn!("Private key readiness could not read configured key path: {error}");
+            return Ok(InspectPrivateKeyResponse {
+                status: "unavailable".to_string(),
+                encrypted: false,
+                remembered: false,
+            });
+        }
+    };
+    let initial = inspect_private_key_content(content.expose_secret(), None);
+    if initial.status != "passphraseRequired" {
+        return Ok(initial);
+    }
+
+    let passphrase = match crate::ssh_key_passphrase_cache::load(&path) {
+        Ok(Some(passphrase)) => passphrase,
+        Ok(None) => return Ok(initial),
+        Err(error) => {
+            log::warn!(
+                "Remembered SSH key passphrase could not be read during readiness check: {error}"
+            );
+            return Ok(initial);
+        }
+    };
+    let mut remembered = inspect_private_key_content(
+        content.expose_secret(),
+        Some(passphrase.expose_secret()),
+    );
+    if remembered.status == "valid" {
+        remembered.remembered = true;
+        return Ok(remembered);
+    }
+
+    if let Err(error) = crate::ssh_key_passphrase_cache::clear(&path) {
+        log::warn!(
+            "Remembered SSH key passphrase could not be cleared after failed readiness check: {error}"
+        );
+    }
+    Ok(initial)
+}
+
+#[tauri::command]
+pub async fn ssh_private_key_readiness(path: String) -> Result<InspectPrivateKeyResponse, String> {
+    tokio::task::spawn_blocking(move || ssh_private_key_readiness_sync(path))
+        .await
+        .map_err(|error| format!("Private key readiness task failed: {error}"))?
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RememberKeyPassphraseRequest {
+    pub path: String,
+    pub passphrase: SecretString,
+}
+
+fn ssh_remember_key_passphrase_sync(
+    request: RememberKeyPassphraseRequest,
+) -> Result<(), String> {
+    let content = read_private_key_file(&request.path)?;
+    let inspection = inspect_private_key_content(
+        content.expose_secret(),
+        Some(request.passphrase.expose_secret()),
+    );
+    if inspection.status != "valid" || !inspection.encrypted {
+        return Err("Passphrase does not unlock this encrypted private key.".to_string());
+    }
+    crate::ssh_key_passphrase_cache::save(&request.path, &request.passphrase)
+}
+
+#[tauri::command]
+pub async fn ssh_remember_key_passphrase(
+    request: RememberKeyPassphraseRequest,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || ssh_remember_key_passphrase_sync(request))
+        .await
+        .map_err(|error| format!("Remember SSH key passphrase task failed: {error}"))?
+}
+
+#[tauri::command]
+pub async fn ssh_forget_key_passphrase(path: String) -> Result<(), String> {
+    crate::ssh_key_passphrase_cache::clear(&path)
+}
+
+#[cfg(test)]
+mod private_key_inspection_tests {
+    use super::inspect_private_key_content;
+
+    #[test]
+    fn accepts_unencrypted_private_keys_without_a_passphrase() {
+        let key = russh_keys::key::KeyPair::generate_ed25519();
+        let mut pem = Vec::new();
+        russh_keys::encode_pkcs8_pem(&key, &mut pem).expect("encode private key");
+        let pem = String::from_utf8(pem).expect("PEM is UTF-8");
+
+        let result = inspect_private_key_content(&pem, None);
+
+        assert_eq!(result.status, "valid");
+        assert!(!result.encrypted);
+    }
+
+    #[test]
+    fn requires_and_verifies_encrypted_key_passphrases() {
+        let key = russh_keys::key::KeyPair::generate_ed25519();
+        let mut pem = Vec::new();
+        russh_keys::encode_pkcs8_pem_encrypted(&key, b"correct horse", 2, &mut pem)
+            .expect("encode encrypted private key");
+        let pem = String::from_utf8(pem).expect("PEM is UTF-8");
+
+        let missing = inspect_private_key_content(&pem, None);
+        let invalid = inspect_private_key_content(&pem, Some("wrong passphrase"));
+        let valid = inspect_private_key_content(&pem, Some("correct horse"));
+
+        assert_eq!(missing.status, "passphraseRequired");
+        assert_eq!(invalid.status, "invalidPassphrase");
+        assert_eq!(valid.status, "valid");
+        assert!(missing.encrypted && invalid.encrypted && valid.encrypted);
+    }
+
+    #[test]
+    fn rejects_non_key_content() {
+        let result = inspect_private_key_content("not a private key", None);
+
+        assert_eq!(result.status, "invalidKey");
+        assert!(!result.encrypted);
+    }
+}
+
+/// Write pasted private-key PEM into the managed `{dataDir}/keys` folder and return the path.
+/// Used for non-vault "Paste" key auth — host stores only `privateKeyPath`.
+#[tauri::command]
+pub async fn ssh_write_managed_key(
+    app_handle: tauri::AppHandle,
+    request: WriteManagedKeyRequest,
+) -> Result<String, String> {
+    let trimmed = request.content.trim();
+    if trimmed.is_empty() {
+        return Err("Private key content is empty.".to_string());
+    }
+    if !looks_like_private_key_pem(trimmed) {
+        return Err("Pasted key must include valid BEGIN/END private key markers.".to_string());
+    }
+
+    let data_dir = get_data_dir(&app_handle);
+    let keys_dir = data_dir.join("keys");
+    if !keys_dir.exists() {
+        std::fs::create_dir_all(&keys_dir).map_err(|e| e.to_string())?;
+    }
+
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    trimmed.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    let raw_name = request
+        .suggested_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("pasted_key");
+    let safe_name: String = raw_name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let safe_name = if safe_name.is_empty() {
+        "pasted_key".to_string()
+    } else {
+        safe_name
+    };
+    let dest_filename = if safe_name.to_ascii_lowercase().ends_with(".pem")
+        || safe_name.starts_with("id_")
+    {
+        format!("{:x}_{}", hash, safe_name)
+    } else {
+        format!("{:x}_{}.pem", hash, safe_name)
+    };
+    let dest_path = keys_dir.join(dest_filename);
+
+    write_private_key_file(&dest_path, &format!("{trimmed}\n"))?;
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+/// Read a local private key file for vault import (returns PEM text).
+#[tauri::command]
+pub async fn ssh_read_local_key_file(path: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Key path is empty.".to_string());
+    }
+    let metadata = std::fs::metadata(trimmed).map_err(|e| e.to_string())?;
+    if metadata.len() > MAX_IMPORT_TEXT_BYTES as u64 {
+        return Err("Private key file too large (max 1 MiB).".to_string());
+    }
+    let content = std::fs::read_to_string(trimmed).map_err(|e| e.to_string())?;
+    if !looks_like_private_key_pem(&content) {
+        return Err("Selected file does not look like a private key.".to_string());
+    }
+    Ok(content)
+}
+
+fn ephemeral_keys_dir(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
+    get_data_dir(app_handle).join("tmp-keys")
+}
+
+/// Remove leftover Test-only key files under `{dataDir}/tmp-keys` (e.g. after a crash).
+/// Missing directory is fine; individual delete failures are logged and skipped.
+pub fn cleanup_stale_ephemeral_key_files(app: &tauri::AppHandle) {
+    let dir = ephemeral_keys_dir(app);
+    if !dir.exists() {
+        return;
+    }
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            eprintln!(
+                "[ssh] Failed to scan ephemeral key dir {}: {}",
+                dir.display(),
+                error
+            );
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if let Err(error) = std::fs::remove_file(&path) {
+            eprintln!(
+                "[ssh] Failed to remove stale ephemeral key {}: {}",
+                path.display(),
+                error
+            );
+        }
+    }
+}
+
+/// Write a short-lived key file for connection Test only (not durable host auth).
+/// Caller should delete via `ssh_delete_ephemeral_key` after the test.
+#[tauri::command]
+pub async fn ssh_write_ephemeral_key(
+    app_handle: tauri::AppHandle,
+    content: String,
+) -> Result<String, String> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Err("Private key content is empty.".to_string());
+    }
+    if !looks_like_private_key_pem(trimmed) {
+        return Err("Pasted key must include valid BEGIN/END private key markers.".to_string());
+    }
+
+    let dir = ephemeral_keys_dir(&app_handle);
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    }
+
+    let dest_path = dir.join(format!(
+        "test-{}-{}.pem",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+        uuid::Uuid::new_v4().simple()
+    ));
+    write_private_key_file(&dest_path, &format!("{trimmed}\n"))?;
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+/// Delete an ephemeral test key. Refuses paths outside `{dataDir}/tmp-keys`.
+#[tauri::command]
+pub async fn ssh_delete_ephemeral_key(
+    app_handle: tauri::AppHandle,
+    path: String,
+) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    let target = std::path::PathBuf::from(trimmed);
+    let dir = ephemeral_keys_dir(&app_handle);
+    let dir_canon = match dir.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "Failed to resolve ephemeral key directory ({}): {error}",
+                dir.display()
+            ));
+        }
+    };
+    let target_canon = target.canonicalize().unwrap_or(target.clone());
+    if !target_canon.starts_with(&dir_canon) {
+        return Err("Refusing to delete a path outside the ephemeral key directory.".to_string());
+    }
+    if target_canon.is_file() {
+        let _ = std::fs::remove_file(&target_canon);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1894,6 +2436,8 @@ async fn reconnect_stored_connection(
             }
         }
     }
+
+    inject_remembered_key_passphrases_blocking(&mut connect_config).await?;
 
     let mut new_handle = reconnect_connection(
         &connect_config,
@@ -3803,7 +4347,34 @@ pub async fn ssh_import_config(
 
     // println!("[SSH] Importing config from: {:?}", config_path);
 
-    crate::ssh_config::parse_config(&config_path).map_err(|e| e.to_string())
+    let connections = crate::ssh_config::parse_config(&config_path).map_err(|e| e.to_string())?;
+    inspect_imported_connection_keys_blocking(connections).await
+}
+
+fn inspect_imported_connection_keys(
+    connections: &mut [crate::ssh_config::ParsedSshConnection],
+) {
+    for connection in connections {
+        let Some(path) = connection.private_key_path.as_deref() else {
+            continue;
+        };
+        let status = read_private_key_file(path)
+            .ok()
+            .map(|content| inspect_private_key_content(content.expose_secret(), None).status)
+            .unwrap_or_else(|| "unavailable".to_string());
+        connection.private_key_status = Some(status);
+    }
+}
+
+async fn inspect_imported_connection_keys_blocking(
+    mut connections: Vec<crate::ssh_config::ParsedSshConnection>,
+) -> Result<Vec<crate::ssh_config::ParsedSshConnection>, String> {
+    tokio::task::spawn_blocking(move || {
+        inspect_imported_connection_keys(&mut connections);
+        connections
+    })
+    .await
+    .map_err(|error| format!("SSH import key inspection task failed: {error}"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -3835,7 +4406,8 @@ pub async fn ssh_import_config_from_file(
     if metadata.len() > MAX_IMPORT_TEXT_BYTES as u64 {
         return Err("SSH config file too large (max 1 MiB).".to_string());
     }
-    crate::ssh_config::parse_config(config_path).map_err(|e| e.to_string())
+    let connections = crate::ssh_config::parse_config(config_path).map_err(|e| e.to_string())?;
+    inspect_imported_connection_keys_blocking(connections).await
 }
 
 #[tauri::command]
@@ -3850,7 +4422,8 @@ pub async fn ssh_import_config_from_text(
         return Err("Pasted SSH config is too large (max 1 MiB).".to_string());
     }
 
-    crate::ssh_config::parse_config_text(&content).map_err(|e| e.to_string())
+    let connections = crate::ssh_config::parse_config_text(&content).map_err(|e| e.to_string())?;
+    inspect_imported_connection_keys_blocking(connections).await
 }
 
 #[tauri::command]

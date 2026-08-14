@@ -1,8 +1,9 @@
 import { memo, type RefObject } from 'react';
-import { Copy, Clipboard as ClipboardIcon, Trash2, Scissors } from 'lucide-react';
+import { Copy, Clipboard as ClipboardIcon, Trash2, Scissors, FolderOpen } from 'lucide-react';
 import type { Terminal as XTerm } from '@xterm/xterm';
 import { ContextMenu } from '../ui/ContextMenu';
 import type { AppSettings } from '../../store/settingsSlice';
+import { useAppStore } from '../../store/useAppStore';
 import { terminalCache } from '../../lib/terminal';
 import {
   readTerminalClipboardText,
@@ -11,6 +12,7 @@ import {
 
 export interface TerminalContextMenuProps {
   position: { x: number; y: number };
+  connectionId: string;
   sessionId: string;
   ghostSettings: AppSettings['ghostSuggestions'];
   ghostSuggestion: string;
@@ -22,6 +24,7 @@ export interface TerminalContextMenuProps {
 
 export const TerminalContextMenu = memo(function TerminalContextMenu({
   position,
+  connectionId,
   sessionId,
   ghostSettings,
   ghostSuggestion,
@@ -74,6 +77,30 @@ export const TerminalContextMenu = memo(function TerminalContextMenu({
           label: 'Select All',
           icon: <Scissors className="w-4 h-4" />,
           action: () => termRef.current?.selectAll(),
+        },
+        { separator: true as const },
+        {
+          label: 'Open File Manager Here',
+          icon: <FolderOpen className="w-4 h-4" />,
+          action: () => {
+            const store = useAppStore.getState();
+            const term = store.terminals[connectionId]?.find((t) => t.id === sessionId);
+            const connection = store.connections.find((c) => c.id === connectionId);
+            const targetPath =
+              term?.lastKnownCwd
+              || term?.initialPath
+              || connection?.homePath
+              || '/';
+            const tabId = store.activeTabId;
+            void (async () => {
+              await store.loadFiles(connectionId, targetPath);
+              if (!tabId) return;
+              // Retarget only the tab that initiated the action (ignore mid-await tab switches).
+              if (useAppStore.getState().tabs.some((tab) => tab.id === tabId)) {
+                useAppStore.getState().setTabView(tabId, 'files');
+              }
+            })();
+          },
         },
         {
           label: 'Clear Terminal',

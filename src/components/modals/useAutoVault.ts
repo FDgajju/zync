@@ -3,6 +3,10 @@ import { useAppStore, Connection } from '../../store/useAppStore';
 import { useVaultStore } from '../../vault/useVaultStore';
 import { vaultIpc } from '../../vault/ipc';
 import { buildConnectionSavePayload, buildDefaultKeyVaultLabel } from '../../features/connections/domain';
+import {
+    readLocalKeyFileIpc,
+    writeManagedKeyIpc,
+} from '../../features/connections/infrastructure/connectionIpc';
 import { ToastType } from '../../store/toastSlice';
 
 interface UseAutoVaultOptions {
@@ -10,9 +14,23 @@ interface UseAutoVaultOptions {
     formData: Partial<Connection>;
     authMethod: 'password' | 'key' | 'vault';
     keyInputMode: 'file' | 'paste';
+    vaultInputMode: 'existing' | 'paste' | 'import';
     activeEditingConnectionId: string | null;
     validationOk: boolean;
+    materializeLocalKeyToVault?: boolean;
     showToast: (type: ToastType, message: string) => void;
+}
+
+interface VaultKeyMaterialOverride {
+    keyText: string;
+    passphrase: string;
+    source?: 'paste' | 'file';
+}
+
+export interface VaultKeyConnectionResult {
+    connection: Connection;
+    /** Newly created vault item — delete if host persist fails. */
+    createdItemId: string;
 }
 
 const PRIVATE_KEY_BEGIN_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----/;
@@ -25,8 +43,10 @@ export function useAutoVault({
     formData,
     authMethod,
     keyInputMode,
+    vaultInputMode,
     activeEditingConnectionId,
     validationOk,
+    materializeLocalKeyToVault = false,
     showToast,
 }: UseAutoVaultOptions) {
     const { status: vaultStatus, items: vaultItems, refreshItems } = useVaultStore();
@@ -34,6 +54,7 @@ export function useAutoVault({
     const [pastedKeyText, setPastedKeyText] = useState('');
     const [pastedPassphrase, setPastedPassphrase] = useState('');
     const [pastedKeyError, setPastedKeyError] = useState('');
+    const [localKeyVaultError, setLocalKeyVaultError] = useState('');
     const [keyVaultLabel, setKeyVaultLabel] = useState('');
 
     useEffect(() => {
@@ -41,6 +62,7 @@ export function useAutoVault({
         setPastedKeyText('');
         setPastedPassphrase('');
         setPastedKeyError('');
+        setLocalKeyVaultError('');
         setKeyVaultLabel('');
     }, [isOpen]);
 
@@ -51,9 +73,12 @@ export function useAutoVault({
     });
     const effectiveKeyVaultLabel = keyVaultLabel.trim() || defaultKeyVaultLabel;
     const keyVaultLabelConflict = vaultStatus?.status === 'unlocked'
-        && authMethod === 'key'
-        && keyInputMode === 'paste'
-        && !!pastedKeyText.trim()
+        && (
+            (authMethod === 'vault'
+                && (vaultInputMode === 'paste' || vaultInputMode === 'import')
+                && !!pastedKeyText.trim())
+            || materializeLocalKeyToVault
+        )
         && vaultItems.some(i => i.label === effectiveKeyVaultLabel);
 
     const replacedAuthItemId = activeEditingConnectionId
@@ -61,14 +86,21 @@ export function useAutoVault({
         : undefined;
 
     const resolveVaultId = async (): Promise<string> => {
-        if (vaultStatus?.status === 'unlocked' && vaultStatus.vaultId) {
-            return vaultStatus.vaultId;
+        // Always re-read store + IPC so we don't use a stale render closure after unlock.
+        const fromStore = useVaultStore.getState().status;
+        if (fromStore?.status === 'unlocked' && fromStore.vaultId) {
+            return fromStore.vaultId;
         }
         const status = await vaultIpc.status();
-        if (status.status !== 'unlocked' || !status.vaultId) {
-            throw new Error('Vault must be unlocked to store credentials.');
+        if (status.status === 'unlocked' && status.vaultId) {
+            useVaultStore.setState({ status });
+            return status.vaultId;
         }
-        return status.vaultId;
+        throw new Error(
+            status.status === 'unlocked'
+                ? 'Vault is unlocked but vault id is missing. Try locking and unlocking the vault, then save again.'
+                : 'Vault must be unlocked to store credentials.',
+        );
     };
 
     const finalizeVaultReplacement = async () => {
@@ -96,57 +128,149 @@ export function useAutoVault({
         }
     };
 
-    const savePastedKey = async (): Promise<Partial<Connection> | null> => {
-        const keyText = pastedKeyText;
+    const setKeyValidationError = (source: 'paste' | 'file', message: string) => {
+        if (source === 'file') {
+            setLocalKeyVaultError(message);
+            setPastedKeyError('');
+        } else {
+            setPastedKeyError(message);
+            setLocalKeyVaultError('');
+        }
+        showToast('error', message);
+    };
+
+    const validateKeyText = (
+        candidate = pastedKeyText,
+        source: 'paste' | 'file' = 'paste',
+    ): string | null => {
+        const keyText = candidate;
         if (!keyText.trim()) {
-            showToast('error', 'Please paste a private key.');
-            setPastedKeyError('Please paste a private key.');
+            const message = source === 'file'
+                ? 'Selected key file is empty.'
+                : 'Please paste a private key.';
+            setKeyValidationError(source, message);
             return null;
         }
         if (!isValidPrivateKeyFormat(keyText)) {
-            const message = 'Pasted key must include valid BEGIN/END private key markers.';
-            setPastedKeyError(message);
-            showToast('error', message);
-            return null;
-        }
-        const unlockedVault = vaultStatus?.status === 'unlocked' ? vaultStatus : null;
-        if (!unlockedVault) {
-            showToast('error', 'Vault must be unlocked to store a pasted key.');
+            const message = source === 'file'
+                ? 'Selected key file must include valid BEGIN/END private key markers.'
+                : 'Pasted key must include valid BEGIN/END private key markers.';
+            setKeyValidationError(source, message);
             return null;
         }
         setPastedKeyError('');
+        setLocalKeyVaultError('');
+        return keyText;
+    };
+
+    const deleteCreatedVaultItemBestEffort = async (itemId: string, _originalError?: unknown) => {
+        try {
+            await vaultIpc.itemDelete(itemId);
+        } catch (cleanupError: unknown) {
+            console.warn('[Vault] Failed to delete orphaned vault item after save failure:', cleanupError);
+            showToast(
+                'error',
+                'Host save failed and the new vault credential could not be removed automatically — delete it in the Vault tab.',
+            );
+        }
+    };
+
+    const savePastedKeyToVault = async (
+        material?: VaultKeyMaterialOverride,
+    ): Promise<{ formPatch: Partial<Connection>; createdItemId: string } | null> => {
+        const keyText = validateKeyText(material?.keyText, material?.source ?? 'paste');
+        if (!keyText) return null;
+
         const vaultId = await resolveVaultId();
+        const currentItems = await vaultIpc.itemList();
+        if (currentItems.some(item => item.label === effectiveKeyVaultLabel)) {
+            throw new Error(`A Vault item named "${effectiveKeyVaultLabel}" already exists.`);
+        }
         const item = await vaultIpc.itemCreate(effectiveKeyVaultLabel, 'ssh-private-key', {
             privateKey: keyText,
-            ...(pastedPassphrase.length > 0 ? { passphrase: pastedPassphrase } : {}),
+            ...((material?.passphrase ?? pastedPassphrase).length > 0
+                ? { passphrase: material?.passphrase ?? pastedPassphrase }
+                : {}),
         });
         return {
-            ...formData,
-            authRef: {
-                vaultId,
-                credentialId: item.logicalId,
-                itemId: item.id,
-                itemKind: 'ssh-private-key',
-                purpose: 'ssh-auth',
+            createdItemId: item.id,
+            formPatch: {
+                ...formData,
+                password: undefined,
+                privateKeyPath: undefined,
+                authRef: {
+                    vaultId,
+                    credentialId: item.logicalId,
+                    itemId: item.id,
+                    itemKind: 'ssh-private-key',
+                    purpose: 'ssh-auth',
+                },
             },
         };
     };
 
-    const buildPastedKeyConnection = async (): Promise<Connection | null> => {
+    const buildVaultKeyConnection = async (
+        material?: VaultKeyMaterialOverride,
+    ): Promise<VaultKeyConnectionResult | null> => {
         if (!validationOk) return null;
+        let createdItemId: string | null = null;
         try {
-            const updatedData = await savePastedKey();
-            if (!updatedData) return null;
+            const saved = await savePastedKeyToVault(material);
+            if (!saved) return null;
+            createdItemId = saved.createdItemId;
             const { connections } = useAppStore.getState();
-            return buildConnectionSavePayload({
-                formData: updatedData,
+            const connection = buildConnectionSavePayload({
+                formData: saved.formPatch,
                 authMethod: 'vault',
                 editingConnectionId: activeEditingConnectionId,
                 connections,
             });
+            return { connection, createdItemId: saved.createdItemId };
         } catch (e: unknown) {
+            if (createdItemId) {
+                await deleteCreatedVaultItemBestEffort(createdItemId, e);
+            }
             showToast('error', `Failed to store key: ${e instanceof Error ? e.message : String(e)}`);
             return null;
+        }
+    };
+
+    /** Non-vault paste: write PEM to managed keys dir and return path. */
+    const writePastedKeyAsManagedFile = async (): Promise<string | null> => {
+        const keyText = validateKeyText();
+        if (!keyText) return null;
+        try {
+            const suggestedName = (formData.name || formData.host || 'pasted_key').trim();
+            return await writeManagedKeyIpc({
+                content: keyText,
+                suggestedName,
+            });
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            setPastedKeyError(message);
+            showToast('error', `Failed to save key file: ${message}`);
+            return null;
+        }
+    };
+
+    const loadKeyFileForVaultImport = async (path: string): Promise<boolean> => {
+        try {
+            const content = await readLocalKeyFileIpc(path);
+            setPastedKeyText(content);
+            setPastedKeyError('');
+            setLocalKeyVaultError('');
+            if (!keyVaultLabel.trim()) {
+                const base = path.split(/[/\\]/).pop() || 'imported-key';
+                // Strip a single trailing extension (id_ed25519 stays as-is; key.pem → key).
+                const withoutExt = base.replace(/\.[^.]+$/, '');
+                setKeyVaultLabel((withoutExt.trim() || base).trim());
+            }
+            return true;
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            setPastedKeyError(message);
+            showToast('error', `Failed to read key file: ${message}`);
+            return false;
         }
     };
 
@@ -155,9 +279,15 @@ export function useAutoVault({
         pastedKeyText, setPastedKeyText,
         pastedPassphrase, setPastedPassphrase,
         pastedKeyError, setPastedKeyError,
+        localKeyVaultError,
         keyVaultLabel, setKeyVaultLabel,
         defaultKeyVaultLabel, keyVaultLabelConflict,
-        buildPastedKeyConnection,
+        buildVaultKeyConnection,
+        deleteCreatedVaultItemBestEffort,
+        writePastedKeyAsManagedFile,
+        loadKeyFileForVaultImport,
         finalizeVaultReplacement,
+        keyInputMode,
+        vaultInputMode,
     };
 }

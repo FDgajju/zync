@@ -36,6 +36,8 @@ import {
 } from '../features/tunnels/application/tunnelReconnectService';
 import {
     buildConnectConfigResult,
+    buildDefaultKeyVaultLabel,
+    buildUniqueVaultLabel,
     connectConfigUsesVaultAuth,
     normalizeFolderPath,
     preserveVaultCredentialOnUpdate,
@@ -46,7 +48,14 @@ import { connectionErrorMessage } from '../features/connections/domain/errorSani
 import { useVaultStore } from '../vault/useVaultStore';
 import { isVaultInUseError, VAULT_IN_USE_USER_MESSAGE } from '../vault/vaultLoading';
 import { isVaultLockedError } from '../vault/vaultUnlockPrompt';
-import { connectIpc, disconnectIpc, getRemoteCwdIpc, transportLostIpc } from '../features/connections/infrastructure/connectionIpc';
+import {
+    connectIpc,
+    disconnectIpc,
+    getRemoteCwdIpc,
+    readLocalKeyFileIpc,
+    transportLostIpc,
+} from '../features/connections/infrastructure/connectionIpc';
+import { vaultIpc } from '../vault/ipc';
 import { seedRemoteGhostHistory } from '../lib/ghostSuggestions/client';
 import { ghostDebug } from '../lib/ghostSuggestions/ghostDebug';
 import { runSerializedConnectionOp } from '../features/connections/infrastructure/connectionOpQueue';
@@ -67,6 +76,13 @@ import {
 import type { TabSnapshot } from './sessionPersistence';
 import { DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS } from '../features/connections/domain/connectionDisplay.js';
 import { DEFAULT_VAULT_PROFILE_ID, isVaultProfileId, type VaultProfileId } from '../vault/profileTypes';
+import {
+    clearVaultRequestedPassphrase,
+    consumeVaultRequestedPassphrase,
+    KeyPassphrasePromptCancelledError,
+    KeyPassphraseVaultRequestedError,
+    prepareConnectKeyPassphrases,
+} from '../features/connections/application/keyPassphraseRuntime';
 export type { Connection, Folder, Tab } from '../features/connections/domain/types.js';
 
 export interface ConnectionSlice {
@@ -436,6 +452,26 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 return;
             }
             const fullConfig = configResult.config;
+            const legacyLocalKeyPassphraseIds = new Set<string>();
+            const collectLegacyKeyPassphrases = (
+                config: typeof fullConfig,
+                visited: Set<string> = new Set(),
+                depth = 0,
+            ) => {
+                if (depth > 10 || visited.has(config.id)) return;
+                visited.add(config.id);
+                const source = connections.find(connection => connection.id === config.id);
+                if (
+                    config.auth_method.type === 'PrivateKey'
+                    && source?.privateKeyPath
+                    && source.password
+                    && !source.authRef
+                ) {
+                    legacyLocalKeyPassphraseIds.add(source.id);
+                }
+                if (config.jump_host) collectLegacyKeyPassphrases(config.jump_host, visited, depth + 1);
+            };
+            collectLegacyKeyPassphrases(fullConfig);
 
             if (!skipVaultPrompt && connectConfigUsesVaultAuth(fullConfig)) {
                 const unlocked = await useVaultStore.getState().requestUnlock();
@@ -449,6 +485,8 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                     return;
                 }
             }
+
+            await prepareConnectKeyPassphrases(fullConfig);
 
             const response = await connectIpc(fullConfig);
             markConnectionBackendLive(id);
@@ -464,10 +502,22 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             }
 
             set(state => {
-                const newConns = markConnectionConnected(state.connections, id, homePath, response?.detected_os);
+                const connected = markConnectionConnected(state.connections, id, homePath, response?.detected_os);
+                const newConns = legacyLocalKeyPassphraseIds.size > 0
+                    ? connected.map(connection => legacyLocalKeyPassphraseIds.has(connection.id)
+                        ? { ...connection, password: undefined }
+                        : connection)
+                    : connected;
                 saveToMain(newConns, state.folders);
                 return { connections: newConns };
             });
+            if (legacyLocalKeyPassphraseIds.size > 0) {
+                get().showToast(
+                    'info',
+                    'Legacy key passphrases were removed from host records. Choose remember on device or save to Vault the next time Zync asks.',
+                    8000,
+                );
+            }
 
             // Clear pendingRestore so SSH terminal tabs can now spawn their PTYs.
             get().clearPendingRestore(id);
@@ -529,6 +579,94 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 console.error('Failed to load/start tunnels:', err);
             }
         } catch (error) {
+            if (error instanceof KeyPassphrasePromptCancelledError) {
+                set(state => ({
+                    connections: markConnectionStatus(state.connections, id, 'disconnected'),
+                }));
+                return;
+            }
+            if (error instanceof KeyPassphraseVaultRequestedError) {
+                set(state => ({
+                    connections: markConnectionStatus(state.connections, id, 'disconnected'),
+                }));
+                const target = get().connections.find(connection => connection.id === error.connectionId);
+                if (!target || target.privateKeyPath !== error.keyPath) {
+                    clearVaultRequestedPassphrase(error.connectionId, error.keyPath);
+                    get().showToast('error', 'The private-key host changed before it could be saved to Vault.');
+                    return;
+                }
+
+                const unlocked = await useVaultStore.getState().requestUnlock();
+                if (!unlocked) {
+                    clearVaultRequestedPassphrase(error.connectionId, error.keyPath);
+                    if (isVaultInUseError(useVaultStore.getState().error)) {
+                        get().showToast('error', VAULT_IN_USE_USER_MESSAGE, 8000);
+                    }
+                    return;
+                }
+
+                let createdVaultItemId: string | null = null;
+                try {
+                    const status = await vaultIpc.status();
+                    if (status.status === 'unlocked') {
+                        useVaultStore.setState({ status });
+                    }
+                    if (status.status !== 'unlocked' || !status.vaultId) {
+                        throw new Error('Vault must be unlocked to store this private key.');
+                    }
+                    const vaultId = status.vaultId;
+                    const [privateKey, existingItems] = await Promise.all([
+                        readLocalKeyFileIpc(error.keyPath),
+                        vaultIpc.itemList(),
+                    ]);
+                    const baseLabel = buildDefaultKeyVaultLabel(target);
+                    const label = buildUniqueVaultLabel(baseLabel, existingItems.map(item => item.label));
+                    const passphrase = consumeVaultRequestedPassphrase(error.connectionId, error.keyPath);
+                    if (!passphrase) {
+                        throw new Error('The private-key passphrase expired before it could be saved to Vault. Try connecting again.');
+                    }
+                    const item = await vaultIpc.itemCreate(label, 'ssh-private-key', {
+                        privateKey,
+                        passphrase,
+                    });
+                    createdVaultItemId = item.id;
+                    await get().editConnection({
+                        ...target,
+                        status: 'disconnected',
+                        password: undefined,
+                        privateKeyPath: undefined,
+                        authRef: {
+                            vaultId,
+                            credentialId: item.logicalId,
+                            itemId: item.id,
+                            itemKind: 'ssh-private-key',
+                            purpose: 'ssh-auth',
+                        },
+                    });
+                    try {
+                        await useVaultStore.getState().refreshItems();
+                    } catch {
+                        // The credential and host are already saved; the Vault list can refresh later.
+                    }
+                    get().showToast('success', `Saved "${label}" to Vault. Connecting...`);
+                    queueMicrotask(() => { void get().connect(id); });
+                } catch (vaultError: unknown) {
+                    clearVaultRequestedPassphrase(error.connectionId, error.keyPath);
+                    if (createdVaultItemId) {
+                        try {
+                            await vaultIpc.itemDelete(createdVaultItemId);
+                        } catch {
+                            get().showToast('error', 'Vault conversion failed and its temporary item could not be removed. Delete it from Vault manually.');
+                        }
+                    }
+                    get().showToast(
+                        'error',
+                        `Could not save this key to Vault: ${vaultError instanceof Error ? vaultError.message : String(vaultError)}`,
+                        8000,
+                    );
+                }
+                return;
+            }
             const message = connectionErrorMessage(error);
             if (!skipVaultPrompt && isVaultLockedError(message)) {
                 const unlocked = await useVaultStore.getState().requestUnlock();

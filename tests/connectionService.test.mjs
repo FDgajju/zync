@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   deleteFolderFromState,
+  findBlockingDuplicateConnectionByEndpoint,
   findDuplicateConnectionByEndpoint,
   renameFolderInState,
   upsertConnectionInState,
@@ -93,6 +94,35 @@ await runTest('findDuplicateConnectionByEndpoint matches by normalized host, use
     port: 1,
   });
   assert.equal(emptySetMatch, null);
+});
+
+await runTest('editing a pre-existing duplicate endpoint does not block an unchanged host', () => {
+  const connections = [
+    { id: 'old', host: 'shared-host', username: 'root', port: 22, name: 'Old' },
+    { id: 'new', host: 'shared-host', username: 'root', port: 22, name: 'New' },
+    { id: 'other', host: 'other-host', username: 'root', port: 22, name: 'Other' },
+  ];
+
+  const unchangedDuplicate = findBlockingDuplicateConnectionByEndpoint(connections, {
+    host: ' SHARED-HOST ',
+    username: 'Root',
+    port: '22',
+  }, 'new');
+  assert.equal(unchangedDuplicate, null);
+
+  const newlyCollidingEndpoint = findBlockingDuplicateConnectionByEndpoint(connections, {
+    host: 'other-host',
+    username: 'root',
+    port: 22,
+  }, 'new');
+  assert.equal(newlyCollidingEndpoint?.id, 'other');
+
+  const newConnectionDuplicate = findBlockingDuplicateConnectionByEndpoint(connections, {
+    host: 'shared-host',
+    username: 'root',
+    port: 22,
+  });
+  assert.equal(newConnectionDuplicate?.id, 'old');
 });
 
 console.log('Connection service tests passed.');

@@ -27,12 +27,15 @@ pub struct VaultMeta {
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum VaultStatus {
     Uninitialized,
+    // rename_all on the enum only affects variant names; field names need per-variant rename.
+    #[serde(rename_all = "camelCase")]
     Locked {
         vault_id: String,
         item_count: u64,
         /// True when an OS keychain session cache exists for this vault on this device.
         remembered_on_device: bool,
     },
+    #[serde(rename_all = "camelCase")]
     Unlocked { vault_id: String, item_count: u64 },
 }
 
