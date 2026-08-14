@@ -1,9 +1,13 @@
 # Snap only — does not touch GitHub Releases / deb / AppImage / RPM.
 # Manual only: workflow_dispatch (no push/tag triggers).
 #
+# IMPORTANT: git_ref must include snap/snapcraft.yaml.
+# Tag v2.23.0 was cut before Snap packaging existed — use main for 2.23.0
+# (package.json / snapcraft version stay 2.23.0 on that branch).
+#
 # Run: Actions → Snap → Run workflow
-#   git_ref: v2.23.0
-#   publish: false  → build + GitHub artifact only (safe first run)
+#   git_ref: main
+#   publish: false  → build + GitHub artifact only
 #   publish: true   → also upload to Snap Store channel
 name: Snap
 
@@ -11,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       git_ref:
-        description: Git tag or branch to package (e.g. v2.23.0)
+        description: "Git ref that includes snap/snapcraft.yaml (use main for 2.23.0; not the old v2.23.0 tag alone)"
         required: true
-        default: v2.23.0
+        default: main
         type: string
       publish:
         description: Upload to Snap Store after build
@@ -49,12 +53,30 @@ jobs:
         with:
           ref: ${{ inputs.git_ref }}
 
+      - name: Ensure snap recipe exists on this ref
+        run: |
+          if [ -f snap/snapcraft.yaml ]; then
+            echo "Found snap/snapcraft.yaml"
+            head -n 8 snap/snapcraft.yaml
+          elif [ -f snapcraft.yaml ]; then
+            echo "Found snapcraft.yaml at repo root"
+            head -n 8 snapcraft.yaml
+          else
+            echo "::error::No snapcraft.yaml on ref '${{ inputs.git_ref }}'."
+            echo "Tag v2.23.0 was created before Snap packaging was added."
+            echo "Use git_ref=main (version in snapcraft.yaml is still 2.23.0)."
+            ls -la
+            exit 1
+          fi
+
       - name: Build snap
         id: build
         uses: snapcore/action-build@v1
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # Silence Node 20 deprecation noise from the action runtime (not the app build).
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
       - name: Upload snap artifact
         uses: actions/upload-artifact@v4
