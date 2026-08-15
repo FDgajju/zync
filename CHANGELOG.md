@@ -8,24 +8,25 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ### Added
 - **Host auth docs**: Canonical `docs/CONNECTIONS.md` for add/edit host auth modes, storage split, and connect-time resolution. ([feee7bb])
-- **Private Key paste → managed file**: Paste PEM under Private Key writes `{dataDir}/keys/` and stores only `privateKeyPath` on the host; new key passphrases are not written to the host record. ([feee7bb])
-- **Passphrase retention choices**: Encrypted local keys can ask every time, remember the passphrase in the OS credential store, or move the key and passphrase into Vault. ([feee7bb])
-- **Connect-time passphrase prompt**: Hosts with encrypted local keys can be saved without entering a passphrase; Zync prompts on the next connection and resumes the connection after the user responds. ([feee7bb])
-- **Vault paste / import-file**: Vault tab can paste PEM or import a local key file into the vault on Save; Test uses ephemeral `{dataDir}/tmp-keys/`. ([feee7bb])
-- **Open File Manager Here**: Terminal context menu opens Files at the shell’s current directory (mirrors Files → Open Terminal Here) and keeps the initiating tab stable while Files loads. ([feee7bb])
+- **Private Key paste → managed file**: Paste PEM under Private Key writes `{dataDir}/keys/` and stores only `privateKeyPath` on the host; new key passphrases are not written to the host record. ([fb93f5c])
+- **Passphrase retention choices**: Encrypted local keys can ask every time, remember the passphrase in the OS credential store, or move the key and passphrase into Vault. ([fb93f5c])
+- **Connect-time passphrase prompt**: Hosts with encrypted local keys can be saved without entering a passphrase; Zync prompts on the next connection and resumes the connection after the user responds. ([fb93f5c], [54f5d35])
+- **Vault paste / import-file**: Vault tab can paste PEM or import a local key file into the vault on Save; Test uses ephemeral `{dataDir}/tmp-keys/`. ([fb93f5c], [26e702a])
+- **Open File Manager Here**: Terminal context menu opens Files at the shell’s current directory (mirrors Files → Open Terminal Here) and keeps the initiating tab stable while Files loads. ([d98c8cc], [6bbda5b])
 
 ### Changed
-- **Private Key vs Vault UX**: Key auth is local file / paste-as-file with local inspection and explicit passphrase retention; Vault owns existing / paste / import credentials. Selecting an existing system SSH agent remains deferred (issue #90). ([feee7bb])
-- **Connected folder membership**: Only fully `connected` hosts move into Connected — hosts stay in place while `connecting` so multi-click cannot retarget a neighbor. ([feee7bb])
+- **Private Key vs Vault UX**: Key auth is local file / paste-as-file with local inspection and explicit passphrase retention; Vault owns existing / paste / import credentials. Selecting an existing system SSH agent remains deferred (issue #90). ([fb93f5c])
+- **Connected folder membership**: Only fully `connected` hosts move into Connected — hosts stay in place while `connecting` so multi-click cannot retarget a neighbor. ([fb93f5c])
 
 ### Fixed
-- **Sidebar multi-click connects neighbors**: Double/triple-click no longer opens the next host after the list reorders under the pointer. ([feee7bb])
-- **Vault status camelCase**: Locked/Unlocked wire fields use `vaultId` / `itemCount` (with renderer normalize for legacy snake_case) so unlock UI and credential assignment no longer disagree. ([#92], [feee7bb])
-- **Locked vault empty credential list**: Existing-credential picker prompts to unlock instead of “No items in vault yet.” ([feee7bb])
-- **Key-paste Test leftovers**: Local paste Test uses ephemeral tmp-keys (deleted after) instead of writing durable managed keys before Save. ([feee7bb])
-- **Private key readiness errors**: Missing, unreadable, and invalid private keys surface as key-readiness states instead of raw command failures. ([feee7bb])
-- **Shared key passphrase prompts**: Simultaneous jump-host and destination requests for the same encrypted key share one prompt instead of asking twice. ([feee7bb])
-- **Vault conversion cleanup**: Moving a remembered local key passphrase into Vault forgets the device-stored copy after the host is saved. ([feee7bb])
+- **Sidebar multi-click connects neighbors**: Double/triple-click no longer opens the next host after the list reorders under the pointer. ([fb93f5c])
+- **Vault status camelCase**: Locked/Unlocked wire fields use `vaultId` / `itemCount` (with renderer normalize for legacy snake_case) so unlock UI and credential assignment no longer disagree. ([#92], [fb93f5c])
+- **Locked vault empty credential list**: Existing-credential picker prompts to unlock instead of “No items in vault yet.” ([fb93f5c])
+- **Key-paste Test leftovers**: Local paste Test uses ephemeral tmp-keys (deleted after) instead of writing durable managed keys before Save. ([26e702a])
+- **Private key readiness errors**: Missing, unreadable, and invalid private keys surface as key-readiness states instead of raw command failures. ([26e702a])
+- **Shared key passphrase prompts**: Simultaneous jump-host and destination requests for the same encrypted key share one prompt instead of asking twice. ([54f5d35])
+- **Vault conversion cleanup**: Moving a remembered local key passphrase into Vault forgets the device-stored copy after the host is saved. ([26e702a], [c6db231])
+- **Stale auth-mode transitions**: Auth-method switches no longer leave stale passphrase or vault fields in the host form. ([1ca6932], [6bbda5b])
 
 ## [2.22.5] - 2026-08-09
 
@@ -992,6 +993,9 @@ All notable changes to Zync are documented in this file. The format is based on 
 [26e702a]: https://github.com/zync-sh/zync/commit/26e702a
 [d98c8cc]: https://github.com/zync-sh/zync/commit/d98c8cc
 [6bbda5b]: https://github.com/zync-sh/zync/commit/6bbda5b
+[54f5d35]: https://github.com/zync-sh/zync/commit/54f5d35
+[c6db231]: https://github.com/zync-sh/zync/commit/c6db231
+[1ca6932]: https://github.com/zync-sh/zync/commit/1ca6932
 [3e024e4]: https://github.com/zync-sh/zync/commit/3e024e4
 [4e1408c]: https://github.com/zync-sh/zync/commit/4e1408c
 [2d709ca]: https://github.com/zync-sh/zync/commit/2d709ca
