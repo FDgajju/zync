@@ -1,8 +1,9 @@
-# Snap Store only — does not rebuild the desktop app or touch GitHub Releases.
+# Snap packaging only — does not rebuild the desktop app or touch GitHub Releases.
 # Manual: Actions → Snap → Run workflow
 #
-# Default: package the existing Release .deb and publish to stable.
-# Optimization: no Node/Rust/Tauri compile — reuses deb from release.yml.
+# DO NOT publish to the Snap Store until tested on a real Linux machine.
+# Default is build + GitHub artifact only (publish=false).
+# Optimization: packs the existing Release .deb (no Node/Rust/Tauri compile).
 name: Snap
 
 on:
@@ -19,20 +20,20 @@ on:
         default: main
         type: string
       publish:
-        description: Upload to Snap Store after packaging
+        description: Upload to Snap Store (keep OFF until Linux install is verified)
         required: true
-        default: true
+        default: false
         type: boolean
       channel:
-        description: Snap Store channel
+        description: Snap Store channel (only if publish is true; prefer edge for testing)
         required: true
-        default: stable
+        default: edge
         type: choice
         options:
-          - stable
-          - candidate
-          - beta
           - edge
+          - beta
+          - candidate
+          - stable
 
 concurrency:
   group: snap-${{ inputs.release_tag }}-${{ inputs.channel }}
