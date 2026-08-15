@@ -334,10 +334,12 @@ fn delete_tokens(data_dir: &Path, key: &str) {
 }
 
 async fn refresh_google_access_token(tokens: &mut StoredTokens) -> SyncResult<()> {
-    let refresh_token = tokens
-        .refresh_token
-        .clone()
-        .ok_or_else(|| sync_err("provider_not_connected", "No refresh token stored — please reconnect."))?;
+    let refresh_token = tokens.refresh_token.clone().ok_or_else(|| {
+        sync_err(
+            "provider_not_connected",
+            "No refresh token stored — please reconnect.",
+        )
+    })?;
 
     let mut form_fields = vec![
         ("client_id", GOOGLE_CLIENT_ID.to_string()),
@@ -371,7 +373,12 @@ async fn refresh_google_access_token(tokens: &mut StoredTokens) -> SyncResult<()
     tokens.access_token = Some(
         resp["access_token"]
             .as_str()
-            .ok_or_else(|| sync_err("oauth_token_refresh_failed", "No access_token in refresh response"))?
+            .ok_or_else(|| {
+                sync_err(
+                    "oauth_token_refresh_failed",
+                    "No access_token in refresh response",
+                )
+            })?
             .to_string(),
     );
     let expires_in = resp["expires_in"].as_u64().unwrap_or(3600);
@@ -407,7 +414,10 @@ fn token_has_scope(scope_value: Option<&str>, required_scope: &str) -> bool {
         .any(|scope| scope == required_scope)
 }
 
-async fn reject_google_connect(access_token: &str, reason: impl Into<String>) -> SyncResult<ProviderIdentity> {
+async fn reject_google_connect(
+    access_token: &str,
+    reason: impl Into<String>,
+) -> SyncResult<ProviderIdentity> {
     let reason = reason.into();
     match revoke_google_token(access_token).await {
         Ok(()) => Err(sync_err("oauth_scope_missing", reason)),
@@ -491,7 +501,10 @@ async fn find_files_by_name_prefix(
         let mut request = http_client()?.get(format!("{GDRIVE_API}/files")).query(&[
             ("spaces", APPDATA_SPACE),
             ("fields", "nextPageToken,files(id,name,modifiedTime)"),
-            ("q", &format!("name contains '{escaped_prefix}' and trashed=false")),
+            (
+                "q",
+                &format!("name contains '{escaped_prefix}' and trashed=false"),
+            ),
             ("orderBy", "modifiedTime desc"),
             ("pageSize", "1000"),
         ]);
@@ -623,7 +636,11 @@ async fn revoke_google_token(token: &str) -> SyncResult<()> {
     Ok(())
 }
 
-async fn upload_vault_bytes(token: &str, file_bytes: Vec<u8>, existing_id: Option<String>) -> SyncResult<()> {
+async fn upload_vault_bytes(
+    token: &str,
+    file_bytes: Vec<u8>,
+    existing_id: Option<String>,
+) -> SyncResult<()> {
     upload_named_bytes(token, VAULT_FILENAME, file_bytes, existing_id).await
 }
 
@@ -637,7 +654,9 @@ async fn upload_named_bytes(
 
     if let Some(file_id) = existing_id {
         client
-            .patch(format!("{GDRIVE_UPLOAD_API}/files/{file_id}?uploadType=media"))
+            .patch(format!(
+                "{GDRIVE_UPLOAD_API}/files/{file_id}?uploadType=media"
+            ))
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/octet-stream")
             .body(file_bytes)
@@ -794,10 +813,10 @@ impl VaultProviderV1 for GoogleVaultProvider {
         &state={state}\
         &access_type=offline\
         &prompt=consent",
-            redir = url::form_urlencoded::byte_serialize(redirect_uri.as_bytes())
-                .collect::<String>(),
-            scope = url::form_urlencoded::byte_serialize(GOOGLE_SCOPE.as_bytes())
-                .collect::<String>(),
+            redir =
+                url::form_urlencoded::byte_serialize(redirect_uri.as_bytes()).collect::<String>(),
+            scope =
+                url::form_urlencoded::byte_serialize(GOOGLE_SCOPE.as_bytes()).collect::<String>(),
         );
 
         use tauri_plugin_opener::OpenerExt;
@@ -877,7 +896,10 @@ impl VaultProviderV1 for GoogleVaultProvider {
         let provider_data_dir = data_dir(app);
         save_tokens(&provider_data_dir, GOOGLE_TOKENS_KEY, &tokens).await?;
 
-        Ok(ProviderIdentity { email: identity.email, avatar_url: identity.avatar_url })
+        Ok(ProviderIdentity {
+            email: identity.email,
+            avatar_url: identity.avatar_url,
+        })
     }
 
     async fn disconnect(&self, app: &tauri::AppHandle) -> SyncResult<()> {
@@ -941,9 +963,12 @@ impl VaultProviderV1 for GoogleVaultProvider {
     async fn download_vault_blob(&self, app: &tauri::AppHandle) -> SyncResult<(Vec<u8>, u64)> {
         let provider_data_dir = data_dir(app);
         let token = get_valid_google_token(&provider_data_dir).await?;
-        let file_id = find_vault_file(&token)
-            .await?
-            .ok_or_else(|| sync_err("provider_vault_not_found", "No vault backup found in Google Drive."))?;
+        let file_id = find_vault_file(&token).await?.ok_or_else(|| {
+            sync_err(
+                "provider_vault_not_found",
+                "No vault backup found in Google Drive.",
+            )
+        })?;
         let bytes = download_vault_bytes(&token, &file_id).await?;
 
         let ts = now_secs();
@@ -1060,10 +1085,12 @@ impl VaultProviderV1 for GoogleVaultProvider {
 
         let mut summaries = counts
             .into_iter()
-            .map(|(sync_collection_id, file_count)| SyncRemoteCollectionSummary {
-                sync_collection_id,
-                file_count,
-            })
+            .map(
+                |(sync_collection_id, file_count)| SyncRemoteCollectionSummary {
+                    sync_collection_id,
+                    file_count,
+                },
+            )
             .collect::<Vec<_>>();
         summaries.sort_by(|left, right| {
             right

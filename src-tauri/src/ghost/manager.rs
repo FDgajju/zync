@@ -26,20 +26,22 @@ impl GhostManager {
             .ok()
             .and_then(|s| {
                 serde_json::from_str::<GhostData>(&s).ok().or_else(|| {
-                    serde_json::from_str::<LegacyGhostData>(&s).ok().map(|legacy| {
-                        let mut scopes = HashMap::new();
-                        scopes.insert(
-                            "local".to_string(),
-                            ScopeHistory {
-                                history: legacy.history,
-                                scores: legacy.scores,
-                            },
-                        );
-                        GhostData {
-                            scopes,
-                            imported_scopes: Default::default(),
-                        }
-                    })
+                    serde_json::from_str::<LegacyGhostData>(&s)
+                        .ok()
+                        .map(|legacy| {
+                            let mut scopes = HashMap::new();
+                            scopes.insert(
+                                "local".to_string(),
+                                ScopeHistory {
+                                    history: legacy.history,
+                                    scores: legacy.scores,
+                                },
+                            );
+                            GhostData {
+                                scopes,
+                                imported_scopes: Default::default(),
+                            }
+                        })
                 })
             })
             .unwrap_or_default();

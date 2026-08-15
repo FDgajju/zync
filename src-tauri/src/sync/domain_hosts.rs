@@ -8,8 +8,7 @@ use std::sync::{LazyLock, Mutex};
 
 const CONNECTIONS_FILE: &str = "connections.json";
 
-pub(crate) static CONNECTIONS_MUTATION_LOCK: LazyLock<Mutex<()>> =
-    LazyLock::new(|| Mutex::new(()));
+pub(crate) static CONNECTIONS_MUTATION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -62,7 +61,10 @@ pub fn load_hosts_sync_records(data_dir: &Path) -> SyncResult<Vec<HostSyncRecord
     Ok(dedup.into_values().collect())
 }
 
-fn map_saved_connection_to_sync_record(conn: SavedConnection, logical_id: String) -> HostSyncRecord {
+fn map_saved_connection_to_sync_record(
+    conn: SavedConnection,
+    logical_id: String,
+) -> HostSyncRecord {
     let updated_at = host_updated_at(&conn);
     HostSyncRecord {
         logical_id,

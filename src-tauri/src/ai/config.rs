@@ -50,7 +50,10 @@ pub fn read_ai_config(app: &AppHandle) -> AiConfig {
                         // Only apply non-null overlay fields so explicit JSON null
                         // cannot wipe valid defaults (e.g. "enabled": null).
                         let merged = match (defaults, ai.clone()) {
-                            (serde_json::Value::Object(mut base), serde_json::Value::Object(overlay)) => {
+                            (
+                                serde_json::Value::Object(mut base),
+                                serde_json::Value::Object(overlay),
+                            ) => {
                                 for (k, v) in overlay {
                                     if !v.is_null() {
                                         base.insert(k, v);
@@ -64,7 +67,9 @@ pub fn read_ai_config(app: &AppHandle) -> AiConfig {
                             return merge_secret_keys(app, config);
                         }
                         #[cfg(debug_assertions)]
-                        eprintln!("[zync/ai] Failed to recover AI config after merge with defaults");
+                        eprintln!(
+                            "[zync/ai] Failed to recover AI config after merge with defaults"
+                        );
                     }
                 }
             } else {

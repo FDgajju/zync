@@ -27,7 +27,10 @@ pub async fn seed_remote_shell_history(
     manager: &GhostManager,
     state: &AppState,
 ) -> GhostSeedRemoteHistoryResponse {
-    let scope = request.scope.as_deref().or(Some(request.connection_id.as_str()));
+    let scope = request
+        .scope
+        .as_deref()
+        .or(Some(request.connection_id.as_str()));
     if manager.is_scope_imported(scope).await {
         return GhostSeedRemoteHistoryResponse {
             imported: 0,
@@ -120,8 +123,13 @@ async fn read_remote_file(
     connection_id: &str,
     path: &str,
 ) -> Result<String, String> {
-    crate::commands::read_remote_connection_file(state, connection_id, path, REMOTE_READ_TIMEOUT_SECS)
-        .await
+    crate::commands::read_remote_connection_file(
+        state,
+        connection_id,
+        path,
+        REMOTE_READ_TIMEOUT_SECS,
+    )
+    .await
 }
 
 #[cfg(test)]

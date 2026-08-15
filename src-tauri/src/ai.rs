@@ -1,35 +1,29 @@
 use tauri::AppHandle;
 
-pub(crate) mod brain;
+pub mod agent_loop;
 mod agent_loop_support;
+mod agent_planning;
+pub(crate) mod brain;
 mod config;
 mod context;
-mod agent_planning;
 mod model_catalog;
 mod policy;
-mod providers;
 mod prompts;
+mod providers;
 mod tool_command_exec;
 mod tool_exec_support;
 mod tool_file_ops;
 mod tool_schemas;
+pub mod tools;
 mod translate;
 mod transport;
 mod types;
 pub(crate) mod util;
-pub mod tools;
-pub mod agent_loop;
 
-pub use crate::utils::toon::{
-    AiTranslateResponse, ChatMessage,
-};
+pub use crate::utils::toon::{AiTranslateResponse, ChatMessage};
 pub use model_catalog::{get_ollama_models, get_provider_models};
 pub use translate::{check_ollama, translate, translate_stream};
-pub use types::{
-    AiConfig, AiStreamChunk, AiStreamDone,
-    TerminalContext,
-    AgentRunRequest,
-};
+pub use types::{AgentRunRequest, AiConfig, AiStreamChunk, AiStreamDone, TerminalContext};
 
 /// Read AI config from settings.json.
 pub fn read_ai_config(app: &AppHandle) -> AiConfig {
@@ -38,11 +32,19 @@ pub fn read_ai_config(app: &AppHandle) -> AiConfig {
 
 pub(crate) use prompts::SYSTEM_PROMPT;
 
-pub(crate) fn build_user_prompt(query: &str, context: &TerminalContext, history: &[ChatMessage]) -> String {
+pub(crate) fn build_user_prompt(
+    query: &str,
+    context: &TerminalContext,
+    history: &[ChatMessage],
+) -> String {
     prompts::build_user_prompt(query, context, history)
 }
 
-pub(crate) fn build_single_prompt(query: &str, context: &TerminalContext, history: &[ChatMessage]) -> String {
+pub(crate) fn build_single_prompt(
+    query: &str,
+    context: &TerminalContext,
+    history: &[ChatMessage],
+) -> String {
     prompts::build_single_prompt(query, context, history)
 }
 

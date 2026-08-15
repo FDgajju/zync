@@ -20,18 +20,30 @@ pub(super) fn needs_destructive_approval(command: &str) -> bool {
     let lower = command.to_lowercase();
     let tokens: Vec<&str> = lower.split_whitespace().collect();
 
-    if tokens.iter().any(|token| *token == "rm" || *token == "unlink" || token.ends_with("/rm")) {
+    if tokens
+        .iter()
+        .any(|token| *token == "rm" || *token == "unlink" || token.ends_with("/rm"))
+    {
         return true;
     }
-    if tokens.iter().any(|token| *token == "rmdir" || token.ends_with("/rmdir")) {
+    if tokens
+        .iter()
+        .any(|token| *token == "rmdir" || token.ends_with("/rmdir"))
+    {
         return true;
     }
     for tool in &["shred", "srm", "wipe", "secure-delete"] {
-        if tokens.iter().any(|token| *token == *tool || token.ends_with(&format!("/{}", tool))) {
+        if tokens
+            .iter()
+            .any(|token| *token == *tool || token.ends_with(&format!("/{}", tool)))
+        {
             return true;
         }
     }
-    if tokens.iter().any(|token| *token == "truncate" || token.ends_with("/truncate")) {
+    if tokens
+        .iter()
+        .any(|token| *token == "truncate" || token.ends_with("/truncate"))
+    {
         return true;
     }
     if lower.contains("dd ") && lower.contains("of=") {
@@ -45,7 +57,16 @@ pub(super) fn needs_service_approval(command: &str) -> bool {
     let tokens: Vec<&str> = lower.split_whitespace().collect();
 
     if lower.contains("systemctl") {
-        let verbs = ["stop", "disable", "mask", "kill", "reset-failed", "restart", "reload", "start"];
+        let verbs = [
+            "stop",
+            "disable",
+            "mask",
+            "kill",
+            "reset-failed",
+            "restart",
+            "reload",
+            "start",
+        ];
         if verbs.iter().any(|verb| lower.contains(verb)) {
             return true;
         }
@@ -59,16 +80,26 @@ pub(super) fn needs_service_approval(command: &str) -> bool {
         return true;
     }
     for killer in &["kill", "pkill", "killall"] {
-        if tokens.iter().any(|token| *token == *killer || token.ends_with(&format!("/{}", killer))) {
+        if tokens
+            .iter()
+            .any(|token| *token == *killer || token.ends_with(&format!("/{}", killer)))
+        {
             return true;
         }
     }
     let halt_commands = ["reboot", "shutdown", "halt", "poweroff"];
-    if halt_commands.iter().any(|name| tokens.iter().any(|token| *token == *name || token.ends_with(&format!("/{}", name)))) {
+    if halt_commands.iter().any(|name| {
+        tokens
+            .iter()
+            .any(|token| *token == *name || token.ends_with(&format!("/{}", name)))
+    }) {
         return true;
     }
     for name in &["userdel", "groupdel", "usermod", "passwd", "visudo"] {
-        if tokens.iter().any(|token| *token == *name || token.ends_with(&format!("/{}", name))) {
+        if tokens
+            .iter()
+            .any(|token| *token == *name || token.ends_with(&format!("/{}", name)))
+        {
             return true;
         }
     }
@@ -86,10 +117,14 @@ pub(super) fn needs_service_approval(command: &str) -> bool {
     {
         return true;
     }
-    if lower.contains("ufw") && (lower.contains("delete") || lower.contains("reset") || lower.contains("disable")) {
+    if lower.contains("ufw")
+        && (lower.contains("delete") || lower.contains("reset") || lower.contains("disable"))
+    {
         return true;
     }
-    if (lower.contains("ip link") || lower.contains("ifconfig")) && (lower.contains(" down") || lower.contains(" delete")) {
+    if (lower.contains("ip link") || lower.contains("ifconfig"))
+        && (lower.contains(" down") || lower.contains(" delete"))
+    {
         return true;
     }
     false
@@ -101,10 +136,25 @@ pub(super) fn needs_package_approval(command: &str) -> bool {
         .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
         .filter(|token| !token.is_empty())
         .collect();
-    let managers = ["apt", "apt-get", "yum", "dnf", "pacman", "brew", "snap", "pip", "pip3", "npm", "gem"];
-    let actions = ["install", "remove", "purge", "uninstall", "erase", "upgrade", "dist-upgrade", "update"];
-    managers.iter().any(|manager| tokens.iter().any(|token| token == manager))
-        && actions.iter().any(|action| tokens.iter().any(|token| token == action))
+    let managers = [
+        "apt", "apt-get", "yum", "dnf", "pacman", "brew", "snap", "pip", "pip3", "npm", "gem",
+    ];
+    let actions = [
+        "install",
+        "remove",
+        "purge",
+        "uninstall",
+        "erase",
+        "upgrade",
+        "dist-upgrade",
+        "update",
+    ];
+    managers
+        .iter()
+        .any(|manager| tokens.iter().any(|token| token == manager))
+        && actions
+            .iter()
+            .any(|action| tokens.iter().any(|token| token == action))
 }
 
 pub(super) fn parse_text_tool_calls(text: &str) -> Option<Vec<ToolCall>> {
@@ -123,7 +173,11 @@ pub(super) fn parse_text_tool_calls(text: &str) -> Option<Vec<ToolCall>> {
         .iter()
         .filter_map(|item| {
             let name = item.get("name")?.as_str()?.to_string();
-            let input = item.get("arguments").or_else(|| item.get("parameters")).cloned().unwrap_or(serde_json::json!({}));
+            let input = item
+                .get("arguments")
+                .or_else(|| item.get("parameters"))
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
             Some(ToolCall {
                 id: uuid::Uuid::new_v4().simple().to_string()[..9].to_string(),
                 name,
@@ -133,13 +187,24 @@ pub(super) fn parse_text_tool_calls(text: &str) -> Option<Vec<ToolCall>> {
         })
         .collect();
 
-    if calls.is_empty() { None } else { Some(calls) }
+    if calls.is_empty() {
+        None
+    } else {
+        Some(calls)
+    }
 }
 
-pub(super) fn build_action_entry(tool_name: &str, input: &serde_json::Value, success: bool) -> Option<String> {
+pub(super) fn build_action_entry(
+    tool_name: &str,
+    input: &serde_json::Value,
+    success: bool,
+) -> Option<String> {
     match tool_name {
         "run_command" => {
-            let command = input.get("command").and_then(|value| value.as_str()).unwrap_or("?");
+            let command = input
+                .get("command")
+                .and_then(|value| value.as_str())
+                .unwrap_or("?");
             let truncated = if command.len() > 70 {
                 let preview: String = command.chars().take(70).collect();
                 format!("{}?", preview)
@@ -153,7 +218,10 @@ pub(super) fn build_action_entry(tool_name: &str, input: &serde_json::Value, suc
             })
         }
         "write_file" => {
-            let path = input.get("path").and_then(|value| value.as_str()).unwrap_or("?");
+            let path = input
+                .get("path")
+                .and_then(|value| value.as_str())
+                .unwrap_or("?");
             Some(if success {
                 format!("? Wrote: {}", path)
             } else {
@@ -189,19 +257,34 @@ pub(super) fn is_sensitive_write_path(path: &str) -> bool {
         return true;
     }
     let shell_files = [
-        ".bashrc", ".bash_profile", ".profile", ".zshrc", ".zprofile",
-        ".zshenv", ".bash_logout", ".inputrc", ".cshrc", ".tcshrc",
+        ".bashrc",
+        ".bash_profile",
+        ".profile",
+        ".zshrc",
+        ".zprofile",
+        ".zshenv",
+        ".bash_logout",
+        ".inputrc",
+        ".cshrc",
+        ".tcshrc",
     ];
     if shell_files.iter().any(|file| lower.ends_with(file)) {
         return true;
     }
-    if lower.contains("/.ssh/") || lower.ends_with("authorized_keys") || lower.ends_with("known_hosts") {
+    if lower.contains("/.ssh/")
+        || lower.ends_with("authorized_keys")
+        || lower.ends_with("known_hosts")
+    {
         return true;
     }
     if lower.contains("/cron") || lower.ends_with("crontab") {
         return true;
     }
-    if lower.contains("/systemd/") || lower.ends_with(".service") || lower.ends_with(".timer") || lower.ends_with(".socket") {
+    if lower.contains("/systemd/")
+        || lower.ends_with(".service")
+        || lower.ends_with(".timer")
+        || lower.ends_with(".socket")
+    {
         return true;
     }
     false
@@ -213,7 +296,9 @@ mod tests {
 
     #[test]
     fn conversational_questions_are_detected() {
-        assert!(is_conversational_question("What would you like me to do next?"));
+        assert!(is_conversational_question(
+            "What would you like me to do next?"
+        ));
         assert!(!is_conversational_question("Allow restarting nginx?"));
     }
 
@@ -241,7 +326,8 @@ mod tests {
 
     #[test]
     fn text_tool_calls_are_parsed() {
-        let text = r#"[{"name":"run_command","arguments":{"command":"ls -la","reason":"inspect"}}]"#;
+        let text =
+            r#"[{"name":"run_command","arguments":{"command":"ls -la","reason":"inspect"}}]"#;
         let calls = parse_text_tool_calls(text).expect("tool calls");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "run_command");
@@ -251,16 +337,31 @@ mod tests {
 
     #[test]
     fn action_entries_are_human_readable() {
-        let run_entry = build_action_entry("run_command", &serde_json::json!({"command":"ls -la"}), true);
-        let write_entry = build_action_entry("write_file", &serde_json::json!({"path":"/etc/nginx.conf"}), false);
+        let run_entry = build_action_entry(
+            "run_command",
+            &serde_json::json!({"command":"ls -la"}),
+            true,
+        );
+        let write_entry = build_action_entry(
+            "write_file",
+            &serde_json::json!({"path":"/etc/nginx.conf"}),
+            false,
+        );
         assert_eq!(run_entry.as_deref(), Some("? ls -la"));
-        assert_eq!(write_entry.as_deref(), Some("? Write failed: /etc/nginx.conf"));
+        assert_eq!(
+            write_entry.as_deref(),
+            Some("? Write failed: /etc/nginx.conf")
+        );
     }
 
     #[test]
     fn capability_refusals_are_detected() {
-        assert!(is_capability_refusal("I don't have the capability to access the server directly."));
-        assert!(!is_capability_refusal("I inspected the server and restarted nginx."));
+        assert!(is_capability_refusal(
+            "I don't have the capability to access the server directly."
+        ));
+        assert!(!is_capability_refusal(
+            "I inspected the server and restarted nginx."
+        ));
     }
 
     #[test]

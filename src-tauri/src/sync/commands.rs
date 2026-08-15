@@ -1,33 +1,38 @@
 use super::collection::{
     clear_collection_key_cache, collection_key_wrap_object_name, enforce_collection_key_cache_ttl,
     has_recovery_key_slot, is_collection_key_cached, load_collection_key, load_manifest,
-    regenerate_recovery_key, remote_key_wrap_from_manifest, save_manifest, set_collection_key_cache_ttl,
-    setup_manifest, RemoteCollectionKeyWrapV1, SYNC_COLLECTION_KEY_CACHE_TTL_SECS,
-    unlock_collection_key_with_passphrase, unlock_collection_key_with_recovery_key,
+    regenerate_recovery_key, remote_key_wrap_from_manifest, save_manifest,
+    set_collection_key_cache_ttl, setup_manifest, unlock_collection_key_with_passphrase,
+    unlock_collection_key_with_recovery_key, RemoteCollectionKeyWrapV1,
+    SYNC_COLLECTION_KEY_CACHE_TTL_SECS,
 };
 use super::domain_hosts::{apply_hosts_restore_records, load_hosts_sync_records, HostSyncRecord};
-use super::domain_settings::{load_allowlisted_settings, SettingsSyncRecord, SETTINGS_ALLOWLIST_KEYS};
+use super::domain_settings::{
+    load_allowlisted_settings, SettingsSyncRecord, SETTINGS_ALLOWLIST_KEYS,
+};
 use super::domain_snippets::{
     apply_snippet_restore_records, load_snippet_sync_records, snippet_record_logical_id,
     SnippetSyncRecord,
 };
-use super::domain_tunnels::{apply_tunnel_restore_records, load_tunnel_sync_records, TunnelSyncRecord};
+use super::domain_tunnels::{
+    apply_tunnel_restore_records, load_tunnel_sync_records, TunnelSyncRecord,
+};
 use super::profiles::{get_profile, now_secs, upsert_profile};
 use super::provider::{validate_provider_contract, ProviderUploadRecord, VaultProviderV1};
 use super::providers::google::{legacy_google_token_snapshot, GoogleVaultProvider};
 use super::types::{
-    ProviderCapabilities, ProviderCredentialObject, ProviderStatusSnapshot, SyncCollectionDiscoverResult,
-    SyncCollectionManifest, SyncCollectionSetupArgs, SyncCollectionSetupResult, SyncCollectionStatus,
-    SyncCollectionUnlockArgs, SyncDomain,
-    SyncDomainPolicy, SyncDomainStatus, SyncError, SyncKeyPolicyMode, SyncPolicyMode, SyncProfile, SyncProviderKind,
-    SyncProviderStatus, SyncResult, SyncRestoreConflictItem,
-    SyncRestoreCredentialsArgs, SyncRestoreCredentialsResult, SyncRestorePreviewResult,
-    SyncUploadCredentialArgs, SyncUploadCredentialResult, SyncUploadCredentialsResult,
+    ProviderCapabilities, ProviderCredentialObject, ProviderStatusSnapshot,
+    SyncCollectionDiscoverResult, SyncCollectionManifest, SyncCollectionSetupArgs,
+    SyncCollectionSetupResult, SyncCollectionStatus, SyncCollectionUnlockArgs, SyncDomain,
+    SyncDomainPolicy, SyncDomainStatus, SyncError, SyncKeyPolicyMode, SyncPolicyMode, SyncProfile,
+    SyncProviderKind, SyncProviderStatus, SyncRestoreConflictItem, SyncRestoreCredentialsArgs,
+    SyncRestoreCredentialsResult, SyncRestorePreviewResult, SyncResult, SyncUploadCredentialArgs,
+    SyncUploadCredentialResult, SyncUploadCredentialsResult,
 };
 use crate::vault::credential::{normalize_record_credential, CredentialEnvelope};
 use crate::vault::crypto::{decrypt_record, encrypt_record, EncryptedEnvelope, SecretKey};
-use crate::vault::types::PlaintextRecord;
 use crate::vault::store::VaultService;
+use crate::vault::types::PlaintextRecord;
 use crate::vault::types::VaultStatus;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -77,11 +82,31 @@ fn default_profile(kind: SyncProviderKind) -> SyncProfile {
 
 fn default_domain_policies() -> Vec<SyncDomainPolicy> {
     vec![
-        SyncDomainPolicy { domain: SyncDomain::Vault, enabled: true, mode: SyncPolicyMode::Manual },
-        SyncDomainPolicy { domain: SyncDomain::Hosts, enabled: true, mode: SyncPolicyMode::Manual },
-        SyncDomainPolicy { domain: SyncDomain::Tunnels, enabled: true, mode: SyncPolicyMode::Manual },
-        SyncDomainPolicy { domain: SyncDomain::Snippets, enabled: true, mode: SyncPolicyMode::Manual },
-        SyncDomainPolicy { domain: SyncDomain::Settings, enabled: true, mode: SyncPolicyMode::Manual },
+        SyncDomainPolicy {
+            domain: SyncDomain::Vault,
+            enabled: true,
+            mode: SyncPolicyMode::Manual,
+        },
+        SyncDomainPolicy {
+            domain: SyncDomain::Hosts,
+            enabled: true,
+            mode: SyncPolicyMode::Manual,
+        },
+        SyncDomainPolicy {
+            domain: SyncDomain::Tunnels,
+            enabled: true,
+            mode: SyncPolicyMode::Manual,
+        },
+        SyncDomainPolicy {
+            domain: SyncDomain::Snippets,
+            enabled: true,
+            mode: SyncPolicyMode::Manual,
+        },
+        SyncDomainPolicy {
+            domain: SyncDomain::Settings,
+            enabled: true,
+            mode: SyncPolicyMode::Manual,
+        },
     ]
 }
 
@@ -262,7 +287,10 @@ fn sync_profile_from_snapshot(
     profile
 }
 
-fn snapshot_from_legacy(provider: SyncProviderKind, data_dir: &Path) -> Option<ProviderStatusSnapshot> {
+fn snapshot_from_legacy(
+    provider: SyncProviderKind,
+    data_dir: &Path,
+) -> Option<ProviderStatusSnapshot> {
     match provider {
         SyncProviderKind::Google => legacy_google_token_snapshot(data_dir),
     }
@@ -297,7 +325,11 @@ fn record_domain_sync_error(
         ensure_domain_collections(&mut profile);
         profile.last_error_code = Some(code.to_string());
         profile.last_error = Some(message.clone());
-        if let Some(status) = profile.domain_statuses.iter_mut().find(|s| s.domain == domain) {
+        if let Some(status) = profile
+            .domain_statuses
+            .iter_mut()
+            .find(|s| s.domain == domain)
+        {
             status.last_error_code = Some(code.to_string());
             status.last_error = Some(message.clone());
         }
@@ -319,7 +351,11 @@ fn record_domain_sync_success(
         profile.last_error = None;
         profile.last_error_code = None;
         let enabled = is_domain_enabled(&profile, domain);
-        if let Some(status) = profile.domain_statuses.iter_mut().find(|s| s.domain == domain) {
+        if let Some(status) = profile
+            .domain_statuses
+            .iter_mut()
+            .find(|s| s.domain == domain)
+        {
             status.enabled = enabled;
             status.last_sync = Some(synced_at);
             status.last_error = None;
@@ -385,7 +421,10 @@ fn collection_status_from_manifest(
             key_policy_mode: Some(m.key_policy_mode),
             has_recovery_key: has_recovery_key_slot(&m),
             key_cached: is_collection_key_cached(&m),
-            key_cache_ttl_secs: Some(m.key_cache_ttl_secs.unwrap_or(SYNC_COLLECTION_KEY_CACHE_TTL_SECS)),
+            key_cache_ttl_secs: Some(
+                m.key_cache_ttl_secs
+                    .unwrap_or(SYNC_COLLECTION_KEY_CACHE_TTL_SECS),
+            ),
         },
         None => SyncCollectionStatus {
             provider: provider.as_str().to_string(),
@@ -596,7 +635,6 @@ pub struct SyncDomainRestoreResult {
     pub synced_at: u64,
 }
 
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncDomainPoliciesResult {
@@ -687,8 +725,16 @@ fn hosts_aad(sync_collection_id: &str, logical_id: &str, revision: u64) -> Strin
     )
 }
 
-fn domain_object_name(sync_collection_id: &str, domain: &str, logical_id: &str, ext: &str) -> String {
-    format!("zync-sync-{}-{}-{}.{}", sync_collection_id, domain, logical_id, ext)
+fn domain_object_name(
+    sync_collection_id: &str,
+    domain: &str,
+    logical_id: &str,
+    ext: &str,
+) -> String {
+    format!(
+        "zync-sync-{}-{}-{}.{}",
+        sync_collection_id, domain, logical_id, ext
+    )
 }
 
 fn domain_aad(sync_collection_id: &str, domain: &str, logical_id: &str, revision: u64) -> String {
@@ -700,7 +746,11 @@ fn domain_aad(sync_collection_id: &str, domain: &str, logical_id: &str, revision
 /// App-data domains currently derive their upload revision from `updated_at`;
 /// vault credential revisions remain independent monotonic counters.
 fn default_revision(updated_at: u64) -> u64 {
-    if updated_at == 0 { 1 } else { updated_at }
+    if updated_at == 0 {
+        1
+    } else {
+        updated_at
+    }
 }
 
 fn is_credential_object_name(object_name: &str) -> bool {
@@ -729,16 +779,24 @@ async fn upload_domain_record<T: serde::Serialize>(
     payload: &T,
     meta: DomainUploadMeta<'_>,
 ) -> Result<u64, String> {
-    let plaintext_bytes = serde_json::to_vec(payload)
-        .map_err(|e| format!("[sync_serialize_failed] Failed to serialize {} record: {e}", meta.domain))?;
+    let plaintext_bytes = serde_json::to_vec(payload).map_err(|e| {
+        format!(
+            "[sync_serialize_failed] Failed to serialize {} record: {e}",
+            meta.domain
+        )
+    })?;
     let aad = domain_aad(
         &manifest.sync_collection_id,
         meta.domain,
         meta.logical_id,
         meta.revision,
     );
-    let envelope = encrypt_record(secret_key, &plaintext_bytes, aad.as_bytes())
-        .map_err(|e| format!("[sync_encrypt_failed] Failed to encrypt {} record: {e}", meta.domain))?;
+    let envelope = encrypt_record(secret_key, &plaintext_bytes, aad.as_bytes()).map_err(|e| {
+        format!(
+            "[sync_encrypt_failed] Failed to encrypt {} record: {e}",
+            meta.domain
+        )
+    })?;
     let encrypted = SyncHostsEncryptedV1 {
         version: 1,
         domain: meta.domain.to_string(),
@@ -768,7 +826,13 @@ async fn upload_domain_record<T: serde::Serialize>(
         .await
         .map_err(|error| {
             if let Some(domain) = SyncDomain::parse(meta.domain) {
-                record_domain_sync_error(data_dir, provider, domain, error.code, error.message.clone());
+                record_domain_sync_error(
+                    data_dir,
+                    provider,
+                    domain,
+                    error.code,
+                    error.message.clone(),
+                );
             } else {
                 record_sync_error(data_dir, provider, error.code, error.message.clone());
             }
@@ -823,7 +887,8 @@ where
                 continue;
             }
         };
-        if encrypted.domain != domain || encrypted.sync_collection_id != manifest.sync_collection_id {
+        if encrypted.domain != domain || encrypted.sync_collection_id != manifest.sync_collection_id
+        {
             skipped += 1;
             continue;
         }
@@ -961,11 +1026,8 @@ async fn collect_remote_host_records(
             .map_err(|e| sync_error_to_string(&e))?
     };
 
-    let remote_objects = host_objects_for_collect(
-        &manifest.sync_collection_id,
-        logical_id_filter,
-        listed,
-    );
+    let remote_objects =
+        host_objects_for_collect(&manifest.sync_collection_id, logical_id_filter, listed);
 
     let mut scanned = 0u64;
     let mut skipped = 0u64;
@@ -1047,7 +1109,6 @@ async fn collect_remote_host_records(
         records,
     })
 }
-
 
 fn decode_sync_envelope(record: &SyncCredentialEncryptedV1) -> Result<EncryptedEnvelope, String> {
     let nonce_bytes = base64::engine::general_purpose::STANDARD
@@ -1178,8 +1239,10 @@ fn parse_remote_sync_record(
         ));
     }
     if encrypted.sync_collection_id != expected_collection_id {
-        return Err("[sync_collection_mismatch] Provider record belongs to a different sync collection"
-            .to_string());
+        return Err(
+            "[sync_collection_mismatch] Provider record belongs to a different sync collection"
+                .to_string(),
+        );
     }
 
     let logical_id = encrypted.logical_id.trim().to_string();
@@ -1198,7 +1261,9 @@ fn parse_remote_sync_record(
         plaintext.logical_id = logical_id.clone();
     }
     if plaintext.logical_id != logical_id {
-        return Err("[sync_logical_id_mismatch] Provider header/payload logical id mismatch".to_string());
+        return Err(
+            "[sync_logical_id_mismatch] Provider header/payload logical id mismatch".to_string(),
+        );
     }
     Ok((logical_id, plaintext))
 }
@@ -1241,11 +1306,18 @@ fn build_credential_provider_record(
         nonce: base64::engine::general_purpose::STANDARD.encode(envelope.nonce),
         ciphertext: base64::engine::general_purpose::STANDARD.encode(envelope.ciphertext),
     };
-    let payload = serde_json::to_vec(&encrypted)
-        .map_err(|e| format!("[sync_serialize_failed] Failed to serialize encrypted record: {e}"))?;
+    let payload = serde_json::to_vec(&encrypted).map_err(|e| {
+        format!("[sync_serialize_failed] Failed to serialize encrypted record: {e}")
+    })?;
     let object_name = credential_object_name(&manifest.sync_collection_id, &logical_id);
 
-    Ok((logical_id, ProviderUploadRecord { object_name, payload }))
+    Ok((
+        logical_id,
+        ProviderUploadRecord {
+            object_name,
+            payload,
+        },
+    ))
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -1451,7 +1523,8 @@ async fn execute_hosts_restore_step(
     };
 
     let (restored, updated) = if apply_host_records {
-        apply_hosts_restore_records(provider_data_dir, &records).map_err(|e| sync_error_to_string(&e))?
+        apply_hosts_restore_records(provider_data_dir, &records)
+            .map_err(|e| sync_error_to_string(&e))?
     } else {
         (0, 0)
     };
@@ -1521,7 +1594,10 @@ async fn restore_credentials_from_provider_records(
 
     // When restoring specific credential ids (e.g. Keep-and-open), skip full Drive
     // listing + download of every .zcred — fetch only the named objects.
-    let listed = if requested_logical_ids.map(|f| !f.is_empty()).unwrap_or(false) {
+    let listed = if requested_logical_ids
+        .map(|f| !f.is_empty())
+        .unwrap_or(false)
+    {
         Vec::new()
     } else {
         provider_impl
@@ -1533,11 +1609,8 @@ async fn restore_credentials_from_provider_records(
             })?
     };
 
-    let remote_objects = credential_objects_for_restore(
-        &manifest.sync_collection_id,
-        requested_logical_ids,
-        listed,
-    );
+    let remote_objects =
+        credential_objects_for_restore(&manifest.sync_collection_id, requested_logical_ids, listed);
 
     let mut stats = CredentialRestoreStats::default();
 
@@ -1556,25 +1629,22 @@ async fn restore_credentials_from_provider_records(
             }
         };
 
-        let (logical_id, plaintext) = match parse_remote_sync_record(
-            &payload,
-            &manifest.sync_collection_id,
-            secret_key,
-        ) {
-            Ok(parsed) => parsed,
-            Err(error) => {
-                if error.starts_with("[sync_collection_mismatch]") {
-                    stats.skipped = stats.skipped.saturating_add(1);
-                } else {
-                    stats.failed = stats.failed.saturating_add(1);
-                    eprintln!(
-                        "[sync] Failed to parse provider object '{}': {}",
-                        object.object_name, error
-                    );
+        let (logical_id, plaintext) =
+            match parse_remote_sync_record(&payload, &manifest.sync_collection_id, secret_key) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    if error.starts_with("[sync_collection_mismatch]") {
+                        stats.skipped = stats.skipped.saturating_add(1);
+                    } else {
+                        stats.failed = stats.failed.saturating_add(1);
+                        eprintln!(
+                            "[sync] Failed to parse provider object '{}': {}",
+                            object.object_name, error
+                        );
+                    }
+                    continue;
                 }
-                continue;
-            }
-        };
+            };
 
         if let Some(filter) = requested_logical_ids {
             if !filter.contains(&logical_id) {
@@ -1651,12 +1721,8 @@ async fn restore_credentials_from_provider_records(
         };
 
         match outcome {
-            Ok(RestoreDecision::RestoreNew) => {
-                stats.restored = stats.restored.saturating_add(1)
-            }
-            Ok(RestoreDecision::UpdateExisting) => {
-                stats.updated = stats.updated.saturating_add(1)
-            }
+            Ok(RestoreDecision::RestoreNew) => stats.restored = stats.restored.saturating_add(1),
+            Ok(RestoreDecision::UpdateExisting) => stats.updated = stats.updated.saturating_add(1),
             Ok(RestoreDecision::ApplyDelete) => {
                 stats.tombstones_applied = stats.tombstones_applied.saturating_add(1)
             }
@@ -1691,9 +1757,7 @@ pub struct SyncDownloadResult {
 }
 
 #[tauri::command]
-pub async fn sync_hosts_snapshot(
-    app: tauri::AppHandle,
-) -> Result<SyncHostsSnapshotResult, String> {
+pub async fn sync_hosts_snapshot(app: tauri::AppHandle) -> Result<SyncHostsSnapshotResult, String> {
     let data_dir = crate::commands::get_data_dir(&app);
     let records = load_hosts_sync_records(&data_dir).map_err(|e| sync_error_to_string(&e))?;
     Ok(SyncHostsSnapshotResult {
@@ -1845,7 +1909,11 @@ pub async fn sync_hosts_upload(
 
     let mut upload_records = Vec::with_capacity(changes.records.len());
     for record in &changes.records {
-        let revision = if record.updated_at == 0 { 1 } else { record.updated_at };
+        let revision = if record.updated_at == 0 {
+            1
+        } else {
+            record.updated_at
+        };
         let plaintext_bytes = serde_json::to_vec(record)
             .map_err(|e| format!("[sync_serialize_failed] Failed to serialize host record: {e}"))?;
         let aad = hosts_aad(&manifest.sync_collection_id, &record.logical_id, revision);
@@ -1900,7 +1968,11 @@ pub async fn sync_hosts_upload(
     };
     let latest_synced_at = credential_synced_at.max(host_synced_at);
     let skipped = changes.count.saturating_sub(uploaded);
-    let profile_sync_at = if uploaded > 0 || credentials_uploaded > 0 { latest_synced_at } else { now_secs() };
+    let profile_sync_at = if uploaded > 0 || credentials_uploaded > 0 {
+        latest_synced_at
+    } else {
+        now_secs()
+    };
     record_domain_sync_success(&provider_data_dir, kind, SyncDomain::Hosts, profile_sync_at)
         .map_err(|e| sync_error_to_string(&e))?;
 
@@ -1946,7 +2018,12 @@ pub async fn sync_hosts_remote_inventory(
     )
     .await
     .map_err(|message| {
-        record_sync_error(&provider_data_dir, kind, "sync_hosts_inventory_failed", message.clone());
+        record_sync_error(
+            &provider_data_dir,
+            kind,
+            "sync_hosts_inventory_failed",
+            message.clone(),
+        );
         message
     })?;
 
@@ -2031,7 +2108,12 @@ pub async fn sync_hosts_restore(
     )
     .await
     .map_err(|message| {
-        record_sync_error(&provider_data_dir, kind, "sync_hosts_restore_failed", message.clone());
+        record_sync_error(
+            &provider_data_dir,
+            kind,
+            "sync_hosts_restore_failed",
+            message.clone(),
+        );
         message
     })?;
     let scanned = collected.scanned;
@@ -2093,19 +2175,13 @@ async fn prepare_connections_restore_scope(
 
     // Unfiltered restore: single full collect (existing behavior).
     if initial_filter.is_none() {
-        let collected = collect_remote_host_records(
-            provider_impl,
-            app,
-            kind,
-            manifest,
-            secret_key,
-            None,
-        )
-        .await
-        .map_err(|message| {
-            record_sync_error(provider_data_dir, kind, error_code, message.clone());
-            message
-        })?;
+        let collected =
+            collect_remote_host_records(provider_impl, app, kind, manifest, secret_key, None)
+                .await
+                .map_err(|message| {
+                    record_sync_error(provider_data_dir, kind, error_code, message.clone());
+                    message
+                })?;
         let records = collected
             .records
             .into_iter()
@@ -2227,7 +2303,8 @@ async fn preview_bundled_tunnel_counts_for_hosts(
     )
     .await?;
     let normalized = normalize_tunnel_records(collected.records);
-    let (filtered, skipped_orphaned) = filter_tunnel_records_for_hosts(normalized, eligible_host_ids);
+    let (filtered, skipped_orphaned) =
+        filter_tunnel_records_for_hosts(normalized, eligible_host_ids);
     Ok(BundledDomainRestoreCounts {
         scanned: collected.scanned,
         restorable: filtered.len() as u64,
@@ -2293,14 +2370,10 @@ pub async fn sync_connections_restore(
     .await?;
     let records = scope.records;
     let local_host_ids = local_host_connection_id_set(&provider_data_dir)?;
-    let eligible_host_ids = resolve_bundle_eligible_host_ids(
-        &records,
-        &local_host_ids,
-        args.include_host_definitions,
-    );
+    let eligible_host_ids =
+        resolve_bundle_eligible_host_ids(&records, &local_host_ids, args.include_host_definitions);
 
-    let eligible_records =
-        filter_host_records_for_eligible_hosts(records, &eligible_host_ids);
+    let eligible_records = filter_host_records_for_eligible_hosts(records, &eligible_host_ids);
     let hosts = execute_hosts_restore_step(
         &app,
         &vault,
@@ -2448,10 +2521,8 @@ pub async fn sync_connections_restore_preview(
         }
     }
     let referenced_credentials = if args.include_referenced_credentials {
-        let eligible_records = filter_host_records_for_eligible_hosts(
-            scope.records.clone(),
-            &eligible_host_ids,
-        );
+        let eligible_records =
+            filter_host_records_for_eligible_hosts(scope.records.clone(), &eligible_host_ids);
         host_auth_credential_ids(&eligible_records).len() as u64
     } else {
         0
@@ -2513,7 +2584,9 @@ pub async fn sync_connections_restore_preview(
 }
 
 #[tauri::command]
-pub async fn sync_tunnels_snapshot(app: tauri::AppHandle) -> Result<SyncTunnelsSnapshotResult, String> {
+pub async fn sync_tunnels_snapshot(
+    app: tauri::AppHandle,
+) -> Result<SyncTunnelsSnapshotResult, String> {
     let data_dir = crate::commands::get_data_dir(&app);
     let records = load_tunnel_sync_records(&data_dir).map_err(|e| sync_error_to_string(&e))?;
     Ok(SyncTunnelsSnapshotResult {
@@ -2524,7 +2597,9 @@ pub async fn sync_tunnels_snapshot(app: tauri::AppHandle) -> Result<SyncTunnelsS
 }
 
 #[tauri::command]
-pub async fn sync_snippets_snapshot(app: tauri::AppHandle) -> Result<SyncSnippetsSnapshotResult, String> {
+pub async fn sync_snippets_snapshot(
+    app: tauri::AppHandle,
+) -> Result<SyncSnippetsSnapshotResult, String> {
     let data_dir = crate::commands::get_data_dir(&app);
     let records = load_snippet_sync_records(&data_dir).map_err(|e| sync_error_to_string(&e))?;
     Ok(SyncSnippetsSnapshotResult {
@@ -2535,7 +2610,10 @@ pub async fn sync_snippets_snapshot(app: tauri::AppHandle) -> Result<SyncSnippet
 }
 
 #[tauri::command]
-pub async fn sync_tunnels_upload(app: tauri::AppHandle, provider: String) -> Result<SyncDomainUploadResult, String> {
+pub async fn sync_tunnels_upload(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<SyncDomainUploadResult, String> {
     let kind = parse_provider(&provider)?;
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let data_dir = crate::commands::get_data_dir(&app);
@@ -2565,18 +2643,31 @@ pub async fn sync_tunnels_upload(app: tauri::AppHandle, provider: String) -> Res
                 updated_at: record.updated_at,
                 extension: "ztun",
             },
-        ).await?;
+        )
+        .await?;
         latest_synced_at = latest_synced_at.max(synced_at);
         uploaded = uploaded.saturating_add(1);
     }
-    let synced_at = if uploaded > 0 { latest_synced_at } else { now_secs() };
+    let synced_at = if uploaded > 0 {
+        latest_synced_at
+    } else {
+        now_secs()
+    };
     record_domain_sync_success(&data_dir, kind, SyncDomain::Tunnels, synced_at)
         .map_err(|e| sync_error_to_string(&e))?;
-    Ok(SyncDomainUploadResult { domain: "tunnels".to_string(), uploaded, skipped: 0, synced_at })
+    Ok(SyncDomainUploadResult {
+        domain: "tunnels".to_string(),
+        uploaded,
+        skipped: 0,
+        synced_at,
+    })
 }
 
 #[tauri::command]
-pub async fn sync_snippets_upload(app: tauri::AppHandle, provider: String) -> Result<SyncDomainUploadResult, String> {
+pub async fn sync_snippets_upload(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<SyncDomainUploadResult, String> {
     let kind = parse_provider(&provider)?;
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let data_dir = crate::commands::get_data_dir(&app);
@@ -2606,18 +2697,31 @@ pub async fn sync_snippets_upload(app: tauri::AppHandle, provider: String) -> Re
                 updated_at: record.updated_at,
                 extension: "zsnp",
             },
-        ).await?;
+        )
+        .await?;
         latest_synced_at = latest_synced_at.max(synced_at);
         uploaded = uploaded.saturating_add(1);
     }
-    let synced_at = if uploaded > 0 { latest_synced_at } else { now_secs() };
+    let synced_at = if uploaded > 0 {
+        latest_synced_at
+    } else {
+        now_secs()
+    };
     record_domain_sync_success(&data_dir, kind, SyncDomain::Snippets, synced_at)
         .map_err(|e| sync_error_to_string(&e))?;
-    Ok(SyncDomainUploadResult { domain: "snippets".to_string(), uploaded, skipped: 0, synced_at })
+    Ok(SyncDomainUploadResult {
+        domain: "snippets".to_string(),
+        uploaded,
+        skipped: 0,
+        synced_at,
+    })
 }
 
 #[tauri::command]
-pub async fn sync_tunnels_restore(app: tauri::AppHandle, provider: String) -> Result<SyncDomainRestoreResult, String> {
+pub async fn sync_tunnels_restore(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<SyncDomainRestoreResult, String> {
     let kind = parse_provider(&provider)?;
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let data_dir = crate::commands::get_data_dir(&app);
@@ -2652,7 +2756,8 @@ pub async fn sync_tunnels_restore(app: tauri::AppHandle, provider: String) -> Re
             record
         })
         .collect::<Vec<_>>();
-    let (restored, updated) = apply_tunnel_restore_records(&data_dir, &records).map_err(|e| sync_error_to_string(&e))?;
+    let (restored, updated) =
+        apply_tunnel_restore_records(&data_dir, &records).map_err(|e| sync_error_to_string(&e))?;
     let synced_at = now_secs();
     record_domain_sync_success(&data_dir, kind, SyncDomain::Tunnels, synced_at)
         .map_err(|e| sync_error_to_string(&e))?;
@@ -2708,7 +2813,8 @@ pub async fn sync_snippets_restore(
         records = filtered;
         skipped = skipped.saturating_add(skipped_orphaned);
     }
-    let (restored, updated) = apply_snippet_restore_records(&data_dir, &records).map_err(|e| sync_error_to_string(&e))?;
+    let (restored, updated) =
+        apply_snippet_restore_records(&data_dir, &records).map_err(|e| sync_error_to_string(&e))?;
     let synced_at = now_secs();
     record_domain_sync_success(&data_dir, kind, SyncDomain::Snippets, synced_at)
         .map_err(|e| sync_error_to_string(&e))?;
@@ -2724,7 +2830,10 @@ pub async fn sync_snippets_restore(
 }
 
 #[tauri::command]
-pub async fn sync_settings_upload(app: tauri::AppHandle, provider: String) -> Result<SyncDomainUploadResult, String> {
+pub async fn sync_settings_upload(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<SyncDomainUploadResult, String> {
     let kind = parse_provider(&provider)?;
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let data_dir = crate::commands::get_data_dir(&app);
@@ -2763,14 +2872,23 @@ pub async fn sync_settings_upload(app: tauri::AppHandle, provider: String) -> Re
             updated_at: record.updated_at,
             extension: "zset",
         },
-    ).await?;
+    )
+    .await?;
     record_domain_sync_success(&data_dir, kind, SyncDomain::Settings, synced_at)
         .map_err(|e| sync_error_to_string(&e))?;
-    Ok(SyncDomainUploadResult { domain: "settings".to_string(), uploaded: 1, skipped: 0, synced_at })
+    Ok(SyncDomainUploadResult {
+        domain: "settings".to_string(),
+        uploaded: 1,
+        skipped: 0,
+        synced_at,
+    })
 }
 
 #[tauri::command]
-pub async fn sync_settings_restore(app: tauri::AppHandle, provider: String) -> Result<SyncDomainRestoreResult, String> {
+pub async fn sync_settings_restore(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<SyncDomainRestoreResult, String> {
     let kind = parse_provider(&provider)?;
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let data_dir = crate::commands::get_data_dir(&app);
@@ -2823,7 +2941,8 @@ pub async fn sync_collection_status(
 ) -> Result<SyncCollectionStatus, String> {
     let kind = parse_provider(&provider)?;
     let provider_data_dir = crate::commands::get_data_dir(&app);
-    let mut manifest = load_manifest(&provider_data_dir, kind).map_err(|e| sync_error_to_string(&e))?;
+    let mut manifest =
+        load_manifest(&provider_data_dir, kind).map_err(|e| sync_error_to_string(&e))?;
     if let Some(ref mut m) = manifest {
         let _ = enforce_collection_key_cache_ttl(&provider_data_dir, m)
             .map_err(|e| sync_error_to_string(&e))?;
@@ -2879,12 +2998,10 @@ pub async fn sync_collection_setup(
             .status()
             .map_err(|e| sync_local_error("vault_status_failed", e.to_string()))?
         {
-            VaultStatus::Uninitialized => {
-                return Err(
-                    "[vault_uninitialized] Initialize the local vault before setting up provider sync."
-                        .to_string(),
-                )
-            }
+            VaultStatus::Uninitialized => return Err(
+                "[vault_uninitialized] Initialize the local vault before setting up provider sync."
+                    .to_string(),
+            ),
             VaultStatus::Locked { .. } | VaultStatus::Unlocked { .. } => {
                 svc.verify_passphrase(&passphrase).map_err(|_| {
                     "[sync_collection_passphrase_mismatch] Local Vault passphrase did not unlock this vault."
@@ -2894,8 +3011,8 @@ pub async fn sync_collection_setup(
         }
     }
 
-    let existing_manifest = load_manifest(&provider_data_dir, kind)
-        .map_err(|e| sync_error_to_string(&e))?;
+    let existing_manifest =
+        load_manifest(&provider_data_dir, kind).map_err(|e| sync_error_to_string(&e))?;
     let discovered_sync_collection_id = if existing_manifest.is_none() {
         let collection_ids = provider_impl
             .discover_sync_collection_ids(&app)
@@ -2915,12 +3032,8 @@ pub async fn sync_collection_setup(
     // network/auth failures instead of sync_collection_key_unrecoverable.
     let remote_key_wrap = if existing_manifest.is_none() {
         if let Some(collection_id) = discovered_sync_collection_id.as_deref() {
-            match download_remote_collection_key_wrap(
-                provider_impl.as_ref(),
-                &app,
-                collection_id,
-            )
-            .await
+            match download_remote_collection_key_wrap(provider_impl.as_ref(), &app, collection_id)
+                .await
             {
                 Ok(wrap) => wrap,
                 Err(error) => {
@@ -3100,12 +3213,15 @@ pub async fn sync_collection_set_cache_ttl(
     ttl_secs: u64,
 ) -> Result<SyncCollectionStatus, String> {
     if !(300..=604800).contains(&ttl_secs) {
-        return Err("[invalid_sync_cache_ttl] Cache TTL must be between 300 and 604800 seconds.".to_string());
+        return Err(
+            "[invalid_sync_cache_ttl] Cache TTL must be between 300 and 604800 seconds."
+                .to_string(),
+        );
     }
     let kind = parse_provider(&provider)?;
     let provider_data_dir = crate::commands::get_data_dir(&app);
-    let manifest =
-        set_collection_key_cache_ttl(&provider_data_dir, kind, ttl_secs).map_err(|e| sync_error_to_string(&e))?;
+    let manifest = set_collection_key_cache_ttl(&provider_data_dir, kind, ttl_secs)
+        .map_err(|e| sync_error_to_string(&e))?;
     Ok(collection_status_from_manifest(kind, Some(manifest)))
 }
 
@@ -3118,8 +3234,7 @@ pub async fn sync_status(
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let provider_data_dir = crate::commands::get_data_dir(&app);
 
-    let existing = get_profile(&provider_data_dir, kind)
-        .map_err(|e| sync_error_to_string(&e))?;
+    let existing = get_profile(&provider_data_dir, kind).map_err(|e| sync_error_to_string(&e))?;
 
     let profile = if existing.is_none() {
         if let Some(snapshot) = snapshot_from_legacy(kind, &provider_data_dir) {
@@ -3191,11 +3306,19 @@ pub async fn sync_domain_policy_set(
     let updated = upsert_profile(&provider_data_dir, kind, |existing| {
         let mut profile = existing.unwrap_or_else(|| default_profile(kind));
         ensure_domain_collections(&mut profile);
-        if let Some(policy) = profile.domain_policies.iter_mut().find(|p| p.domain == domain) {
+        if let Some(policy) = profile
+            .domain_policies
+            .iter_mut()
+            .find(|p| p.domain == domain)
+        {
             policy.enabled = args.enabled;
             policy.mode = mode;
         }
-        if let Some(status) = profile.domain_statuses.iter_mut().find(|s| s.domain == domain) {
+        if let Some(status) = profile
+            .domain_statuses
+            .iter_mut()
+            .find(|s| s.domain == domain)
+        {
             status.enabled = args.enabled;
         }
         profile
@@ -3216,13 +3339,10 @@ pub async fn sync_connect(
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let provider_data_dir = crate::commands::get_data_dir(&app);
 
-    let identity = provider_impl
-        .connect(&app)
-        .await
-        .map_err(|error| {
-            record_sync_error(&provider_data_dir, kind, error.code, error.message.clone());
-            sync_error_to_string(&error)
-        })?;
+    let identity = provider_impl.connect(&app).await.map_err(|error| {
+        record_sync_error(&provider_data_dir, kind, error.code, error.message.clone());
+        sync_error_to_string(&error)
+    })?;
 
     let status_snapshot = provider_impl
         .status(&app)
@@ -3328,7 +3448,7 @@ pub async fn sync_upload(
         })?;
 
     record_domain_sync_success(&provider_data_dir, kind, SyncDomain::Vault, ts)
-    .map_err(|e| sync_error_to_string(&e))?;
+        .map_err(|e| sync_error_to_string(&e))?;
 
     Ok(ts)
 }
@@ -3374,7 +3494,7 @@ pub async fn sync_upload_credential(
         })?;
 
     record_domain_sync_success(&provider_data_dir, kind, SyncDomain::Vault, synced_at)
-    .map_err(|e| sync_error_to_string(&e))?;
+        .map_err(|e| sync_error_to_string(&e))?;
 
     Ok(SyncUploadCredentialResult {
         provider: kind.as_str().to_string(),
@@ -3414,10 +3534,15 @@ pub async fn sync_upload_credentials(
         {
             VaultStatus::Unlocked { .. } => {}
             VaultStatus::Locked { .. } => {
-                return Err("[vault_locked] Unlock the local vault before syncing credentials.".to_string())
+                return Err(
+                    "[vault_locked] Unlock the local vault before syncing credentials.".to_string(),
+                )
             }
             VaultStatus::Uninitialized => {
-                return Err("[vault_uninitialized] Initialize the local vault before syncing credentials.".to_string())
+                return Err(
+                    "[vault_uninitialized] Initialize the local vault before syncing credentials."
+                        .to_string(),
+                )
             }
         }
         svc.item_list()
@@ -3533,25 +3658,22 @@ pub async fn sync_restore_preview(
             }
         };
 
-        let (logical_id, plaintext) = match parse_remote_sync_record(
-            &payload,
-            &manifest.sync_collection_id,
-            &secret_key,
-        ) {
-            Ok(parsed) => parsed,
-            Err(error) => {
-                if error.starts_with("[sync_collection_mismatch]") {
-                    stale = stale.saturating_add(1);
-                } else {
-                    failed = failed.saturating_add(1);
-                    eprintln!(
-                        "[sync] Preview failed parsing provider object '{}': {}",
-                        object.object_name, error
-                    );
+        let (logical_id, plaintext) =
+            match parse_remote_sync_record(&payload, &manifest.sync_collection_id, &secret_key) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    if error.starts_with("[sync_collection_mismatch]") {
+                        stale = stale.saturating_add(1);
+                    } else {
+                        failed = failed.saturating_add(1);
+                        eprintln!(
+                            "[sync] Preview failed parsing provider object '{}': {}",
+                            object.object_name, error
+                        );
+                    }
+                    continue;
                 }
-                continue;
-            }
-        };
+            };
 
         if let Some(filter) = requested_logical_ids.as_ref() {
             if !filter.contains(&logical_id) {
@@ -3745,8 +3867,15 @@ pub async fn sync_download(
     .map_err(|e| sync_error_to_string(&e))?;
 
     let (item_count, vault_id) = match imported_status {
-        VaultStatus::Locked { item_count, vault_id, .. } => (item_count, Some(vault_id)),
-        VaultStatus::Unlocked { item_count, vault_id } => (item_count, Some(vault_id)),
+        VaultStatus::Locked {
+            item_count,
+            vault_id,
+            ..
+        } => (item_count, Some(vault_id)),
+        VaultStatus::Unlocked {
+            item_count,
+            vault_id,
+        } => (item_count, Some(vault_id)),
         VaultStatus::Uninitialized => (0, None),
     };
 
@@ -3818,12 +3947,9 @@ mod tests {
 
     #[test]
     fn resolve_discovered_sync_collection_id_returns_single_match() {
-        let resolved = resolve_discovered_sync_collection_id(
-            vec!["collection-b".to_string()],
-            None,
-            "google",
-        )
-        .expect("single collection should resolve");
+        let resolved =
+            resolve_discovered_sync_collection_id(vec!["collection-b".to_string()], None, "google")
+                .expect("single collection should resolve");
         assert_eq!(resolved.as_deref(), Some("collection-b"));
     }
 
@@ -3882,11 +4008,19 @@ mod tests {
 
         assert_eq!(status.domain_statuses.len(), 5);
         assert_eq!(
-            status.domain_statuses.iter().find(|s| s.domain == SyncDomain::Hosts).map(|s| s.enabled),
+            status
+                .domain_statuses
+                .iter()
+                .find(|s| s.domain == SyncDomain::Hosts)
+                .map(|s| s.enabled),
             Some(true)
         );
         assert_eq!(
-            status.domain_statuses.iter().find(|s| s.domain == SyncDomain::Snippets).map(|s| s.enabled),
+            status
+                .domain_statuses
+                .iter()
+                .find(|s| s.domain == SyncDomain::Snippets)
+                .map(|s| s.enabled),
             Some(true)
         );
     }
@@ -3912,11 +4046,19 @@ mod tests {
         assert_eq!(profile.domain_policies.len(), 5);
         assert_eq!(profile.domain_statuses.len(), 5);
         assert_eq!(
-            profile.domain_statuses.iter().find(|s| s.domain == SyncDomain::Hosts).map(|s| s.enabled),
+            profile
+                .domain_statuses
+                .iter()
+                .find(|s| s.domain == SyncDomain::Hosts)
+                .map(|s| s.enabled),
             Some(false),
         );
         assert_eq!(
-            profile.domain_policies.iter().find(|p| p.domain == SyncDomain::Settings).map(|p| p.enabled),
+            profile
+                .domain_policies
+                .iter()
+                .find(|p| p.domain == SyncDomain::Settings)
+                .map(|p| p.enabled),
             Some(true),
         );
     }
@@ -3924,7 +4066,11 @@ mod tests {
     #[test]
     fn ensure_domain_collections_migrates_old_app_data_defaults_to_enabled() {
         let mut profile = default_profile(SyncProviderKind::Google);
-        for domain in [SyncDomain::Tunnels, SyncDomain::Snippets, SyncDomain::Settings] {
+        for domain in [
+            SyncDomain::Tunnels,
+            SyncDomain::Snippets,
+            SyncDomain::Settings,
+        ] {
             profile
                 .domain_policies
                 .iter_mut()
@@ -3941,13 +4087,25 @@ mod tests {
 
         ensure_domain_collections(&mut profile);
 
-        for domain in [SyncDomain::Tunnels, SyncDomain::Snippets, SyncDomain::Settings] {
+        for domain in [
+            SyncDomain::Tunnels,
+            SyncDomain::Snippets,
+            SyncDomain::Settings,
+        ] {
             assert_eq!(
-                profile.domain_policies.iter().find(|p| p.domain == domain).map(|p| p.enabled),
+                profile
+                    .domain_policies
+                    .iter()
+                    .find(|p| p.domain == domain)
+                    .map(|p| p.enabled),
                 Some(true),
             );
             assert_eq!(
-                profile.domain_statuses.iter().find(|s| s.domain == domain).map(|s| s.enabled),
+                profile
+                    .domain_statuses
+                    .iter()
+                    .find(|s| s.domain == domain)
+                    .map(|s| s.enabled),
                 Some(true),
             );
         }
@@ -3956,7 +4114,11 @@ mod tests {
     #[test]
     fn ensure_domain_collections_keeps_touched_disabled_domain_policies() {
         let mut profile = default_profile(SyncProviderKind::Google);
-        for domain in [SyncDomain::Tunnels, SyncDomain::Snippets, SyncDomain::Settings] {
+        for domain in [
+            SyncDomain::Tunnels,
+            SyncDomain::Snippets,
+            SyncDomain::Settings,
+        ] {
             profile
                 .domain_policies
                 .iter_mut()
@@ -3979,9 +4141,17 @@ mod tests {
 
         ensure_domain_collections(&mut profile);
 
-        for domain in [SyncDomain::Tunnels, SyncDomain::Snippets, SyncDomain::Settings] {
+        for domain in [
+            SyncDomain::Tunnels,
+            SyncDomain::Snippets,
+            SyncDomain::Settings,
+        ] {
             assert_eq!(
-                profile.domain_policies.iter().find(|p| p.domain == domain).map(|p| p.enabled),
+                profile
+                    .domain_policies
+                    .iter()
+                    .find(|p| p.domain == domain)
+                    .map(|p| p.enabled),
                 Some(false),
             );
         }
@@ -3990,7 +4160,10 @@ mod tests {
     #[test]
     fn parse_provider_accepts_google_aliases() {
         assert_eq!(parse_provider("google").unwrap(), SyncProviderKind::Google);
-        assert_eq!(parse_provider("GOOGLE_DRIVE").unwrap(), SyncProviderKind::Google);
+        assert_eq!(
+            parse_provider("GOOGLE_DRIVE").unwrap(),
+            SyncProviderKind::Google
+        );
         assert_eq!(parse_provider("gdrive").unwrap(), SyncProviderKind::Google);
         assert!(parse_provider("dropbox").is_err());
     }
@@ -4063,8 +4236,8 @@ mod tests {
         let plaintext = remote_record("cred-1", 2, 10, "secret", false);
         let plaintext_bytes = serde_json::to_vec(&plaintext).expect("serialize plaintext");
         let expected_aad = credential_aad("collection-1", "cred-1", 2);
-        let envelope =
-            encrypt_record(&secret_key, &plaintext_bytes, expected_aad.as_bytes()).expect("encrypt");
+        let envelope = encrypt_record(&secret_key, &plaintext_bytes, expected_aad.as_bytes())
+            .expect("encrypt");
         let encrypted = SyncCredentialEncryptedV1 {
             version: 1,
             provider: "google".to_string(),
@@ -4182,9 +4355,13 @@ mod tests {
 
     #[test]
     fn credential_object_matcher_only_accepts_zcred_records() {
-        assert!(is_credential_object_name("zync-sync-col1-credential-abc.zcred"));
+        assert!(is_credential_object_name(
+            "zync-sync-col1-credential-abc.zcred"
+        ));
         assert!(!is_credential_object_name("zync-sync-col1-hosts-abc.zhost"));
-        assert!(!is_credential_object_name("zync-sync-col1-credential-abc.json"));
+        assert!(!is_credential_object_name(
+            "zync-sync-col1-credential-abc.json"
+        ));
     }
 
     #[test]
@@ -4265,7 +4442,10 @@ mod tests {
 
         assert_eq!(logical_id, "cred-roundtrip");
         assert_eq!(parsed_logical_id, "cred-roundtrip");
-        assert_eq!(upload_record.object_name, "zync-sync-collection-1-credential-cred-roundtrip.zcred");
+        assert_eq!(
+            upload_record.object_name,
+            "zync-sync-collection-1-credential-cred-roundtrip.zcred"
+        );
         assert_eq!(
             parsed.secret_values.get("privateKey").map(String::as_str),
             Some("secret-key-data")
@@ -4384,10 +4564,7 @@ mod tests {
 
     #[test]
     fn filter_host_records_for_eligible_hosts_respects_local_scope() {
-        let records = vec![
-            test_host_record("Host-A"),
-            test_host_record("host-b"),
-        ];
+        let records = vec![test_host_record("Host-A"), test_host_record("host-b")];
         let eligible = HashSet::from([normalize_host_connection_id("host-a")]);
         let filtered = filter_host_records_for_eligible_hosts(records, &eligible);
         assert_eq!(filtered.len(), 1);

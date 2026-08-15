@@ -3,8 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
-pub(crate) static SNIPPETS_MUTATION_LOCK: LazyLock<Mutex<()>> =
-    LazyLock::new(|| Mutex::new(()));
+pub(crate) static SNIPPETS_MUTATION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,7 +56,10 @@ impl SnippetsManager {
         let now = current_unix_millis();
 
         if let Some(pos) = snippets.iter().position(|s| s.id == snippet.id) {
-            let created_at = snippets[pos].created_at.or(snippet.created_at).or(Some(now));
+            let created_at = snippets[pos]
+                .created_at
+                .or(snippet.created_at)
+                .or(Some(now));
             snippets[pos] = Snippet {
                 created_at,
                 updated_at: Some(now),
@@ -95,13 +97,14 @@ fn read_snippets_data(path: &Path) -> Result<SnippetsData, String> {
         let backup_path = path.with_extension("bak");
         for candidate in [&temp_path, &backup_path] {
             if let Some(data) = parse_snippets_candidate(candidate) {
-                fs::rename(candidate, path).map_err(|e| {
-                    format!("Failed to promote recovered snippets file: {e}")
-                })?;
+                fs::rename(candidate, path)
+                    .map_err(|e| format!("Failed to promote recovered snippets file: {e}"))?;
                 return Ok(data);
             }
         }
-        return Ok(SnippetsData { snippets: Vec::new() });
+        return Ok(SnippetsData {
+            snippets: Vec::new(),
+        });
     }
     parse_snippets_file(path)
 }

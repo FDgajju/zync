@@ -1,10 +1,10 @@
 use tauri::{AppHandle, Emitter};
 
+use crate::ai::types::AgentThinkingEvent;
 use crate::ai::{
     build_user_prompt, is_billing_error, make_client, make_stream_client, read_error_body,
-    read_sse_stream, AiConfig, ChatMessage, SYSTEM_PROMPT, TerminalContext,
+    read_sse_stream, AiConfig, ChatMessage, TerminalContext, SYSTEM_PROMPT,
 };
-use crate::ai::types::AgentThinkingEvent;
 
 pub async fn call(
     provider_name: &str,
@@ -42,7 +42,9 @@ pub async fn call(
 
     let status = response.status();
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        return Err(format!("Invalid {provider_name} API key. Check Settings -> AI."));
+        return Err(format!(
+            "Invalid {provider_name} API key. Check Settings -> AI."
+        ));
     }
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
         return Err(format!(
@@ -107,7 +109,9 @@ pub async fn stream(
 
     let status = response.status();
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        return Err(format!("Invalid {provider_name} API key. Check Settings -> AI."));
+        return Err(format!(
+            "Invalid {provider_name} API key. Check Settings -> AI."
+        ));
     }
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
         return Err(format!(
@@ -201,7 +205,11 @@ pub async fn call_agent(
                 }
                 wire.push(msg);
             }
-            AgentMessage::ToolResult { tool_call_id, content, .. } => {
+            AgentMessage::ToolResult {
+                tool_call_id,
+                content,
+                ..
+            } => {
                 wire.push(serde_json::json!({
                     "role": "tool",
                     "tool_call_id": tool_call_id,
@@ -236,18 +244,24 @@ pub async fn call_agent(
                 .await
                 .map_err(|e| e.to_string())?;
             let status = resp.status();
-            if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-                return Err(format!("Invalid {provider_name} API key. Check Settings -> AI."));
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
+                return Err(format!(
+                    "Invalid {provider_name} API key. Check Settings -> AI."
+                ));
             }
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                let reset_hint = resp.headers()
+                let reset_hint = resp
+                    .headers()
                     .get("retry-after")
                     .or_else(|| resp.headers().get("x-ratelimit-reset-requests"))
                     .or_else(|| resp.headers().get("x-ratelimit-reset-tokens"))
                     .and_then(|v| v.to_str().ok())
                     .map(format_rate_limit_reset)
                     .unwrap_or_default();
-                last_err = format!("{provider_name} rate limit for '{model}'{reset_hint}. Retrying…");
+                last_err =
+                    format!("{provider_name} rate limit for '{model}'{reset_hint}. Retrying…");
                 continue;
             }
             if !status.is_success() {
@@ -270,10 +284,16 @@ pub async fn call_agent(
     let mut text_acc = String::new();
 
     crate::ai::transport::for_each_sse_data(response, |data| {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else { return };
-        let Some(delta) = v.get("choices")
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else {
+            return;
+        };
+        let Some(delta) = v
+            .get("choices")
             .and_then(|c| c.get(0))
-            .and_then(|c| c.get("delta")) else { return };
+            .and_then(|c| c.get("delta"))
+        else {
+            return;
+        };
 
         // Text chunk
         if let Some(chunk) = delta.get("content").and_then(|c| c.as_str()) {
@@ -283,10 +303,13 @@ pub async fn call_agent(
                 // don't emit it as thinking — the fallback parser will handle it
                 // silently so the user never sees raw JSON in the chat.
                 if !text_acc.trim_start().starts_with('[') {
-                    let _ = app.emit("ai:agent-thinking", AgentThinkingEvent {
-                        run_id: run_id.to_string(),
-                        text: chunk.to_string(),
-                    });
+                    let _ = app.emit(
+                        "ai:agent-thinking",
+                        AgentThinkingEvent {
+                            run_id: run_id.to_string(),
+                            text: chunk.to_string(),
+                        },
+                    );
                 }
             }
         }
@@ -297,14 +320,21 @@ pub async fn call_agent(
                 let idx = tc_delta.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
                 // First chunk for this tool call carries id + name
                 if let Some(id) = tc_delta.get("id").and_then(|v| v.as_str()) {
-                    let name = tc_delta.get("function")
-                        .and_then(|f| f.get("name")).and_then(|n| n.as_str())
-                        .unwrap_or("").to_string();
-                    tool_buffers.entry(idx).or_insert((id.to_string(), name, String::new()));
+                    let name = tc_delta
+                        .get("function")
+                        .and_then(|f| f.get("name"))
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    tool_buffers
+                        .entry(idx)
+                        .or_insert((id.to_string(), name, String::new()));
                 }
                 // Accumulate partial JSON arguments
-                if let Some(partial) = tc_delta.get("function")
-                    .and_then(|f| f.get("arguments")).and_then(|a| a.as_str())
+                if let Some(partial) = tc_delta
+                    .get("function")
+                    .and_then(|f| f.get("arguments"))
+                    .and_then(|a| a.as_str())
                 {
                     if let Some(buf) = tool_buffers.get_mut(&idx) {
                         buf.2.push_str(partial);
@@ -312,7 +342,8 @@ pub async fn call_agent(
                 }
             }
         }
-    }).await?;
+    })
+    .await?;
 
     let mut indices: Vec<usize> = tool_buffers.keys().cloned().collect();
     indices.sort_unstable();
@@ -321,12 +352,21 @@ pub async fn call_agent(
         .filter_map(|idx| {
             let (id, name, args) = tool_buffers.remove(&idx)?;
             let input = serde_json::from_str(&args).unwrap_or(serde_json::json!({}));
-            Some(ToolCall { id, name, input, thought_signature: None })
+            Some(ToolCall {
+                id,
+                name,
+                input,
+                thought_signature: None,
+            })
         })
         .collect();
 
     Ok(AssistantResponse {
-        text: if text_acc.is_empty() { None } else { Some(text_acc) },
+        text: if text_acc.is_empty() {
+            None
+        } else {
+            Some(text_acc)
+        },
         tool_calls,
         thinking_streamed: true,
     })

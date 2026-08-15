@@ -26,10 +26,7 @@ fn normalize_slashes(path: &str) -> String {
 fn normalize_cwd_for_compare(cwd: &str) -> String {
     let mut norm = normalize_slashes(cwd.trim());
     // Preserve Windows/WSL drive roots like `C:/`.
-    if norm.len() == 3
-        && norm.as_bytes().get(1) == Some(&b':')
-        && norm.ends_with('/')
-    {
+    if norm.len() == 3 && norm.as_bytes().get(1) == Some(&b':') && norm.ends_with('/') {
         return norm;
     }
     while norm.len() > 1 && norm.ends_with('/') {

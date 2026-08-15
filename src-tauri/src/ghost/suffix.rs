@@ -76,9 +76,15 @@ mod tests {
         // History `lsblk` after typing `ls` — must not become `ls blk`.
         assert_eq!(normalize_suggestion_suffix("ls", "blk"), "blk");
         assert_eq!(normalize_suggestion_suffix("lsb", "lk"), "lk");
-        assert_eq!(normalize_suggestion_suffix("s", "sh 172.16.9.9"), "sh 172.16.9.9");
+        assert_eq!(
+            normalize_suggestion_suffix("s", "sh 172.16.9.9"),
+            "sh 172.16.9.9"
+        );
         assert_eq!(normalize_suggestion_suffix("c", "lear"), "lear");
-        assert_eq!(normalize_suggestion_suffix("git che", "ckout staging"), "ckout staging");
+        assert_eq!(
+            normalize_suggestion_suffix("git che", "ckout staging"),
+            "ckout staging"
+        );
         assert_eq!(normalize_suggestion_suffix("cd Doc", "uments/"), "uments/");
         assert_eq!(normalize_suggestion_suffix("cd /usr/l", "ocal/"), "ocal/");
         // Path provider forgot a space: we still don't invent one (path must emit it).

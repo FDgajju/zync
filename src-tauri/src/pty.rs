@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::sync::mpsc as std_mpsc;
+use std::sync::Arc;
 use tauri::ipc::{Channel as IpcChannel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex};
@@ -25,7 +25,10 @@ enum LocalReaderEvent {
 }
 
 fn remote_shell_login_flag(shell_override: &str) -> Option<&'static str> {
-    let token = shell_override.split_whitespace().next().unwrap_or(shell_override);
+    let token = shell_override
+        .split_whitespace()
+        .next()
+        .unwrap_or(shell_override);
     let base_name = std::path::Path::new(token)
         .file_name()
         .and_then(|name| name.to_str())
@@ -268,10 +271,18 @@ fn process_tree_has_children(root_pid: u32) -> bool {
     let mut system = System::new();
     system.refresh_processes(ProcessesToUpdate::All, true);
     let parent = Pid::from_u32(root_pid);
-    system.processes().values().any(|process| process.parent() == Some(parent))
+    system
+        .processes()
+        .values()
+        .any(|process| process.parent() == Some(parent))
 }
 
-fn emit_terminal_exit(app_handle: &AppHandle, term_id: &str, generation: u32, exit_code: Option<u32>) {
+fn emit_terminal_exit(
+    app_handle: &AppHandle,
+    term_id: &str,
+    generation: u32,
+    exit_code: Option<u32>,
+) {
     if let Err(e) = app_handle.emit(
         &format!("terminal-exit-{}", term_id),
         TerminalLifecycleEvent {
@@ -404,71 +415,77 @@ impl PtyManager {
             .map_err(|e| anyhow!("Failed to open PTY: {}", e))?;
 
         // Determine shell to use based on platform and user preference
-        let (shell, mut args, is_wsl_shell): (String, Vec<String>, bool) = if cfg!(target_os = "windows") {
-            match shell_override.as_deref() {
-                Some("cmd") => ("cmd.exe".to_string(), vec![], false),
-                Some("gitbash") => {
-                    // Try common Git Bash locations
-                    let git_bash_paths = [
-                        "C:\\Program Files\\Git\\bin\\bash.exe",
-                        "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-                    ];
-                    let bash_path = git_bash_paths
-                        .iter()
-                        .find(|p| std::path::Path::new(p).exists())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "bash.exe".to_string());
-                    (bash_path, vec!["--login".to_string(), "-i".to_string()], false)
-                }
-                Some("wsl") => ("wsl.exe".to_string(), vec![], true),
-                Some(wsl_distro) if wsl_distro.starts_with("wsl:") => {
-                    let distro = wsl_distro.strip_prefix("wsl:").unwrap_or("").to_string();
-                    if distro.trim().is_empty() {
-                        ("wsl.exe".to_string(), vec![], true)
-                    } else {
-                        ("wsl.exe".to_string(), vec!["-d".to_string(), distro], true)
+        let (shell, mut args, is_wsl_shell): (String, Vec<String>, bool) =
+            if cfg!(target_os = "windows") {
+                match shell_override.as_deref() {
+                    Some("cmd") => ("cmd.exe".to_string(), vec![], false),
+                    Some("gitbash") => {
+                        // Try common Git Bash locations
+                        let git_bash_paths = [
+                            "C:\\Program Files\\Git\\bin\\bash.exe",
+                            "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+                        ];
+                        let bash_path = git_bash_paths
+                            .iter()
+                            .find(|p| std::path::Path::new(p).exists())
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "bash.exe".to_string());
+                        (
+                            bash_path,
+                            vec!["--login".to_string(), "-i".to_string()],
+                            false,
+                        )
+                    }
+                    Some("wsl") => ("wsl.exe".to_string(), vec![], true),
+                    Some(wsl_distro) if wsl_distro.starts_with("wsl:") => {
+                        let distro = wsl_distro.strip_prefix("wsl:").unwrap_or("").to_string();
+                        if distro.trim().is_empty() {
+                            ("wsl.exe".to_string(), vec![], true)
+                        } else {
+                            ("wsl.exe".to_string(), vec!["-d".to_string(), distro], true)
+                        }
+                    }
+                    Some("pwsh") => {
+                        let pwsh_paths = [
+                            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+                            "C:\\Program Files\\PowerShell\\pwsh.exe",
+                        ];
+                        let pwsh_path = pwsh_paths
+                            .iter()
+                            .find(|p| std::path::Path::new(p).exists())
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "pwsh.exe".to_string());
+                        (pwsh_path, vec!["-NoLogo".to_string()], false)
+                    }
+                    Some(s)
+                        if s.eq_ignore_ascii_case("powershell")
+                            || s.eq_ignore_ascii_case("default") =>
+                    {
+                        ("powershell.exe".to_string(), vec![], false)
+                    }
+                    None => ("powershell.exe".to_string(), vec![], false),
+                    Some(other) => {
+                        // Try to use it as a direct path or command
+                        (other.to_string(), vec![], false)
                     }
                 }
-                Some("pwsh") => {
-                    let pwsh_paths = [
-                        "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-                        "C:\\Program Files\\PowerShell\\pwsh.exe",
-                    ];
-                    let pwsh_path = pwsh_paths
-                        .iter()
-                        .find(|p| std::path::Path::new(p).exists())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "pwsh.exe".to_string());
-                    (pwsh_path, vec!["-NoLogo".to_string()], false)
-                }
-                Some(s)
-                    if s.eq_ignore_ascii_case("powershell")
-                        || s.eq_ignore_ascii_case("default") =>
-                {
-                    ("powershell.exe".to_string(), vec![], false)
-                }
-                None => ("powershell.exe".to_string(), vec![], false),
-                Some(other) => {
-                    // Try to use it as a direct path or command
-                    (other.to_string(), vec![], false)
-                }
-            }
-        } else {
-            let path = shell_override
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("default"))
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string()));
-            (path, vec![], false)
-        };
+            } else {
+                let path = shell_override
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("default"))
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| {
+                        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+                    });
+                (path, vec![], false)
+            };
 
         // WSL should open in Linux context. If we have a Linux cwd, pass it via `--cd`.
         // Otherwise force distro home (`~`) instead of inheriting host Windows cwd.
         if is_wsl_shell {
             let provided_cwd = cwd.as_deref().map(str::trim);
-            let linux_cwd = provided_cwd
-                .filter(|path| !path.is_empty() && path.starts_with('/'));
+            let linux_cwd = provided_cwd.filter(|path| !path.is_empty() && path.starts_with('/'));
             if linux_cwd.is_none() {
                 if let Some(original) = provided_cwd {
                     eprintln!(
@@ -538,11 +555,8 @@ impl PtyManager {
         let child_killer = child.clone_killer();
         let child_pid = child.process_id();
 
-        let navigate_shell = local_navigate_shell_style(
-            shell_override.as_deref(),
-            is_wsl_shell,
-            &shell,
-        );
+        let navigate_shell =
+            local_navigate_shell_style(shell_override.as_deref(), is_wsl_shell, &shell);
         let session = PtySession {
             connection_id,
             output_channel: output_channel.clone(),
@@ -582,7 +596,8 @@ impl PtyManager {
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => {
-                        let _ = output_tx.blocking_send(LocalReaderEvent::Finished { exit_code: None });
+                        let _ =
+                            output_tx.blocking_send(LocalReaderEvent::Finished { exit_code: None });
                         break;
                     }
                     Ok(n) => {
@@ -595,7 +610,8 @@ impl PtyManager {
                     }
                     Err(e) => {
                         eprintln!("Error reading from PTY: {}", e);
-                        let _ = output_tx.blocking_send(LocalReaderEvent::Finished { exit_code: None });
+                        let _ =
+                            output_tx.blocking_send(LocalReaderEvent::Finished { exit_code: None });
                         break;
                     }
                 }
@@ -665,7 +681,11 @@ impl PtyManager {
 
         let mut sessions = self.sessions.lock().await;
         if let Some(session) = sessions.get_mut(&term_id) {
-            if let TerminalHandle::Local { reader_handle: session_reader_handle, .. } = &mut session.handle {
+            if let TerminalHandle::Local {
+                reader_handle: session_reader_handle,
+                ..
+            } = &mut session.handle
+            {
                 *session_reader_handle = Some(reader_handle);
             }
         }
@@ -740,10 +760,9 @@ impl PtyManager {
             };
             // Important: `exec` and `request_shell` are different channel request
             // types. If `exec` fails, callers must open a fresh channel before retrying.
-            channel
-                .exec(false, launch)
-                .await
-                .map_err(|e| anyhow!("Failed to launch selected remote shell '{}': {}", shell, e))?;
+            channel.exec(false, launch).await.map_err(|e| {
+                anyhow!("Failed to launch selected remote shell '{}': {}", shell, e)
+            })?;
         } else {
             // Default remote login shell.
             channel
@@ -755,7 +774,10 @@ impl PtyManager {
         // If cwd is provided, send a cd command immediately.
         if let Some(path) = cwd {
             let cd_cmd = if remote_is_windows {
-                match selected_shell.map(classify_windows_shell).unwrap_or(ShellKind::Other) {
+                match selected_shell
+                    .map(classify_windows_shell)
+                    .unwrap_or(ShellKind::Other)
+                {
                     ShellKind::Cmd => {
                         format!("cd /d \"{}\" && cls\r", windows_double_quote(&path, false))
                     }
@@ -790,10 +812,7 @@ impl PtyManager {
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(32);
         let (resize_tx, mut resize_rx) = mpsc::channel::<(u16, u16)>(4);
 
-        let navigate_shell = remote_navigate_shell_style(
-            remote_is_windows,
-            selected_shell,
-        );
+        let navigate_shell = remote_navigate_shell_style(remote_is_windows, selected_shell);
         let connection_id_for_transport = connection_id.clone();
         let session = PtySession {
             connection_id,
@@ -912,7 +931,11 @@ impl PtyManager {
 
         let mut sessions = self.sessions.lock().await;
         if let Some(session) = sessions.get_mut(&term_id) {
-            if let TerminalHandle::Remote { task_handle: session_task_handle, .. } = &mut session.handle {
+            if let TerminalHandle::Remote {
+                task_handle: session_task_handle,
+                ..
+            } = &mut session.handle
+            {
                 *session_task_handle = Some(task_handle);
             }
         }
@@ -936,7 +959,7 @@ impl PtyManager {
             let session = sessions
                 .get(term_id)
                 .ok_or_else(|| anyhow!("Session not found: {}", term_id))?;
-            
+
             match &session.handle {
                 TerminalHandle::Local { writer, .. } => (Some(writer.clone()), None),
                 TerminalHandle::Remote { tx, .. } => (None, Some(tx.clone())),
@@ -981,9 +1004,7 @@ impl PtyManager {
                         .map_err(|e| anyhow!("Failed to resize PTY: {}", e))?;
                     None
                 }
-                TerminalHandle::Remote { resize_tx, .. } => {
-                    Some(resize_tx.clone())
-                }
+                TerminalHandle::Remote { resize_tx, .. } => Some(resize_tx.clone()),
             }
         }; // sessions lock is dropped here
 

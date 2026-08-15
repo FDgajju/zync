@@ -96,7 +96,9 @@ pub async fn session_save(app: AppHandle, mut data: SessionData) -> Result<(), S
         if tabs.len() > MAX_TABS_PER_SCOPE {
             eprintln!(
                 "[Session] Truncating {} terminal tabs to {} for scope '{}'",
-                tabs.len(), MAX_TABS_PER_SCOPE, scope
+                tabs.len(),
+                MAX_TABS_PER_SCOPE,
+                scope
             );
             tabs.truncate(MAX_TABS_PER_SCOPE);
         }
@@ -114,6 +116,10 @@ pub async fn session_save(app: AppHandle, mut data: SessionData) -> Result<(), S
     // leaves a corrupt session.json. On Windows, tokio::fs::rename replaces an
     // existing destination atomically (same as POSIX on the same volume).
     let tmp = dir.join("session.tmp");
-    tokio::fs::write(&tmp, &json).await.map_err(|e| e.to_string())?;
-    tokio::fs::rename(&tmp, dir.join("session.json")).await.map_err(|e| e.to_string())
+    tokio::fs::write(&tmp, &json)
+        .await
+        .map_err(|e| e.to_string())?;
+    tokio::fs::rename(&tmp, dir.join("session.json"))
+        .await
+        .map_err(|e| e.to_string())
 }

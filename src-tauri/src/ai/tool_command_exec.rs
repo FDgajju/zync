@@ -10,9 +10,12 @@ pub(crate) async fn exec_command(
     if let Some(conn_id) = ctx.connection_id {
         let session_arc = {
             let conns = ctx.connections.lock().await;
-            let handle = conns
-                .get(conn_id)
-                .ok_or_else(|| format!("SSH connection '{}' not found. Reconnect and try again.", conn_id))?;
+            let handle = conns.get(conn_id).ok_or_else(|| {
+                format!(
+                    "SSH connection '{}' not found. Reconnect and try again.",
+                    conn_id
+                )
+            })?;
             handle
                 .session
                 .as_ref()
@@ -20,10 +23,25 @@ pub(crate) async fn exec_command(
                 .clone()
         };
         let session = session_arc.lock().await;
-        return exec_ssh(ctx.app, ctx.session_dir.as_deref(), &session, cmd, ctx.run_id, tool_call_id).await;
+        return exec_ssh(
+            ctx.app,
+            ctx.session_dir.as_deref(),
+            &session,
+            cmd,
+            ctx.run_id,
+            tool_call_id,
+        )
+        .await;
     }
 
-    exec_local(ctx.app, ctx.session_dir.as_deref(), cmd, ctx.run_id, tool_call_id).await
+    exec_local(
+        ctx.app,
+        ctx.session_dir.as_deref(),
+        cmd,
+        ctx.run_id,
+        tool_call_id,
+    )
+    .await
 }
 
 pub(crate) async fn exec_silent(ctx: &ToolContext<'_>, cmd: &str) -> Result<String, String> {
@@ -100,7 +118,10 @@ async fn exec_ssh(
             }
             Ok(result)
         }
-        Err(_) => Err(format!("Command timed out after {}s. Consider breaking it into smaller steps.", COMMAND_TIMEOUT.as_secs())),
+        Err(_) => Err(format!(
+            "Command timed out after {}s. Consider breaking it into smaller steps.",
+            COMMAND_TIMEOUT.as_secs()
+        )),
     }
 }
 
@@ -198,7 +219,12 @@ async fn exec_local_silent(cmd: &str) -> Result<String, String> {
     run_local_process(cmd).await
 }
 
-fn combine_process_output(stdout: String, stderr: String, success: bool, code: i32) -> Result<String, String> {
+fn combine_process_output(
+    stdout: String,
+    stderr: String,
+    success: bool,
+    code: i32,
+) -> Result<String, String> {
     let combined = if stderr.is_empty() {
         stdout
     } else if stdout.is_empty() {
@@ -236,13 +262,21 @@ async fn run_local_process(cmd: &str) -> Result<String, String> {
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        combine_process_output(stdout, stderr, output.status.success(), output.status.code().unwrap_or(-1))
+        combine_process_output(
+            stdout,
+            stderr,
+            output.status.success(),
+            output.status.code().unwrap_or(-1),
+        )
     })
     .await;
 
     match result {
         Ok(inner) => inner,
-        Err(_) => Err(format!("Command timed out after {}s. Consider breaking it into smaller steps.", COMMAND_TIMEOUT.as_secs())),
+        Err(_) => Err(format!(
+            "Command timed out after {}s. Consider breaking it into smaller steps.",
+            COMMAND_TIMEOUT.as_secs()
+        )),
     }
 }
 
@@ -273,7 +307,11 @@ mod tests {
 
         assert!(result.is_err(), "Expected timeout error");
         let err = result.unwrap_err();
-        assert!(err.contains("timed out"), "Expected timeout message, got: {}", err);
+        assert!(
+            err.contains("timed out"),
+            "Expected timeout message, got: {}",
+            err
+        );
         assert!(err.contains(&expected_timeout.to_string()));
         assert!(
             elapsed >= expected_timeout.saturating_sub(1) && elapsed <= expected_timeout + 5,

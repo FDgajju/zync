@@ -37,7 +37,10 @@ fn suffix_bonus_for_command(prefix: &str, suffix: &str) -> i32 {
             if suffix_trimmed.contains('@') {
                 bonus += 2;
             }
-            if suffix_trimmed.contains('.') || suffix_trimmed.contains('-') || suffix_trimmed.contains(':') {
+            if suffix_trimmed.contains('.')
+                || suffix_trimmed.contains('-')
+                || suffix_trimmed.contains(':')
+            {
                 bonus += 1;
             }
             if !has_space {
@@ -113,9 +116,7 @@ pub fn best_suffix_for_prefix(
 
         if effective > best_effective
             || (effective == best_effective && suffix_len < best_suffix_len)
-            || (effective == best_effective
-                && suffix_len == best_suffix_len
-                && idx < best_idx)
+            || (effective == best_effective && suffix_len == best_suffix_len && idx < best_idx)
         {
             best_suffix = Some(suffix);
             best_effective = effective;
@@ -212,7 +213,8 @@ mod tests {
             scores: Default::default(),
         };
 
-        let out = ranked_candidates_for_prefix(&scope, "git st", false, 10, RankingContext::empty());
+        let out =
+            ranked_candidates_for_prefix(&scope, "git st", false, 10, RankingContext::empty());
         assert_eq!(out, vec!["ash".to_string(), "atus".to_string()]);
     }
 
@@ -257,10 +259,7 @@ mod tests {
     #[test]
     fn command_bonus_penalizes_chained_cd_suffixes() {
         let scope = ScopeHistory {
-            history: vec![
-                "cd Documents && ls".to_string(),
-                "cd Documents".to_string(),
-            ],
+            history: vec!["cd Documents && ls".to_string(), "cd Documents".to_string()],
             scores: Default::default(),
         };
 

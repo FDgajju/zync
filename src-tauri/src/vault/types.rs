@@ -36,7 +36,10 @@ pub enum VaultStatus {
         remembered_on_device: bool,
     },
     #[serde(rename_all = "camelCase")]
-    Unlocked { vault_id: String, item_count: u64 },
+    Unlocked {
+        vault_id: String,
+        item_count: u64,
+    },
 }
 
 /// Plaintext record payload — only exists in memory after decryption.

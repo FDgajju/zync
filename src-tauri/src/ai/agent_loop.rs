@@ -6,23 +6,18 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
-use super::agent_planning::{build_plan_context, run_planning_phase};
 use super::agent_loop_support::{
-    build_action_entry,
-    is_capability_refusal,
-    is_conversational_question,
-    is_sensitive_write_path,
-    needs_destructive_approval,
-    needs_package_approval,
-    needs_service_approval,
+    build_action_entry, is_capability_refusal, is_conversational_question, is_sensitive_write_path,
+    needs_destructive_approval, needs_package_approval, needs_service_approval,
     parse_text_tool_calls,
 };
+use super::agent_planning::{build_plan_context, run_planning_phase};
 
 use crate::ai::types::{
     AgentCheckpointEvent, AgentDoneEvent, AgentErrorEvent, AgentMessage, AgentRunRequest,
     AgentThinkingEvent, AssistantResponse, ToolDoneEvent, ToolStartEvent,
 };
-use crate::ai::{AiConfig, tools};
+use crate::ai::{tools, AiConfig};
 use crate::commands::AppState;
 
 /// Maximum tool calls across the whole run (prevents infinite loops).
@@ -86,13 +81,7 @@ pub async fn run(
     let result = run_inner(app, state, request, config, cancel).await;
 
     if let Err(e) = result {
-        let _ = app.emit(
-            "ai:agent-error",
-            AgentErrorEvent {
-                run_id,
-                message: e,
-            },
-        );
+        let _ = app.emit("ai:agent-error", AgentErrorEvent { run_id, message: e });
     }
 }
 
@@ -110,14 +99,15 @@ async fn run_inner(
     if request.connection_id.as_deref() == Some("local") {
         request.connection_id = None;
     }
-    let conn_id    = request.connection_id.as_deref();
+    let conn_id = request.connection_id.as_deref();
     let conn_label = request.connection_label.as_deref();
     let model_name = config.model.as_deref().unwrap_or("unknown");
 
-    let (session_dir, session_ts) = match super::brain::init_session(app, &request.goal, conn_id, conn_label) {
-        Some((dir, ts)) => (Some(dir), Some(ts)),
-        None => (None, None),
-    };
+    let (session_dir, session_ts) =
+        match super::brain::init_session(app, &request.goal, conn_id, conn_label) {
+            Some((dir, ts)) => (Some(dir), Some(ts)),
+            None => (None, None),
+        };
 
     // Accumulates a human-readable action log shown in the DONE bubble.
     let mut action_log: Vec<String> = Vec::new();
@@ -177,7 +167,8 @@ async fn run_inner(
     // Investigate the environment, show the user a plan, and wait for approval
     // before any mutations. On rejection, abort the run cleanly.
     // If an approved plan was passed in (retry after failure), skip re-planning.
-    let approved_steps = if let Some(steps) = request.approved_plan.take().filter(|s| !s.is_empty()) {
+    let approved_steps = if let Some(steps) = request.approved_plan.take().filter(|s| !s.is_empty())
+    {
         // Reuse the previously approved plan — user is continuing after a failed run.
         steps
     } else {
@@ -191,10 +182,19 @@ async fn run_inner(
             &config,
             &cancel,
             |app, run_id, messages, config, system, tool_schemas| {
-                Box::pin(call_provider(app, run_id, messages, config, system, tool_schemas))
+                Box::pin(call_provider(
+                    app,
+                    run_id,
+                    messages,
+                    config,
+                    system,
+                    tool_schemas,
+                ))
             },
             |cancel| Box::pin(poll_until_cancel(cancel)),
-        ).await {
+        )
+        .await
+        {
             Ok(Some(steps)) => steps,
             Ok(None) => {
                 let was_cancelled = cancel.load(Ordering::Relaxed);
@@ -266,11 +266,15 @@ async fn run_inner(
 
         // ── Call AI (with retry) ──
         let response = call_provider_with_retry(
-            app, run_id, &messages, &config,
+            app,
+            run_id,
+            &messages,
+            &config,
             AGENT_SYSTEM_PROMPT,
             tools::execution_tool_schemas(&config),
             &cancel,
-        ).await;
+        )
+        .await;
         let response = match response {
             Ok(r) => r,
             Err(_) if cancel.load(Ordering::Relaxed) => {
@@ -308,7 +312,11 @@ async fn run_inner(
                     // already streamed as thinking chunks. The DONE bubble shows a compact
                     // summary card, while the thinking bubble above provides the live view —
                     // both are useful (live = full reasoning, DONE = permanent record).
-                    let summary = if text.trim().is_empty() { "Done." } else { text };
+                    let summary = if text.trim().is_empty() {
+                        "Done."
+                    } else {
+                        text
+                    };
                     finish!(true, summary, action_log);
                     return Ok(());
                 }
@@ -362,13 +370,17 @@ async fn run_inner(
                 // Safety net: if the AI is just asking "what next?" (conversational),
                 // treat it as a natural completion rather than a real checkpoint.
                 if is_conversational_question(question) {
-                    let summary = response.text.clone().unwrap_or_else(|| question.to_string());
+                    let summary = response
+                        .text
+                        .clone()
+                        .unwrap_or_else(|| question.to_string());
                     finish!(true, &summary, std::mem::take(&mut action_log));
                     return Ok(());
                 }
 
                 let proceed =
-                    emit_checkpoint(app, state, run_id, &tool_call.id, question, None, &cancel).await;
+                    emit_checkpoint(app, state, run_id, &tool_call.id, question, None, &cancel)
+                        .await;
 
                 let result_text = if proceed {
                     "User approved. Continue."
@@ -384,7 +396,11 @@ async fn run_inner(
                 });
 
                 if !proceed {
-                    finish!(false, "Stopped at user request.", std::mem::take(&mut action_log));
+                    finish!(
+                        false,
+                        "Stopped at user request.",
+                        std::mem::take(&mut action_log)
+                    );
                     return Ok(());
                 }
                 // User just approved — the AI will call run_command next.
@@ -397,19 +413,29 @@ async fn run_inner(
             // The AI should call ask_user first, but this is a safety net for cases where it
             // forgets or is running a smaller model that doesn't follow instructions well.
             if tool_call.name == "run_command" {
-                let cmd = tool_call.input.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                let cmd = tool_call
+                    .input
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
 
                 // Check session whitelist first — whitelisted commands skip all safety checks.
                 let scope = conn_id.unwrap_or("local");
                 let is_whitelisted = {
                     let wl = state.command_whitelist.lock().await;
-                    wl.get(scope).map_or(false, |set: &std::collections::HashSet<String>| set.contains(cmd))
+                    wl.get(scope)
+                        .map_or(false, |set: &std::collections::HashSet<String>| {
+                            set.contains(cmd)
+                        })
                 };
 
                 // If the AI already called ask_user and the user approved (same or previous turn),
                 // consume the skip and don't prompt again.
-                let checkpoint_reason: Option<String> = if is_whitelisted || skip_next_safety_check {
-                    if skip_next_safety_check { skip_next_safety_check = false; }
+                let checkpoint_reason: Option<String> = if is_whitelisted || skip_next_safety_check
+                {
+                    if skip_next_safety_check {
+                        skip_next_safety_check = false;
+                    }
                     None
                 } else if needs_destructive_approval(cmd) {
                     Some(format!(
@@ -427,7 +453,16 @@ async fn run_inner(
                     None
                 };
                 if let Some(question) = checkpoint_reason {
-                    let proceed = emit_checkpoint(app, state, run_id, &tool_call.id, &question, Some(cmd), &cancel).await;
+                    let proceed = emit_checkpoint(
+                        app,
+                        state,
+                        run_id,
+                        &tool_call.id,
+                        &question,
+                        Some(cmd),
+                        &cancel,
+                    )
+                    .await;
                     if !proceed {
                         cancel.store(true, Ordering::Relaxed);
                         messages.push(AgentMessage::ToolResult {
@@ -435,7 +470,11 @@ async fn run_inner(
                             tool_name: tool_call.name.clone(),
                             content: "User declined. Stop.".to_string(),
                         });
-                        finish!(false, "Stopped at user request.", std::mem::take(&mut action_log));
+                        finish!(
+                            false,
+                            "Stopped at user request.",
+                            std::mem::take(&mut action_log)
+                        );
                         return Ok(());
                     }
                 }
@@ -443,7 +482,11 @@ async fn run_inner(
 
             // Gate write_file on sensitive paths and existing-file overwrites.
             if tool_call.name == "write_file" {
-                let path = tool_call.input.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let path = tool_call
+                    .input
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let question: Option<String> = if is_sensitive_write_path(path) {
                     Some(format!(
                         "The agent wants to write to a sensitive system path:\n\n`{path}`\n\nThis could affect system configuration or services. Allow this?"
@@ -464,7 +507,16 @@ async fn run_inner(
                     }
                 };
                 if let Some(question) = question {
-                    let proceed = emit_checkpoint(app, state, run_id, &tool_call.id, &question, None, &cancel).await;
+                    let proceed = emit_checkpoint(
+                        app,
+                        state,
+                        run_id,
+                        &tool_call.id,
+                        &question,
+                        None,
+                        &cancel,
+                    )
+                    .await;
                     if !proceed {
                         cancel.store(true, Ordering::Relaxed);
                         messages.push(AgentMessage::ToolResult {
@@ -472,7 +524,11 @@ async fn run_inner(
                             tool_name: tool_call.name.clone(),
                             content: "User declined. Stop.".to_string(),
                         });
-                        finish!(false, "Stopped at user request.", std::mem::take(&mut action_log));
+                        finish!(
+                            false,
+                            "Stopped at user request.",
+                            std::mem::take(&mut action_log)
+                        );
                         return Ok(());
                     }
                 }
@@ -480,8 +536,13 @@ async fn run_inner(
 
             // Some models call fake completion tools like "done", "finish", "exit", "summary".
             // Treat them as a signal the model is done rather than erroring out.
-            if matches!(tool_call.name.as_str(), "done" | "finish" | "exit" | "complete" | "stop" | "summary") {
-                let summary = tool_call.input.get("summary")
+            if matches!(
+                tool_call.name.as_str(),
+                "done" | "finish" | "exit" | "complete" | "stop" | "summary"
+            ) {
+                let summary = tool_call
+                    .input
+                    .get("summary")
                     .or_else(|| tool_call.input.get("message"))
                     .or_else(|| tool_call.input.get("text"))
                     .and_then(|v| v.as_str())
@@ -566,40 +627,76 @@ async fn call_provider(
     match config.provider.as_str() {
         "claude" => {
             crate::ai::providers::claude::call_agent(
-                app, run_id, system, messages, config, tool_schemas,
+                app,
+                run_id,
+                system,
+                messages,
+                config,
+                tool_schemas,
             )
             .await
         }
         "openai" => {
             crate::ai::providers::openai_compat::call_agent(
-                app, "OpenAI", "https://api.openai.com/v1", "gpt-4o",
-                run_id, system, messages, config, tool_schemas,
+                app,
+                "OpenAI",
+                "https://api.openai.com/v1",
+                "gpt-4o",
+                run_id,
+                system,
+                messages,
+                config,
+                tool_schemas,
             )
             .await
         }
         "groq" => {
             crate::ai::providers::openai_compat::call_agent(
-                app, "Groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile",
-                run_id, system, messages, config, tool_schemas,
+                app,
+                "Groq",
+                "https://api.groq.com/openai/v1",
+                "llama-3.3-70b-versatile",
+                run_id,
+                system,
+                messages,
+                config,
+                tool_schemas,
             )
             .await
         }
         "mistral" => {
             crate::ai::providers::openai_compat::call_agent(
-                app, "Mistral", "https://api.mistral.ai/v1", "mistral-large-latest",
-                run_id, system, messages, config, tool_schemas,
+                app,
+                "Mistral",
+                "https://api.mistral.ai/v1",
+                "mistral-large-latest",
+                run_id,
+                system,
+                messages,
+                config,
+                tool_schemas,
             )
             .await
         }
         "gemini" => {
             crate::ai::providers::gemini::call_agent(
-                app, run_id, system, messages, config, tool_schemas,
+                app,
+                run_id,
+                system,
+                messages,
+                config,
+                tool_schemas,
             )
             .await
         }
         "ollama" => {
             crate::ai::providers::ollama::call_agent(
-                app, run_id, system, messages, config, tool_schemas,
+                app,
+                run_id,
+                system,
+                messages,
+                config,
+                tool_schemas,
             )
             .await
         }
@@ -637,7 +734,10 @@ async fn call_provider_with_retry(
                 "ai:agent-thinking",
                 AgentThinkingEvent {
                     run_id: run_id.to_string(),
-                    text: format!("\n\n*Retrying in {}s (retry {}/{})...*\n\n", delay_secs, attempt, MAX_RETRIES),
+                    text: format!(
+                        "\n\n*Retrying in {}s (retry {}/{})...*\n\n",
+                        delay_secs, attempt, MAX_RETRIES
+                    ),
                 },
             );
 
@@ -730,8 +830,14 @@ fn build_context_preamble(req: &AgentRunRequest) -> String {
     // Always emit OS and shell so the AI knows what it's working with.
     // Use "unknown" rather than silently omitting — unknown is honest and
     // tells the AI to use conservative, portable commands.
-    parts.push(format!("OS: {}", req.context.os.as_deref().unwrap_or("unknown")));
-    parts.push(format!("Shell: {}", req.context.shell.as_deref().unwrap_or("unknown")));
+    parts.push(format!(
+        "OS: {}",
+        req.context.os.as_deref().unwrap_or("unknown")
+    ));
+    parts.push(format!(
+        "Shell: {}",
+        req.context.shell.as_deref().unwrap_or("unknown")
+    ));
 
     if let Some(cwd) = &req.context.cwd {
         parts.push(format!("CWD: {}", cwd));

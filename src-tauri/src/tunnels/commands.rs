@@ -1,6 +1,6 @@
-use crate::commands::{get_data_dir, AppState};
 use super::manager::probe_ssh_session;
 use super::{remote_forward_map_key, tunnel_runtime_id};
+use crate::commands::{get_data_dir, AppState};
 use crate::types::{SavedTunnel, SavedTunnelsData};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -85,11 +85,7 @@ pub(crate) async fn reconcile_stale_tunnel_runtime(
                 .copied()
                 .unwrap_or(false);
             !has_session
-                && tunnel_is_active_runtime(
-                    tunnel,
-                    &local_runtime_keys,
-                    &remote_runtime_keys,
-                )
+                && tunnel_is_active_runtime(tunnel, &local_runtime_keys, &remote_runtime_keys)
         })
         .collect();
 
@@ -124,19 +120,21 @@ async fn apply_runtime_tunnel_status(
 
     reconcile_stale_tunnel_runtime(app, state, &connection_ids).await;
 
-    let sessions_by_connection: HashMap<String, Arc<Mutex<russh::client::Handle<crate::ssh::Client>>>> =
-        {
-            let connections = state.connections.lock().await;
-            connection_ids
-                .iter()
-                .filter_map(|connection_id| {
-                    connections
-                        .get(connection_id)
-                        .and_then(|handle| handle.session.clone())
-                        .map(|session| (connection_id.clone(), session))
-                })
-                .collect()
-        };
+    let sessions_by_connection: HashMap<
+        String,
+        Arc<Mutex<russh::client::Handle<crate::ssh::Client>>>,
+    > = {
+        let connections = state.connections.lock().await;
+        connection_ids
+            .iter()
+            .filter_map(|connection_id| {
+                connections
+                    .get(connection_id)
+                    .and_then(|handle| handle.session.clone())
+                    .map(|session| (connection_id.clone(), session))
+            })
+            .collect()
+    };
 
     let (local_runtime_keys, remote_runtime_keys) = {
         let local_listeners = state.tunnel_manager.local_listeners.lock().await;
@@ -256,10 +254,7 @@ pub(crate) async fn stop_tunnels_for_connections(
                 .get(&tunnel.connection_id)
                 .and_then(|c| c.session.clone())
         };
-        let result = state
-            .tunnel_manager
-            .stop_tunnel(session, &tunnel)
-            .await;
+        let result = state.tunnel_manager.stop_tunnel(session, &tunnel).await;
 
         let (status, error) = match result {
             Ok(()) => ("stopped".to_string(), None),
@@ -391,10 +386,7 @@ pub async fn tunnel_stop(
         "[TUNNEL CMD] Stopping tunnel: runtime_id={}",
         tunnel_runtime_id(&tunnel)
     );
-    let res = state
-        .tunnel_manager
-        .stop_tunnel(session, &tunnel)
-        .await;
+    let res = state.tunnel_manager.stop_tunnel(session, &tunnel).await;
 
     if let Err(ref e) = res {
         let _ = app.emit(

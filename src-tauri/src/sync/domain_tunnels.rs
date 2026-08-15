@@ -7,8 +7,7 @@ use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 
 const TUNNELS_FILE: &str = "tunnels.json";
-pub(crate) static TUNNELS_MUTATION_LOCK: LazyLock<Mutex<()>> =
-    LazyLock::new(|| Mutex::new(()));
+pub(crate) static TUNNELS_MUTATION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -141,14 +140,26 @@ fn tunnel_matches_record(tunnel: &SavedTunnel, record: &TunnelSyncRecord) -> boo
     {
         return false;
     }
-    tunnel.connection_id.trim().eq_ignore_ascii_case(record.connection_id.trim())
-        && tunnel.tunnel_type.trim().eq_ignore_ascii_case(record.tunnel_type.trim())
+    tunnel
+        .connection_id
+        .trim()
+        .eq_ignore_ascii_case(record.connection_id.trim())
+        && tunnel
+            .tunnel_type
+            .trim()
+            .eq_ignore_ascii_case(record.tunnel_type.trim())
         && tunnel.local_port == record.local_port
-        && tunnel.remote_host.trim().eq_ignore_ascii_case(record.remote_host.trim())
+        && tunnel
+            .remote_host
+            .trim()
+            .eq_ignore_ascii_case(record.remote_host.trim())
         && tunnel.remote_port == record.remote_port
-        && tunnel.bind_address.as_deref().unwrap_or_default().trim().eq_ignore_ascii_case(
-            record.bind_address.as_deref().unwrap_or_default().trim(),
-        )
+        && tunnel
+            .bind_address
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .eq_ignore_ascii_case(record.bind_address.as_deref().unwrap_or_default().trim())
         && tunnel.bind_to_any.unwrap_or(false) == record.bind_to_any
 }
 
@@ -170,7 +181,10 @@ fn map_tunnel(tunnel: SavedTunnel, logical_id: String) -> TunnelSyncRecord {
     }
 }
 
-pub fn apply_tunnel_restore_records(data_dir: &Path, records: &[TunnelSyncRecord]) -> SyncResult<(u64, u64)> {
+pub fn apply_tunnel_restore_records(
+    data_dir: &Path,
+    records: &[TunnelSyncRecord],
+) -> SyncResult<(u64, u64)> {
     if records.is_empty() {
         return Ok((0, 0));
     }
@@ -240,7 +254,9 @@ pub(crate) fn load_saved_tunnels(path: &Path) -> SyncResult<SavedTunnelsData> {
                 return Ok(data);
             }
         }
-        return Ok(SavedTunnelsData { tunnels: Vec::new() });
+        return Ok(SavedTunnelsData {
+            tunnels: Vec::new(),
+        });
     }
     parse_saved_tunnels_file(path)
 }
@@ -251,19 +267,31 @@ fn parse_saved_tunnels_candidate(path: &Path) -> Option<SavedTunnelsData> {
 
 fn parse_saved_tunnels_file(path: &Path) -> SyncResult<SavedTunnelsData> {
     let raw = std::fs::read_to_string(path).map_err(|e| {
-        SyncError::new("sync_tunnels_read_failed", format!("Failed to read tunnels file: {e}"))
+        SyncError::new(
+            "sync_tunnels_read_failed",
+            format!("Failed to read tunnels file: {e}"),
+        )
     })?;
     serde_json::from_str::<SavedTunnelsData>(&raw).map_err(|e| {
-        SyncError::new("sync_tunnels_parse_failed", format!("Failed to parse tunnels file: {e}"))
+        SyncError::new(
+            "sync_tunnels_parse_failed",
+            format!("Failed to parse tunnels file: {e}"),
+        )
     })
 }
 
 pub(crate) fn write_saved_tunnels_atomic(path: &Path, data: &SavedTunnelsData) -> SyncResult<()> {
     let json = serde_json::to_string_pretty(data).map_err(|e| {
-        SyncError::new("sync_tunnels_write_failed", format!("Failed to serialize tunnels data: {e}"))
+        SyncError::new(
+            "sync_tunnels_write_failed",
+            format!("Failed to serialize tunnels data: {e}"),
+        )
     })?;
     crate::atomic_io::durable_replace(path, json.as_bytes()).map_err(|e| {
-        SyncError::new("sync_tunnels_write_failed", format!("Failed to write tunnels file: {e}"))
+        SyncError::new(
+            "sync_tunnels_write_failed",
+            format!("Failed to write tunnels file: {e}"),
+        )
     })
 }
 
@@ -410,7 +438,11 @@ mod tests {
             }],
         };
         let path = dir.join("tunnels.json");
-        std::fs::write(&path, serde_json::to_string_pretty(&initial).expect("serialize")).expect("write");
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&initial).expect("serialize"),
+        )
+        .expect("write");
 
         let changes = vec![
             TunnelSyncRecord {

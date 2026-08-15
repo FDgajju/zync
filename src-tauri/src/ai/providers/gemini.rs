@@ -191,7 +191,11 @@ pub async fn call_agent(
                 }
                 contents.push(serde_json::json!({ "role": "model", "parts": parts }));
             }
-            AgentMessage::ToolResult { tool_call_id: _, tool_name, content } => {
+            AgentMessage::ToolResult {
+                tool_call_id: _,
+                tool_name,
+                content,
+            } => {
                 // Gemini tool results go back as user-role functionResponse parts
                 contents.push(serde_json::json!({
                     "role": "user",
@@ -232,17 +236,26 @@ pub async fn call_agent(
                 .await
                 .map_err(|e| sanitize_error(&e.to_string()))?;
             let status = resp.status();
-            if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
                 return Err("Invalid Gemini API key. Check Settings -> AI.".to_string());
             }
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                let reset_hint = resp.headers()
+                let reset_hint = resp
+                    .headers()
                     .get("retry-after")
                     .and_then(|v| v.to_str().ok())
                     .map(|raw| {
                         if let Ok(s) = raw.trim().parse::<u64>() {
-                            if s < 60 { format!(" — resets in {s}s") } else { format!(" — resets in {}m {}s", s/60, s%60) }
-                        } else { String::new() }
+                            if s < 60 {
+                                format!(" — resets in {s}s")
+                            } else {
+                                format!(" — resets in {}m {}s", s / 60, s % 60)
+                            }
+                        } else {
+                            String::new()
+                        }
                     })
                     .unwrap_or_default();
                 last_err = format!("Gemini rate limit for '{model}'{reset_hint}. Retrying…");
@@ -282,7 +295,11 @@ pub async fn call_agent(
 
     for part in &parts {
         // Skip internal thought parts (thinking models) — they must not appear in text output.
-        if part.get("thought").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if part
+            .get("thought")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             continue;
         }
 
@@ -310,12 +327,21 @@ pub async fn call_agent(
                 .or_else(|| part.get("thoughtSignature"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            tool_calls.push(ToolCall { id, name, input, thought_signature });
+            tool_calls.push(ToolCall {
+                id,
+                name,
+                input,
+                thought_signature,
+            });
         }
     }
 
     Ok(crate::ai::types::AssistantResponse {
-        text: if text_parts.is_empty() { None } else { Some(text_parts.join("\n")) },
+        text: if text_parts.is_empty() {
+            None
+        } else {
+            Some(text_parts.join("\n"))
+        },
         tool_calls,
         thinking_streamed: false,
     })

@@ -29,7 +29,9 @@ pub fn is_ssh_session_fatal_error(error: &impl std::fmt::Display) -> bool {
         "disconnected",
         "shut down",
     ];
-    FATAL_PATTERNS.iter().any(|pattern| message.contains(pattern))
+    FATAL_PATTERNS
+        .iter()
+        .any(|pattern| message.contains(pattern))
 }
 
 pub fn spawn_session_failure_watcher(

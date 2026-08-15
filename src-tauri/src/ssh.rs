@@ -111,10 +111,8 @@ impl client::Handler for Client {
             connected_address, connected_port
         );
 
-        let map_key = crate::tunnels::remote_forward_map_key(
-            &self.connection_id,
-            connected_port as u16,
-        );
+        let map_key =
+            crate::tunnels::remote_forward_map_key(&self.connection_id, connected_port as u16);
         let target = {
             let map = self.tunnel_manager.remote_forwards.lock().await;
             map.get(&map_key).cloned()
@@ -456,9 +454,7 @@ impl SshManager {
                 Err(poisoned) => poisoned.into_inner(),
             };
             let public_key = privkey.public_key_bytes();
-            let already_loaded = keys
-                .iter()
-                .any(|key| key.public_key_bytes() == public_key);
+            let already_loaded = keys.iter().any(|key| key.public_key_bytes() == public_key);
             if !already_loaded {
                 keys.push((*privkey).clone());
             }

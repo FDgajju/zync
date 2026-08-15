@@ -45,7 +45,10 @@ pub(crate) async fn read_file(
         {
             let conns = ctx.connections.lock().await;
             if !conns.contains_key(conn_id) {
-                return Err(format!("SSH connection '{}' not found. Reconnect and try again.", conn_id));
+                return Err(format!(
+                    "SSH connection '{}' not found. Reconnect and try again.",
+                    conn_id
+                ));
             }
         }
         let cmd = build_read_file_command(path);
@@ -95,16 +98,15 @@ pub(crate) async fn write_file(
     result.map(|_| capped)
 }
 
-async fn do_write_file(
-    ctx: &ToolContext<'_>,
-    path: &str,
-    content: &str,
-) -> Result<(), String> {
+async fn do_write_file(ctx: &ToolContext<'_>, path: &str, content: &str) -> Result<(), String> {
     if let Some(conn_id) = ctx.connection_id {
         let conns = ctx.connections.lock().await;
-        let handle = conns
-            .get(conn_id)
-            .ok_or_else(|| format!("SSH connection '{}' not found. Reconnect and try again.", conn_id))?;
+        let handle = conns.get(conn_id).ok_or_else(|| {
+            format!(
+                "SSH connection '{}' not found. Reconnect and try again.",
+                conn_id
+            )
+        })?;
 
         if let Some(parent) = std::path::Path::new(path).parent() {
             if let Some(parent_str) = parent.to_str().filter(|value| !value.is_empty()) {
@@ -201,12 +203,8 @@ pub(crate) async fn file_exists(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_existing_file_read_command,
-        build_file_exists_command,
-        build_list_files_command,
-        build_read_file_command,
-        build_streaming_write_command,
-        should_stream_remote_write,
+        build_existing_file_read_command, build_file_exists_command, build_list_files_command,
+        build_read_file_command, build_streaming_write_command, should_stream_remote_write,
     };
 
     #[test]

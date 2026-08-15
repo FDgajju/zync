@@ -173,13 +173,15 @@ pub fn save_profiles_store(data_dir: &Path, store: &SyncProfilesStore) -> SyncRe
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o600)).map_err(|e| {
-            let _ = std::fs::remove_file(&temp_path);
-            SyncError::new(
-                "sync_profile_write_failed",
-                format!("Failed to set sync profiles file permissions: {e}"),
-            )
-        })?;
+        std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o600)).map_err(
+            |e| {
+                let _ = std::fs::remove_file(&temp_path);
+                SyncError::new(
+                    "sync_profile_write_failed",
+                    format!("Failed to set sync profiles file permissions: {e}"),
+                )
+            },
+        )?;
     }
 
     match std::fs::rename(&temp_path, &final_path) {
@@ -228,7 +230,11 @@ pub fn get_profile(data_dir: &Path, provider: SyncProviderKind) -> SyncResult<Op
         .find(|profile| profile.provider == provider.as_str()))
 }
 
-pub fn upsert_profile<F>(data_dir: &Path, provider: SyncProviderKind, mut build: F) -> SyncResult<SyncProfile>
+pub fn upsert_profile<F>(
+    data_dir: &Path,
+    provider: SyncProviderKind,
+    mut build: F,
+) -> SyncResult<SyncProfile>
 where
     F: FnMut(Option<SyncProfile>) -> SyncProfile,
 {
@@ -236,12 +242,9 @@ where
     // Any values it sets for `updated.provider` and `updated.updated_at`
     // are intentionally overwritten below with `provider.as_str()` and `now_secs()`.
     let lock = SYNC_PROFILES_IO_LOCK.get_or_init(|| Mutex::new(()));
-    let _guard = lock.lock().map_err(|_| {
-        SyncError::new(
-            "sync_profile_write_failed",
-            "sync profile lock poisoned",
-        )
-    })?;
+    let _guard = lock
+        .lock()
+        .map_err(|_| SyncError::new("sync_profile_write_failed", "sync profile lock poisoned"))?;
     let _process_lock = acquire_process_file_lock(data_dir)?;
 
     let mut store = load_profiles_store(data_dir)?;
@@ -332,8 +335,11 @@ mod tests {
                 .as_nanos()
         );
         let path = std::env::temp_dir().join(unique);
-        std::fs::write(&path, format!("pid={};ts={}", std::process::id(), now_secs()))
-            .expect("write lock file");
+        std::fs::write(
+            &path,
+            format!("pid={};ts={}", std::process::id(), now_secs()),
+        )
+        .expect("write lock file");
         assert!(!lock_file_is_stale(&path));
         std::fs::remove_file(&path).expect("cleanup lock file");
     }

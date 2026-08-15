@@ -53,7 +53,9 @@ pub fn validate_client_greeting(buf: &[u8]) -> Result<()> {
     }
     let nmethods = buf[1] as usize;
     if buf.len() != 2 + nmethods {
-        bail!(Socks5Error::InvalidMessage("greeting method count mismatch"));
+        bail!(Socks5Error::InvalidMessage(
+            "greeting method count mismatch"
+        ));
     }
     Ok(())
 }
@@ -99,10 +101,7 @@ fn parse_target(atyp: u8, rest: &[u8]) -> Result<ConnectTarget, Socks5Error> {
                 .to_string();
             let port_bytes = &rest[1 + len..1 + len + 2];
             let port = u16::from_be_bytes([port_bytes[0], port_bytes[1]]);
-            Ok(ConnectTarget {
-                host: domain,
-                port,
-            })
+            Ok(ConnectTarget { host: domain, port })
         }
         ATYP_IPV6 => {
             if rest.len() < 18 {
@@ -121,15 +120,11 @@ fn parse_target(atyp: u8, rest: &[u8]) -> Result<ConnectTarget, Socks5Error> {
 }
 
 pub fn connect_success_reply() -> [u8; 10] {
-    [
-        VERSION, REP_SUCCEEDED, 0x00, ATYP_IPV4, 0, 0, 0, 0, 0, 0,
-    ]
+    [VERSION, REP_SUCCEEDED, 0x00, ATYP_IPV4, 0, 0, 0, 0, 0, 0]
 }
 
 pub fn error_reply(rep: u8) -> [u8; 10] {
-    [
-        VERSION, rep, 0x00, ATYP_IPV4, 0, 0, 0, 0, 0, 0,
-    ]
+    [VERSION, rep, 0x00, ATYP_IPV4, 0, 0, 0, 0, 0, 0]
 }
 
 pub fn socks5_error_to_reply(error: &Socks5Error) -> u8 {

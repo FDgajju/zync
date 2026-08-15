@@ -36,20 +36,20 @@ pub(crate) fn is_dangerous_command(cmd: &str) -> bool {
     }
 
     let tokens: Vec<&str> = normalized.split_whitespace().collect();
-    let invokes_rm = tokens.iter().any(|token| *token == "rm" || token.ends_with("/rm"));
+    let invokes_rm = tokens
+        .iter()
+        .any(|token| *token == "rm" || token.ends_with("/rm"));
     let has_recursive = tokens.iter().any(|token| {
-        token.starts_with('-') && (
-            token.chars().skip(1).any(|c| c == 'r')
+        token.starts_with('-')
+            && (token.chars().skip(1).any(|c| c == 'r')
                 || token == &"--recursive"
-                || token.contains("recursive")
-        )
+                || token.contains("recursive"))
     });
     let has_force = tokens.iter().any(|token| {
-        token.starts_with('-') && (
-            token.chars().skip(1).any(|c| c == 'f')
+        token.starts_with('-')
+            && (token.chars().skip(1).any(|c| c == 'f')
                 || token == &"--force"
-                || token.contains("force")
-        )
+                || token.contains("force"))
     });
     let targets_root = tokens.iter().any(|token| *token == "/" || *token == "/*");
 
@@ -106,8 +106,8 @@ pub(crate) fn shell_quote(value: &str) -> String {
 }
 
 /// Truncates overly large terminal outputs to prevent blowing out the AI context window.
-/// If `session_dir` and `tool_call_id` are provided, the full output is securely written 
-/// to the session's artifact folder before truncation, and a file path reference is 
+/// If `session_dir` and `tool_call_id` are provided, the full output is securely written
+/// to the session's artifact folder before truncation, and a file path reference is
 /// injected directly into the truncated string to inform the AI.
 pub(crate) fn cap_output(
     session_dir: Option<&std::path::Path>,
@@ -137,7 +137,7 @@ pub(crate) fn cap_output(
         .unwrap_or(output.len());
 
     let size_kb = output.len() / 1024;
-    
+
     let path_msg = match (session_dir, tool_call_id) {
         (Some(dir), Some(id)) => {
             if let Some(path) = crate::ai::brain::save_artifact(dir, id, &output) {
@@ -146,7 +146,7 @@ pub(crate) fn cap_output(
                 String::new()
             }
         }
-        _ => " - use smaller commands to read selectively".to_string()
+        _ => " - use smaller commands to read selectively".to_string(),
     };
 
     format!(
@@ -207,7 +207,12 @@ mod tests {
 
     #[test]
     fn caps_large_output_with_head_and_tail() {
-        let long = format!("{}{}{}", "H".repeat(5000), "M".repeat(5000), "T".repeat(5000));
+        let long = format!(
+            "{}{}{}",
+            "H".repeat(5000),
+            "M".repeat(5000),
+            "T".repeat(5000)
+        );
         let capped = cap_output(None, None, long);
         assert!(capped.starts_with("HHHH"));
         assert!(capped.ends_with("TTTT"));

@@ -37,21 +37,15 @@ pub fn parse_ssh_command(command: &str) -> ParseResult {
 
     // Regex for -L (Local Forwarding)
     // Matches: -L [bind_address:]local_port:remote_host:remote_port
-    let local_re =
-        Regex::new(&format!(r"-L\s+{BIND_PREFIX}(\d+):([^:\s]+):(\d+)"))
-            .unwrap();
+    let local_re = Regex::new(&format!(r"-L\s+{BIND_PREFIX}(\d+):([^:\s]+):(\d+)")).unwrap();
 
     // Regex for -R (Remote Forwarding)
     // Matches: -R [bind_address:]remote_port:local_host:local_port
-    let remote_re =
-        Regex::new(&format!(r"-R\s+{BIND_PREFIX}(\d+):([^:\s]+):(\d+)"))
-            .unwrap();
+    let remote_re = Regex::new(&format!(r"-R\s+{BIND_PREFIX}(\d+):([^:\s]+):(\d+)")).unwrap();
 
     // Regex for -D (Dynamic / SOCKS forwarding)
     // Matches: -D [bind_address:]local_port
-    let dynamic_re =
-        Regex::new(&format!(r"-D\s+{BIND_PREFIX}(\d+)"))
-            .unwrap();
+    let dynamic_re = Regex::new(&format!(r"-D\s+{BIND_PREFIX}(\d+)")).unwrap();
 
     // Extract Local Tunnels
     for cap in local_re.captures_iter(&cleaned) {
@@ -154,10 +148,7 @@ pub fn parse_ssh_command(command: &str) -> ParseResult {
         };
         let key = format!("{}:{}", tunnel.tunnel_type, port);
         if seen_ports.contains(&key) {
-            errors.push(format!(
-                "Duplicate {} port: {}",
-                tunnel.tunnel_type, port
-            ));
+            errors.push(format!("Duplicate {} port: {}", tunnel.tunnel_type, port));
         }
         seen_ports.insert(key);
     }

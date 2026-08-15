@@ -19,8 +19,14 @@ mod tests {
 
     #[test]
     fn test_slugify() {
-        assert_eq!(slugify("Set up a Node.js server!"), "set-up-a-nodejs-server");
-        assert_eq!(slugify("rm -rf everything else here"), "rm-rf-everything-else-here");
+        assert_eq!(
+            slugify("Set up a Node.js server!"),
+            "set-up-a-nodejs-server"
+        );
+        assert_eq!(
+            slugify("rm -rf everything else here"),
+            "rm-rf-everything-else-here"
+        );
         assert_eq!(
             slugify("Write a comprehensive Python script that does amazing things"),
             "write-a-comprehensive-python-script"

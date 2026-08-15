@@ -516,12 +516,9 @@ impl VaultService {
             let plaintext = decrypt_record(&record_key, &envelope, aad.as_bytes())?;
             let mut record: PlaintextRecord = serde_json::from_slice(&plaintext)?;
             let needs_rewrite = record.credential.is_none()
-                || record
-                    .credential
-                    .as_ref()
-                    .is_some_and(|credential| {
-                        credential.schema_version < CURRENT_CREDENTIAL_SCHEMA_VERSION
-                    })
+                || record.credential.as_ref().is_some_and(|credential| {
+                    credential.schema_version < CURRENT_CREDENTIAL_SCHEMA_VERSION
+                })
                 || record.secret_values.is_empty()
                 || !record.secret.is_empty()
                 || record.kind == "ssh-key-with-passphrase";
@@ -597,7 +594,10 @@ impl VaultService {
         derive_secret_fingerprint(vek, secret).map_err(VaultError::from)
     }
 
-    pub fn record_secret_fingerprint(&self, record: &PlaintextRecord) -> Result<String, VaultError> {
+    pub fn record_secret_fingerprint(
+        &self,
+        record: &PlaintextRecord,
+    ) -> Result<String, VaultError> {
         if record.secret_values.is_empty() {
             return self.secret_fingerprint(primary_secret_value(record).unwrap_or_default());
         }
@@ -610,7 +610,9 @@ impl VaultService {
 
     pub fn item_meta(&self, record: &PlaintextRecord) -> Result<VaultItemMeta, VaultError> {
         let credential = record.credential.as_ref();
-        let fields = credential.map(|value| value.fields.as_slice()).unwrap_or(&[]);
+        let fields = credential
+            .map(|value| value.fields.as_slice())
+            .unwrap_or(&[]);
         Ok(VaultItemMeta {
             id: record.id.clone(),
             logical_id: Self::record_logical_id(record),
@@ -675,9 +677,8 @@ impl VaultService {
         let meta = self.meta.as_ref().ok_or(VaultError::Locked)?;
 
         let id = Uuid::new_v4().to_string();
-        let caller_provided_logical_id = logical_id
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
+        let caller_provided_logical_id =
+            logical_id.map(str::trim).filter(|value| !value.is_empty());
         let logical_id = caller_provided_logical_id
             .map(str::to_string)
             .unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -724,7 +725,9 @@ impl VaultService {
             // Reject duplicate logical IDs when the caller explicitly provided one.
             // Auto-generated UUIDs are collision-free by construction and skip this check.
             if caller_provided_logical_id.is_some() {
-                if let Some(existing) = logical_ids.get(Self::record_logical_id(&record).as_str())? {
+                if let Some(existing) =
+                    logical_ids.get(Self::record_logical_id(&record).as_str())?
+                {
                     let existing_id = existing.value().to_string();
                     drop(existing);
                     return Err(VaultError::InvalidData(format!(
@@ -928,12 +931,9 @@ impl VaultService {
             notes: notes.map(str::to_string),
             credential: match credential.cloned() {
                 Some(value) => Some(value),
-                None => existing
-                    .credential
-                    .clone()
-                    .filter(|existing_credential| {
-                        existing_credential.kind.canonical_storage_kind() == kind
-                    }),
+                None => existing.credential.clone().filter(|existing_credential| {
+                    existing_credential.kind.canonical_storage_kind() == kind
+                }),
             },
             revision,
             created_at: existing.created_at,
@@ -1043,12 +1043,9 @@ impl VaultService {
             notes: notes.map(str::to_string),
             credential: match credential.cloned() {
                 Some(value) => Some(value),
-                None => existing
-                    .credential
-                    .clone()
-                    .filter(|existing_credential| {
-                        existing_credential.kind.canonical_storage_kind() == kind
-                    }),
+                None => existing.credential.clone().filter(|existing_credential| {
+                    existing_credential.kind.canonical_storage_kind() == kind
+                }),
             },
             revision,
             created_at: existing.created_at,
@@ -1209,10 +1206,7 @@ impl VaultService {
 
     /// Returns all stored historical revisions for `item_id`, oldest first.
     /// The current live revision is NOT included — only superseded snapshots.
-    pub fn item_revision_history(
-        &self,
-        item_id: &str,
-    ) -> Result<Vec<RevisionMeta>, VaultError> {
+    pub fn item_revision_history(&self, item_id: &str) -> Result<Vec<RevisionMeta>, VaultError> {
         let vek = self.vek.as_ref().ok_or(VaultError::Locked)?;
         let db = self.db.as_ref().ok_or(VaultError::NotInitialized)?;
         let meta = self.meta.as_ref().ok_or(VaultError::Locked)?;
@@ -1451,19 +1445,16 @@ impl VaultService {
             sync_file(&backup)?;
         }
 
-        if let Err(e) = copy_file_synced(src_path, &tmp)
-            .and_then(|_| {
-                if dest.exists() {
-                    std::fs::remove_file(&dest).map_err(|e| {
-                        VaultError::InvalidData(format!("import remove old vault failed: {e}"))
-                    })?;
-                }
-                std::fs::rename(&tmp, &dest).map_err(|e| {
-                    VaultError::InvalidData(format!("import replace failed: {e}"))
+        if let Err(e) = copy_file_synced(src_path, &tmp).and_then(|_| {
+            if dest.exists() {
+                std::fs::remove_file(&dest).map_err(|e| {
+                    VaultError::InvalidData(format!("import remove old vault failed: {e}"))
                 })?;
-                sync_parent_dir(&dest)
-            })
-        {
+            }
+            std::fs::rename(&tmp, &dest)
+                .map_err(|e| VaultError::InvalidData(format!("import replace failed: {e}")))?;
+            sync_parent_dir(&dest)
+        }) {
             let _ = std::fs::remove_file(&tmp);
             if backup.exists() {
                 let _ = std::fs::copy(&backup, &dest);
@@ -1479,7 +1470,9 @@ impl VaultService {
                 let _ = sync_file(&dest);
                 self.try_open()?;
             }
-            return Err(VaultError::InvalidData(format!("imported vault failed to open: {e}")));
+            return Err(VaultError::InvalidData(format!(
+                "imported vault failed to open: {e}"
+            )));
         }
 
         self.status()
@@ -1533,8 +1526,11 @@ fn encrypt_session_cache_verifier(
 ) -> Result<StoredEnvelope, VaultError> {
     let record_key = derive_record_key(
         vek,
-        record_info_bytes(SESSION_CACHE_VERIFIER_RECORD_ID, SESSION_CACHE_VERIFIER_REVISION)
-            .as_bytes(),
+        record_info_bytes(
+            SESSION_CACHE_VERIFIER_RECORD_ID,
+            SESSION_CACHE_VERIFIER_REVISION,
+        )
+        .as_bytes(),
     )?;
     let aad = record_aad_string(
         vault_id,
@@ -1572,8 +1568,11 @@ fn verify_session_cache_verifier(
     let stored: StoredEnvelope = serde_json::from_slice(verifier_bytes.value())?;
     let record_key = derive_record_key(
         vek,
-        record_info_bytes(SESSION_CACHE_VERIFIER_RECORD_ID, SESSION_CACHE_VERIFIER_REVISION)
-            .as_bytes(),
+        record_info_bytes(
+            SESSION_CACHE_VERIFIER_RECORD_ID,
+            SESSION_CACHE_VERIFIER_REVISION,
+        )
+        .as_bytes(),
     )?;
     let envelope = parse_envelope(&stored)?;
     let aad = record_aad_string(
@@ -1613,7 +1612,9 @@ fn decrypt_first_live_record(
         return Ok(());
     }
 
-    Err(VaultError::InvalidData("no live records to verify VEK".into()))
+    Err(VaultError::InvalidData(
+        "no live records to verify VEK".into(),
+    ))
 }
 
 fn live_record_count(read_txn: &ReadTransaction) -> Result<u64, VaultError> {
@@ -1713,7 +1714,9 @@ fn validate_vault_database(path: &Path) -> Result<(), VaultError> {
         .map_err(|e| VaultError::InvalidData(format!("Import file vault_id unreadable: {e}")))?
         .ok_or_else(|| VaultError::InvalidData("Import file has no vault_id.".into()))?;
     if vault_id_bytes.value().is_empty() {
-        return Err(VaultError::InvalidData("Import file vault_id is empty.".into()));
+        return Err(VaultError::InvalidData(
+            "Import file vault_id is empty.".into(),
+        ));
     }
     let meta_bytes = vm
         .get("meta")
@@ -1728,10 +1731,14 @@ fn validate_vault_database(path: &Path) -> Result<(), VaultError> {
         .map_err(|_| VaultError::InvalidData("Import file is missing key slots.".into()))?;
     let slot = ks
         .get(SLOT_PASSPHRASE)
-        .map_err(|e| VaultError::InvalidData(format!("Import file passphrase slot unreadable: {e}")))?
+        .map_err(|e| {
+            VaultError::InvalidData(format!("Import file passphrase slot unreadable: {e}"))
+        })?
         .ok_or_else(|| VaultError::InvalidData("Import file has no passphrase key slot.".into()))?;
     if slot.value().is_empty() {
-        return Err(VaultError::InvalidData("Import file passphrase slot is empty.".into()));
+        return Err(VaultError::InvalidData(
+            "Import file passphrase slot is empty.".into(),
+        ));
     }
 
     read_txn
@@ -1789,8 +1796,8 @@ mod tests {
 
     impl TestVault {
         fn new() -> Self {
-            let dir = std::env::temp_dir()
-                .join(format!("zync-vault-store-test-{}", Uuid::new_v4()));
+            let dir =
+                std::env::temp_dir().join(format!("zync-vault-store-test-{}", Uuid::new_v4()));
             std::fs::create_dir_all(&dir).expect("create temp vault dir");
             let service = VaultService::new(dir.clone());
             Self { service, dir }
@@ -1831,15 +1838,13 @@ mod tests {
         let vault = initialized_test_vault();
         let secret_values = BTreeMap::from([("password".into(), "   ".into())]);
 
-        let result = vault
-            .service
-            .item_create_with_secret_values(
-                "blank password",
-                "ssh-password",
-                &secret_values,
-                None,
-                None,
-            );
+        let result = vault.service.item_create_with_secret_values(
+            "blank password",
+            "ssh-password",
+            &secret_values,
+            None,
+            None,
+        );
 
         assert!(matches!(result, Err(VaultError::InvalidData(_))));
     }
@@ -1853,16 +1858,14 @@ mod tests {
             .expect("create item");
         let secret_values = BTreeMap::from([("password".into(), "\t".into())]);
 
-        let result = vault
-            .service
-            .item_update_with_secret_values(
-                &item.id,
-                "blank password",
-                "ssh-password",
-                &secret_values,
-                None,
-                None,
-            );
+        let result = vault.service.item_update_with_secret_values(
+            &item.id,
+            "blank password",
+            "ssh-password",
+            &secret_values,
+            None,
+            None,
+        );
 
         assert!(matches!(result, Err(VaultError::InvalidData(_))));
     }
@@ -1958,7 +1961,10 @@ mod tests {
 
         let vault = initialized_test_vault();
         let secret_values = BTreeMap::from([
-            (PRIVATE_KEY_FIELD.to_string(), "private-key-data".to_string()),
+            (
+                PRIVATE_KEY_FIELD.to_string(),
+                "private-key-data".to_string(),
+            ),
             (PASSPHRASE_FIELD.to_string(), "key-passphrase".to_string()),
         ]);
         let item = vault
@@ -2000,7 +2006,10 @@ mod tests {
             label: "prod key".to_string(),
             secret: String::new(),
             secret_values: BTreeMap::from([
-                (PRIVATE_KEY_FIELD.to_string(), "private-key-data".to_string()),
+                (
+                    PRIVATE_KEY_FIELD.to_string(),
+                    "private-key-data".to_string(),
+                ),
                 (PASSPHRASE_FIELD.to_string(), "passphrase-a".to_string()),
             ]),
             notes: None,
@@ -2016,7 +2025,10 @@ mod tests {
             label: "prod key".to_string(),
             secret: String::new(),
             secret_values: BTreeMap::from([
-                (PRIVATE_KEY_FIELD.to_string(), "private-key-data".to_string()),
+                (
+                    PRIVATE_KEY_FIELD.to_string(),
+                    "private-key-data".to_string(),
+                ),
                 (PASSPHRASE_FIELD.to_string(), "passphrase-b".to_string()),
             ]),
             notes: None,
@@ -2077,7 +2089,10 @@ mod tests {
             .service
             .item_restore_revision(&item.id, 1)
             .expect("restore v1");
-        let live = vault.service.item_get(&item.id).expect("get restored live item");
+        let live = vault
+            .service
+            .item_get(&item.id)
+            .expect("get restored live item");
         let relinked = vault
             .service
             .item_get_by_logical_id("credential-prod-password")
@@ -2089,7 +2104,10 @@ mod tests {
 
         assert_eq!(restored.id, item.id);
         assert_eq!(restored.revision, 4);
-        assert_eq!(restored.logical_id.as_deref(), Some("credential-prod-password"));
+        assert_eq!(
+            restored.logical_id.as_deref(),
+            Some("credential-prod-password")
+        );
         assert_eq!(primary_secret_value(&live), Some("secret-v1"));
         assert_eq!(live.label, "prod password");
         assert_eq!(live.notes.as_deref(), Some("first"));
@@ -2213,9 +2231,7 @@ mod tests {
             .unlock("correct horse battery staple", true)
             .expect("unlock with remember on device");
         let vault_id = vault.service.meta.as_ref().expect("meta").vault_id.clone();
-        assert!(
-            session_cache::has_session_cache(&vault_id).expect("has cache check")
-        );
+        assert!(session_cache::has_session_cache(&vault_id).expect("has cache check"));
 
         vault.service.lock();
         vault

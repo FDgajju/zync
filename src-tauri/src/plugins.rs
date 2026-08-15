@@ -915,8 +915,9 @@ impl PluginScanner {
             .with_context(|| format!("Failed to resolve path: {}", candidate_path.display()))?;
 
         if source_path.is_file() {
-            let file = fs::File::open(&source_path)
-                .with_context(|| format!("Failed to open plugin archive: {}", source_path.display()))?;
+            let file = fs::File::open(&source_path).with_context(|| {
+                format!("Failed to open plugin archive: {}", source_path.display())
+            })?;
             let mut archive = zip::ZipArchive::new(file)
                 .with_context(|| format!("Invalid plugin archive: {}", source_path.display()))?;
             return Self::install_from_zip_archive(app, &mut archive);
@@ -932,8 +933,10 @@ impl PluginScanner {
     }
 
     pub fn uninstall_plugin(app: &AppHandle, plugin_id: &str) -> Result<()> {
-        let config_dir = app.path().app_config_dir()
-        .context("Failed to resolve app config directory")?;
+        let config_dir = app
+            .path()
+            .app_config_dir()
+            .context("Failed to resolve app config directory")?;
         let plugins_dir = config_dir.join("plugins");
 
         let dir_name = sanitize_plugin_dir_name(plugin_id)?;
@@ -945,13 +948,18 @@ impl PluginScanner {
 
         if target_dir.exists() {
             fs::remove_dir_all(target_dir)?;
-            if legacy_dir.exists() { let _ = fs::remove_dir_all(legacy_dir); }
+            if legacy_dir.exists() {
+                let _ = fs::remove_dir_all(legacy_dir);
+            }
             Ok(())
         } else if legacy_dir.exists() {
             fs::remove_dir_all(legacy_dir)?;
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Plugin directory not found for ID: {}", plugin_id))
+            Err(anyhow::anyhow!(
+                "Plugin directory not found for ID: {}",
+                plugin_id
+            ))
         }
     }
 
@@ -981,15 +989,17 @@ impl PluginScanner {
         let manifest_path = source_dir.join("manifest.json");
         let manifest_content = fs::read_to_string(&manifest_path)
             .with_context(|| format!("Plugin directory is missing {}", manifest_path.display()))?;
-        let manifest: Manifest =
-            serde_json::from_str(&manifest_content).context("Invalid manifest.json in plugin directory")?;
+        let manifest: Manifest = serde_json::from_str(&manifest_content)
+            .context("Invalid manifest.json in plugin directory")?;
 
         let (_plugins_dir, target_dir, temp_dir) = Self::prepare_install_paths(app, &manifest.id)?;
         Self::copy_dir_recursive(source_dir, &temp_dir)?;
 
         if !temp_dir.join("manifest.json").exists() {
             let _ = fs::remove_dir_all(&temp_dir);
-            return Err(anyhow!("Plugin directory copy failed: missing manifest.json"));
+            return Err(anyhow!(
+                "Plugin directory copy failed: missing manifest.json"
+            ));
         }
 
         Self::finalize_install(&target_dir, &temp_dir)?;
@@ -1084,14 +1094,25 @@ impl PluginScanner {
         } else {
             let default_script = dir.join("worker.js");
             if default_script.exists() {
-                 let script_path = fs::canonicalize(default_script)?;
-                 if script_path.starts_with(&canonical_root) {
-                      let content = fs::read_to_string(&script_path)
-                          .with_context(|| format!("Failed to read default worker script from {}", script_path.display()))?;
-                      info!("[Plugins] Loaded default worker script from: {}", script_path.display());
-                      Some(content)
-                 } else { None }
-            } else { None }
+                let script_path = fs::canonicalize(default_script)?;
+                if script_path.starts_with(&canonical_root) {
+                    let content = fs::read_to_string(&script_path).with_context(|| {
+                        format!(
+                            "Failed to read default worker script from {}",
+                            script_path.display()
+                        )
+                    })?;
+                    info!(
+                        "[Plugins] Loaded default worker script from: {}",
+                        script_path.display()
+                    );
+                    Some(content)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         };
 
         // Load Styles (if any)
@@ -1146,14 +1167,15 @@ impl PluginScanner {
             .with_context(|| format!("Failed to resolve {field_name} path"))?;
 
         if !asset_path.starts_with(canonical_root) {
-            return Err(anyhow!(
-                "Illegal {field_name} path: outside plugin root"
-            ));
+            return Err(anyhow!("Illegal {field_name} path: outside plugin root"));
         }
 
         let content = fs::read_to_string(&asset_path)
             .with_context(|| format!("Failed to read asset file from {}", asset_path.display()))?;
-        info!("[Plugins] Loaded {field_name} from: {}", asset_path.display());
+        info!(
+            "[Plugins] Loaded {field_name} from: {}",
+            asset_path.display()
+        );
         Ok(content)
     }
 }
@@ -1163,9 +1185,12 @@ impl PluginScanner {
 fn sanitize_plugin_dir_name(id: &str) -> Result<String> {
     use base64::{engine::general_purpose, Engine as _};
     let encoded = general_purpose::URL_SAFE_NO_PAD.encode(id);
-    
+
     if encoded.is_empty() || encoded == "." || encoded == ".." {
-        return Err(anyhow::anyhow!("Invalid plugin ID for directory naming: {}", id));
+        return Err(anyhow::anyhow!(
+            "Invalid plugin ID for directory naming: {}",
+            id
+        ));
     }
 
     Ok(encoded)
@@ -1187,7 +1212,3 @@ fn legacy_sanitize_id(id: &str) -> String {
         .collect();
     sanitized
 }
-
-
-
-

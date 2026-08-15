@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter};
 
-use crate::ai::types::{AgentMessage, AgentPlanEvent, AgentPlanStep, AgentThinkingEvent, AssistantResponse};
+use crate::ai::types::{
+    AgentMessage, AgentPlanEvent, AgentPlanStep, AgentThinkingEvent, AssistantResponse,
+};
 use crate::ai::{tools, AiConfig};
 use crate::commands::AppState;
 
@@ -47,7 +49,8 @@ where
         &'a AiConfig,
         &'a str,
         serde_json::Value,
-    ) -> Pin<Box<dyn Future<Output = Result<AssistantResponse, String>> + Send + 'a>>,
+    )
+        -> Pin<Box<dyn Future<Output = Result<AssistantResponse, String>> + Send + 'a>>,
     G: for<'a> Fn(&'a Arc<AtomicBool>) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>,
 {
     let init_msg = format!("{}\n\nGoal: {}", context_preamble, goal);
@@ -126,7 +129,9 @@ where
                     let steps: Vec<AgentPlanStep> = tool_call
                         .input
                         .get("steps")
-                        .and_then(|value| serde_json::from_value::<Vec<serde_json::Value>>(value.clone()).ok())
+                        .and_then(|value| {
+                            serde_json::from_value::<Vec<serde_json::Value>>(value.clone()).ok()
+                        })
                         .unwrap_or_default()
                         .into_iter()
                         .filter_map(|mut step| {
@@ -221,7 +226,8 @@ where
 
         if proposed {
             messages.push(AgentMessage::User(
-                "Your plan had no steps. Please call propose_plan again with at least one step.".into(),
+                "Your plan had no steps. Please call propose_plan again with at least one step."
+                    .into(),
             ));
         }
     }
@@ -237,7 +243,13 @@ pub(super) fn build_plan_context(steps: &[AgentPlanStep]) -> String {
                 .as_deref()
                 .map(|command| format!("\n   Command: {}", command))
                 .unwrap_or_default();
-            format!("Step {}: {} - {}{}", index + 1, step.title, step.reason, cmd_part)
+            format!(
+                "Step {}: {} - {}{}",
+                index + 1,
+                step.title,
+                step.reason,
+                cmd_part
+            )
         })
         .collect::<Vec<_>>()
         .join("\n")

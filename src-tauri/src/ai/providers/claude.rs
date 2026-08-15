@@ -2,11 +2,11 @@ use tauri::AppHandle;
 
 use tauri::Emitter;
 
+use crate::ai::types::AgentThinkingEvent;
 use crate::ai::{
     build_user_prompt, is_billing_error, make_client, make_stream_client, read_error_body,
     read_sse_stream, AiConfig, ChatMessage, TerminalContext, SYSTEM_PROMPT,
 };
-use crate::ai::types::AgentThinkingEvent;
 
 const DEFAULT_MODEL: &str = "claude-haiku-4-5-20251001";
 
@@ -144,8 +144,8 @@ pub async fn call_agent(
     config: &AiConfig,
     tool_schemas: serde_json::Value,
 ) -> Result<crate::ai::types::AssistantResponse, String> {
-    use std::collections::HashMap;
     use crate::ai::types::{AgentMessage, AssistantResponse, ToolCall};
+    use std::collections::HashMap;
 
     let api_key = config
         .api_key()
@@ -206,11 +206,14 @@ pub async fn call_agent(
                 .await
                 .map_err(|e| e.to_string())?;
             let status = resp.status();
-            if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
                 return Err("Invalid Claude API key. Check Settings -> AI.".to_string());
             }
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                let reset_hint = resp.headers()
+                let reset_hint = resp
+                    .headers()
                     .get("retry-after")
                     .or_else(|| resp.headers().get("anthropic-ratelimit-requests-reset"))
                     .or_else(|| resp.headers().get("anthropic-ratelimit-tokens-reset"))
@@ -243,15 +246,29 @@ pub async fn call_agent(
     let mut text_acc = String::new();
 
     crate::ai::transport::for_each_sse_data(response, |data| {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else { return };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else {
+            return;
+        };
         match v.get("type").and_then(|t| t.as_str()).unwrap_or("") {
             "content_block_start" => {
                 let idx = v.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
                 if let Some(block) = v.get("content_block") {
-                    let kind = block.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                    let kind = block
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     if kind == "tool_use" {
-                        let id   = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let id = block
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let name = block
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         tool_buffers.insert(idx, (id, name, String::new()));
                     }
                     block_types.insert(idx, kind);
@@ -266,16 +283,21 @@ pub async fn call_agent(
                                 if !chunk.is_empty() {
                                     text_acc.push_str(chunk);
                                     if !text_acc.trim_start().starts_with('[') {
-                                        let _ = app.emit("ai:agent-thinking", AgentThinkingEvent {
-                                            run_id: run_id.to_string(),
-                                            text: chunk.to_string(),
-                                        });
+                                        let _ = app.emit(
+                                            "ai:agent-thinking",
+                                            AgentThinkingEvent {
+                                                run_id: run_id.to_string(),
+                                                text: chunk.to_string(),
+                                            },
+                                        );
                                     }
                                 }
                             }
                         }
                         "input_json_delta" => {
-                            if let Some(partial) = delta.get("partial_json").and_then(|p| p.as_str()) {
+                            if let Some(partial) =
+                                delta.get("partial_json").and_then(|p| p.as_str())
+                            {
                                 if let Some(buf) = tool_buffers.get_mut(&idx) {
                                     buf.2.push_str(partial);
                                 }
@@ -287,7 +309,8 @@ pub async fn call_agent(
             }
             _ => {}
         }
-    }).await?;
+    })
+    .await?;
 
     // Build final tool calls in index order
     let mut indices: Vec<usize> = tool_buffers.keys().cloned().collect();
@@ -297,12 +320,21 @@ pub async fn call_agent(
         .filter_map(|idx| {
             let (id, name, json_str) = tool_buffers.remove(&idx)?;
             let input = serde_json::from_str(&json_str).unwrap_or(serde_json::json!({}));
-            Some(ToolCall { id, name, input, thought_signature: None })
+            Some(ToolCall {
+                id,
+                name,
+                input,
+                thought_signature: None,
+            })
         })
         .collect();
 
     Ok(AssistantResponse {
-        text: if text_acc.is_empty() { None } else { Some(text_acc) },
+        text: if text_acc.is_empty() {
+            None
+        } else {
+            Some(text_acc)
+        },
         tool_calls,
         thinking_streamed: true,
     })
@@ -355,10 +387,16 @@ pub async fn get_models(config: &AiConfig) -> Result<Vec<String>, String> {
 fn format_rate_limit_hint(raw: &str) -> String {
     let raw = raw.trim();
     if let Ok(secs) = raw.parse::<u64>() {
-        return if secs == 0 { " — resets momentarily".into() }
-               else if secs < 60 { format!(" — resets in {secs}s") }
-               else { format!(" — resets in {}m {}s", secs / 60, secs % 60) };
+        return if secs == 0 {
+            " — resets momentarily".into()
+        } else if secs < 60 {
+            format!(" — resets in {secs}s")
+        } else {
+            format!(" — resets in {}m {}s", secs / 60, secs % 60)
+        };
     }
-    if raw.contains('m') || raw.contains('s') { return format!(" — resets in {raw}"); }
+    if raw.contains('m') || raw.contains('s') {
+        return format!(" — resets in {raw}");
+    }
     String::new()
 }

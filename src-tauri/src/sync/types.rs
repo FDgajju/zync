@@ -477,7 +477,10 @@ impl std::fmt::Debug for ProviderIdentity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ProviderIdentity")
             .field("email", &self.email.as_ref().map(|_| "<redacted>"))
-            .field("avatar_url", &self.avatar_url.as_ref().map(|_| "<redacted>"))
+            .field(
+                "avatar_url",
+                &self.avatar_url.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -487,7 +490,10 @@ impl std::fmt::Debug for ProviderStatusSnapshot {
         f.debug_struct("ProviderStatusSnapshot")
             .field("connected", &self.connected)
             .field("email", &self.email.as_ref().map(|_| "<redacted>"))
-            .field("avatar_url", &self.avatar_url.as_ref().map(|_| "<redacted>"))
+            .field(
+                "avatar_url",
+                &self.avatar_url.as_ref().map(|_| "<redacted>"),
+            )
             .field("last_sync", &self.last_sync)
             .finish()
     }
@@ -498,11 +504,11 @@ impl std::fmt::Debug for SyncProviderStatus {
         f.debug_struct("SyncProviderStatus")
             .field("provider", &self.provider)
             .field("connected", &self.connected)
+            .field("email", &self.email.as_ref().map(|_| "<redacted>"))
             .field(
-                "email",
-                &self.email.as_ref().map(|_| "<redacted>"),
+                "avatar_url",
+                &self.avatar_url.as_ref().map(|_| "<redacted>"),
             )
-            .field("avatar_url", &self.avatar_url.as_ref().map(|_| "<redacted>"))
             .field("last_sync", &self.last_sync)
             .field("last_error", &self.last_error)
             .field("last_error_code", &self.last_error_code)
@@ -518,7 +524,10 @@ impl std::fmt::Debug for SyncProfile {
             .field("provider", &self.provider)
             .field("connected", &self.connected)
             .field("email", &self.email.as_ref().map(|_| "<redacted>"))
-            .field("avatar_url", &self.avatar_url.as_ref().map(|_| "<redacted>"))
+            .field(
+                "avatar_url",
+                &self.avatar_url.as_ref().map(|_| "<redacted>"),
+            )
             .field("last_sync", &self.last_sync)
             .field("last_error", &self.last_error)
             .field("last_error_code", &self.last_error_code)

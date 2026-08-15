@@ -41,13 +41,15 @@ fn session_cache_proof(vault_id: &str, vek: &SecretKey) -> Result<String, VaultE
 fn encode_session_payload(vault_id: &str, vek: &SecretKey) -> Result<String, VaultError> {
     let vek_encoded = URL_SAFE_NO_PAD.encode(vek.as_bytes());
     let proof = session_cache_proof(vault_id, vek)?;
-    Ok(format!("{SESSION_CACHE_VERSION_PREFIX}{vek_encoded}.{proof}"))
+    Ok(format!(
+        "{SESSION_CACHE_VERSION_PREFIX}{vek_encoded}.{proof}"
+    ))
 }
 
 fn decode_vek_bytes(encoded: &str) -> Result<SecretKey, VaultError> {
-    let bytes = URL_SAFE_NO_PAD
-        .decode(encoded)
-        .map_err(|error| VaultError::InvalidData(format!("invalid session cache encoding: {error}")))?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).map_err(|error| {
+        VaultError::InvalidData(format!("invalid session cache encoding: {error}"))
+    })?;
     let vek_bytes: [u8; 32] = bytes
         .as_slice()
         .try_into()

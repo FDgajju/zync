@@ -4,8 +4,8 @@ use crate::ghost::types::MIN_PREFIX_LEN;
 /// e.g. "and git status" → "git status", "sudo git status" → "git status"
 fn strip_shell_keywords_once(s: &str) -> &str {
     const KEYWORDS: &[&str] = &[
-        "and ", "or ", "not ", "if ", "while ", "begin ", "command ", "builtin ", "exec ",
-        "sudo ", "doas ", "time ", "env ", "noglob ",
+        "and ", "or ", "not ", "if ", "while ", "begin ", "command ", "builtin ", "exec ", "sudo ",
+        "doas ", "time ", "env ", "noglob ",
     ];
     for kw in KEYWORDS {
         if s.starts_with(kw) {
@@ -182,8 +182,8 @@ fn history_entry_may_need_segment_fallback(cmd: &str) -> bool {
     }
     let trimmed = cmd.trim_start();
     const KEYWORDS: &[&str] = &[
-        "and ", "or ", "not ", "if ", "while ", "begin ", "command ", "builtin ", "exec ",
-        "sudo ", "doas ", "time ", "env ", "noglob ",
+        "and ", "or ", "not ", "if ", "while ", "begin ", "command ", "builtin ", "exec ", "sudo ",
+        "doas ", "time ", "env ", "noglob ",
     ];
     if KEYWORDS.iter().any(|kw| trimmed.starts_with(kw)) {
         return true;

@@ -61,26 +61,30 @@ pub async fn translate(
         "gemini" => call_gemini(&query, &context, &config, &[]).await,
         "openai" => call_openai(&query, &context, &config, &[]).await,
         "claude" => call_claude(&query, &context, &config, &[]).await,
-        "groq" => providers::openai_compat::call(
-            "Groq",
-            "https://api.groq.com/openai/v1",
-            "llama-3.3-70b-versatile",
-            &query,
-            &context,
-            &config,
-            &[],
-        )
-        .await,
-        "mistral" => providers::openai_compat::call(
-            "Mistral",
-            "https://api.mistral.ai/v1",
-            "mistral-large-latest",
-            &query,
-            &context,
-            &config,
-            &[],
-        )
-        .await,
+        "groq" => {
+            providers::openai_compat::call(
+                "Groq",
+                "https://api.groq.com/openai/v1",
+                "llama-3.3-70b-versatile",
+                &query,
+                &context,
+                &config,
+                &[],
+            )
+            .await
+        }
+        "mistral" => {
+            providers::openai_compat::call(
+                "Mistral",
+                "https://api.mistral.ai/v1",
+                "mistral-large-latest",
+                &query,
+                &context,
+                &config,
+                &[],
+            )
+            .await
+        }
         other => Err(format!("Unknown AI provider: {}", other)),
     };
 
@@ -190,30 +194,34 @@ pub async fn translate_stream(
         "gemini" => stream_gemini(&app, &request_id, &query, &context, &config, &history).await,
         "openai" => stream_openai(&app, &request_id, &query, &context, &config, &history).await,
         "claude" => stream_claude(&app, &request_id, &query, &context, &config, &history).await,
-        "groq" => providers::openai_compat::stream(
-            &app,
-            "Groq",
-            "https://api.groq.com/openai/v1",
-            "llama-3.3-70b-versatile",
-            &request_id,
-            &query,
-            &context,
-            &config,
-            &history,
-        )
-        .await,
-        "mistral" => providers::openai_compat::stream(
-            &app,
-            "Mistral",
-            "https://api.mistral.ai/v1",
-            "mistral-large-latest",
-            &request_id,
-            &query,
-            &context,
-            &config,
-            &history,
-        )
-        .await,
+        "groq" => {
+            providers::openai_compat::stream(
+                &app,
+                "Groq",
+                "https://api.groq.com/openai/v1",
+                "llama-3.3-70b-versatile",
+                &request_id,
+                &query,
+                &context,
+                &config,
+                &history,
+            )
+            .await
+        }
+        "mistral" => {
+            providers::openai_compat::stream(
+                &app,
+                "Mistral",
+                "https://api.mistral.ai/v1",
+                "mistral-large-latest",
+                &request_id,
+                &query,
+                &context,
+                &config,
+                &history,
+            )
+            .await
+        }
         other => Err(format!("Unknown AI provider: {}", other)),
     };
 

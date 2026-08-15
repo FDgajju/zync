@@ -1,8 +1,8 @@
 use tauri::{AppHandle, Emitter};
 
 use crate::ai::{
-    build_single_prompt, make_client, make_stream_client, read_error_body, AiConfig,
-    AiStreamChunk, ChatMessage, TerminalContext,
+    build_single_prompt, make_client, make_stream_client, read_error_body, AiConfig, AiStreamChunk,
+    ChatMessage, TerminalContext,
 };
 
 pub async fn call(
@@ -167,7 +167,10 @@ pub async fn call_agent(
 ) -> Result<crate::ai::types::AssistantResponse, String> {
     use crate::ai::types::{AgentMessage, AssistantResponse, ToolCall};
 
-    let base_url = config.ollama_url.as_deref().unwrap_or("http://localhost:11434");
+    let base_url = config
+        .ollama_url
+        .as_deref()
+        .unwrap_or("http://localhost:11434");
     let model = config.model.as_deref().unwrap_or("llama3.2");
     let client = make_client().await?;
 
@@ -203,7 +206,11 @@ pub async fn call_agent(
                 }
                 wire.push(msg);
             }
-            AgentMessage::ToolResult { tool_call_id, content, .. } => {
+            AgentMessage::ToolResult {
+                tool_call_id,
+                content,
+                ..
+            } => {
                 wire.push(serde_json::json!({
                     "role": "tool",
                     "tool_call_id": tool_call_id,
@@ -258,7 +265,8 @@ pub async fn call_agent(
         .iter()
         .filter_map(|tc| {
             // Prefer the ID Ollama provided (if any) so ToolResult messages can match it.
-            let id = tc.get("id")
+            let id = tc
+                .get("id")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string())
@@ -272,11 +280,20 @@ pub async fn call_agent(
                 Some(v) => v.clone(),
                 None => serde_json::json!({}),
             };
-            Some(ToolCall { id, name, input, thought_signature: None })
+            Some(ToolCall {
+                id,
+                name,
+                input,
+                thought_signature: None,
+            })
         })
         .collect();
 
-    Ok(AssistantResponse { text, tool_calls, thinking_streamed: false })
+    Ok(AssistantResponse {
+        text,
+        tool_calls,
+        thinking_streamed: false,
+    })
 }
 
 pub async fn get_models(config: &AiConfig) -> Result<Vec<String>, String> {

@@ -4,8 +4,8 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit as AeadKeyInit, Payload},
     Key, XChaCha20Poly1305, XNonce,
 };
-use hmac::{digest::KeyInit as HmacKeyInit, Mac, SimpleHmac};
 use hkdf::Hkdf;
+use hmac::{digest::KeyInit as HmacKeyInit, Mac, SimpleHmac};
 use rand_core::{OsRng, RngCore};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};

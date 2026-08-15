@@ -7,28 +7,20 @@ use std::sync::Arc;
 use tauri::AppHandle;
 use tokio::sync::Mutex;
 
+use crate::ai::tool_exec_support::{is_dangerous_command, validate_command, validate_path};
+use crate::ai::tool_schemas::{
+    planning_tool_schemas_claude, planning_tool_schemas_gemini, planning_tool_schemas_openai,
+    tool_schemas_claude, tool_schemas_gemini, tool_schemas_openai,
+};
 use crate::ai::types::ToolCall;
 use crate::commands::ConnectionHandle;
-use crate::ai::tool_exec_support::{
-    is_dangerous_command,
-    validate_command,
-    validate_path,
-};
-use crate::ai::tool_schemas::{
-    planning_tool_schemas_claude,
-    planning_tool_schemas_gemini,
-    planning_tool_schemas_openai,
-    tool_schemas_claude,
-    tool_schemas_gemini,
-    tool_schemas_openai,
-};
 
 // ── Tool schemas ──────────────────────────────────────────────────────────────
 
 pub fn execution_tool_schemas(config: &crate::ai::AiConfig) -> serde_json::Value {
     match config.provider.as_str() {
         "gemini" => tool_schemas_gemini(),
-        "claude"  => tool_schemas_claude(),
+        "claude" => tool_schemas_claude(),
         _ => tool_schemas_openai(),
     }
 }
@@ -36,13 +28,13 @@ pub fn execution_tool_schemas(config: &crate::ai::AiConfig) -> serde_json::Value
 pub fn planning_tool_schemas(config: &crate::ai::AiConfig) -> serde_json::Value {
     match config.provider.as_str() {
         "gemini" => planning_tool_schemas_gemini(),
-        "claude"  => planning_tool_schemas_claude(),
+        "claude" => planning_tool_schemas_claude(),
         _ => planning_tool_schemas_openai(),
     }
 }
 
 /// Borrowed context passed into every tool execution call.
-/// 
+///
 /// Note: `session_dir` tracks the active session path, allowing heavily verbose
 /// tool outputs (like large read_file or command actions) to automatically stream
 /// artifacts to disk to circumvent AI buffer overruns.
@@ -120,11 +112,19 @@ pub async fn execute_tool(ctx: &ToolContext<'_>, tool_call: &ToolCall) -> Result
 
 // ── run_command ───────────────────────────────────────────────────────────────
 
-async fn exec_command(ctx: &ToolContext<'_>, cmd: &str, tool_call_id: &str) -> Result<String, String> {
+async fn exec_command(
+    ctx: &ToolContext<'_>,
+    cmd: &str,
+    tool_call_id: &str,
+) -> Result<String, String> {
     crate::ai::tool_command_exec::exec_command(ctx, cmd, tool_call_id).await
 }
 
-async fn read_file(ctx: &ToolContext<'_>, path: &str, tool_call_id: &str) -> Result<String, String> {
+async fn read_file(
+    ctx: &ToolContext<'_>,
+    path: &str,
+    tool_call_id: &str,
+) -> Result<String, String> {
     crate::ai::tool_file_ops::read_file(ctx, path, tool_call_id).await
 }
 
@@ -137,7 +137,11 @@ async fn write_file(
     crate::ai::tool_file_ops::write_file(ctx, path, content, tool_call_id).await
 }
 
-async fn list_files(ctx: &ToolContext<'_>, path: &str, tool_call_id: &str) -> Result<String, String> {
+async fn list_files(
+    ctx: &ToolContext<'_>,
+    path: &str,
+    tool_call_id: &str,
+) -> Result<String, String> {
     crate::ai::tool_file_ops::list_files(ctx, path, tool_call_id).await
 }
 

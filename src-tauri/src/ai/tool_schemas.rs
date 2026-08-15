@@ -430,6 +430,8 @@ mod tests {
     #[test]
     fn gemini_schema_uses_function_declarations() {
         let schema = tool_schemas_gemini();
-        assert!(schema.as_array().unwrap()[0].get("function_declarations").is_some());
+        assert!(schema.as_array().unwrap()[0]
+            .get("function_declarations")
+            .is_some());
     }
 }

@@ -67,7 +67,7 @@ pub fn parse_config_text(content: &str) -> Result<Vec<ParsedSshConnection>> {
             } else {
                 (line, "")
             };
-        
+
         // Normalize value_str by removing wrapping quotes
         value_str = strip_wrapping_quotes(value_str);
 
@@ -83,7 +83,10 @@ pub fn parse_config_text(content: &str) -> Result<Vec<ParsedSshConnection>> {
 
             // Start new - handle potential multiple aliases on Host line
             let primary_alias = value_str.split_whitespace().next().unwrap_or(value_str);
-            let aliases: Vec<String> = value_str.split_whitespace().map(|s| s.to_string()).collect();
+            let aliases: Vec<String> = value_str
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect();
 
             current_host = Some(ParsedSshConnection {
                 id: String::new(),               // Will be set on push

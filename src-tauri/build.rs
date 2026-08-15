@@ -118,7 +118,10 @@ fn is_valid_google_client_id(value: &str) -> bool {
     let Some(mid) = suffix.strip_suffix(".apps.googleusercontent.com") else {
         return false;
     };
-    !mid.is_empty() && mid.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    !mid.is_empty()
+        && mid
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 fn clean_env_value(value: &str) -> String {

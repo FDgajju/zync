@@ -26,7 +26,7 @@ mod tests {
         assert!(is_retryable_error("504 Gateway Timeout"));
         assert!(is_retryable_error("gateway timeout"));
         assert!(is_retryable_error("Error 502: Bad Gateway"));
-        
+
         // Negative cases (precision)
         assert!(!is_retryable_error("error429occured")); // No word boundary
         assert!(!is_retryable_error("4293 error code")); // Numeric suffix

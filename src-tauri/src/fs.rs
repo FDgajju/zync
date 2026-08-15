@@ -252,7 +252,9 @@ impl FileSystem {
         if connection_id == "local" {
             Ok(std::path::Path::new(path).exists())
         } else {
-            Err(anyhow!("Remote connection not yet implemented in exists() - use exists_remote"))
+            Err(anyhow!(
+                "Remote connection not yet implemented in exists() - use exists_remote"
+            ))
         }
     }
 
@@ -541,12 +543,16 @@ impl FileSystem {
         }
 
         let path_buf = std::path::PathBuf::from(path);
-        let parent = path_buf.parent().unwrap_or_else(|| std::path::Path::new(""));
+        let parent = path_buf
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(""));
         let file_stem = path_buf.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         let extension = path_buf.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         if file_stem.is_empty() {
-            return Err(anyhow!("Cannot generate unique path for root or invalid path"));
+            return Err(anyhow!(
+                "Cannot generate unique path for root or invalid path"
+            ));
         }
 
         let mut counter = 1;
@@ -556,15 +562,19 @@ impl FileSystem {
             } else {
                 format!("{} ({}).{}", file_stem, counter, extension)
             };
-            
-            let new_path = parent.join(new_name).to_string_lossy().to_string().replace("\\", "/");
+
+            let new_path = parent
+                .join(new_name)
+                .to_string_lossy()
+                .to_string()
+                .replace("\\", "/");
 
             if !self.exists_remote(sftp, &new_path).await? {
                 return Ok(new_path);
             }
             counter += 1;
         }
-        
+
         Err(anyhow!("Too many duplicate files (limit 100)"))
     }
 

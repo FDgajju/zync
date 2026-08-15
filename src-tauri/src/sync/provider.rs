@@ -102,8 +102,8 @@ pub fn validate_provider_contract(provider: &dyn VaultProviderV1) -> SyncResult<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::types::EncryptionMode;
     use crate::sync::providers::google::GoogleVaultProvider;
+    use crate::sync::types::EncryptionMode;
 
     fn make_test_capabilities(encryption_mode: EncryptionMode) -> ProviderCapabilities {
         ProviderCapabilities {
@@ -131,15 +131,24 @@ mod tests {
         }
 
         async fn connect(&self, _app: &tauri::AppHandle) -> SyncResult<ProviderIdentity> {
-            Err(SyncError::new("not_implemented", "not needed for contract test"))
+            Err(SyncError::new(
+                "not_implemented",
+                "not needed for contract test",
+            ))
         }
 
         async fn disconnect(&self, _app: &tauri::AppHandle) -> SyncResult<()> {
-            Err(SyncError::new("not_implemented", "not needed for contract test"))
+            Err(SyncError::new(
+                "not_implemented",
+                "not needed for contract test",
+            ))
         }
 
         async fn status(&self, _app: &tauri::AppHandle) -> SyncResult<ProviderStatusSnapshot> {
-            Err(SyncError::new("not_implemented", "not needed for contract test"))
+            Err(SyncError::new(
+                "not_implemented",
+                "not needed for contract test",
+            ))
         }
 
         async fn upload_vault_blob(
@@ -147,14 +156,17 @@ mod tests {
             _app: &tauri::AppHandle,
             _payload: Vec<u8>,
         ) -> SyncResult<u64> {
-            Err(SyncError::new("not_implemented", "not needed for contract test"))
+            Err(SyncError::new(
+                "not_implemented",
+                "not needed for contract test",
+            ))
         }
 
-        async fn download_vault_blob(
-            &self,
-            _app: &tauri::AppHandle,
-        ) -> SyncResult<(Vec<u8>, u64)> {
-            Err(SyncError::new("not_implemented", "not needed for contract test"))
+        async fn download_vault_blob(&self, _app: &tauri::AppHandle) -> SyncResult<(Vec<u8>, u64)> {
+            Err(SyncError::new(
+                "not_implemented",
+                "not needed for contract test",
+            ))
         }
 
         async fn upload_credential_record(
@@ -163,7 +175,10 @@ mod tests {
             _object_name: &str,
             _payload: Vec<u8>,
         ) -> SyncResult<u64> {
-            Err(SyncError::new("not_implemented", "not needed for contract test"))
+            Err(SyncError::new(
+                "not_implemented",
+                "not needed for contract test",
+            ))
         }
 
         async fn list_credential_records(
@@ -171,7 +186,10 @@ mod tests {
             _app: &tauri::AppHandle,
             _sync_collection_id: &str,
         ) -> SyncResult<Vec<ProviderCredentialObject>> {
-            Err(SyncError::new("not_implemented", "not needed for contract test"))
+            Err(SyncError::new(
+                "not_implemented",
+                "not needed for contract test",
+            ))
         }
 
         async fn list_collection_records(
@@ -179,7 +197,10 @@ mod tests {
             _app: &tauri::AppHandle,
             _sync_collection_id: &str,
         ) -> SyncResult<Vec<ProviderCredentialObject>> {
-            Err(SyncError::new("not_implemented", "not needed for contract test"))
+            Err(SyncError::new(
+                "not_implemented",
+                "not needed for contract test",
+            ))
         }
 
         async fn read_credential_record(
@@ -187,7 +208,10 @@ mod tests {
             _app: &tauri::AppHandle,
             _object: &ProviderCredentialObject,
         ) -> SyncResult<Vec<u8>> {
-            Err(SyncError::new("not_implemented", "not needed for contract test"))
+            Err(SyncError::new(
+                "not_implemented",
+                "not needed for contract test",
+            ))
         }
     }
 
@@ -210,7 +234,8 @@ mod tests {
     #[test]
     fn google_provider_passes_contract_validation() {
         let provider = GoogleVaultProvider;
-        validate_provider_contract(&provider).expect("google provider should satisfy base contract");
+        validate_provider_contract(&provider)
+            .expect("google provider should satisfy base contract");
         assert_eq!(provider.kind(), SyncProviderKind::Google);
     }
 

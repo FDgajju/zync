@@ -22,11 +22,19 @@ pub async fn read_error_body(response: reqwest::Response) -> String {
             return sanitize_error(msg);
         }
         // Mistral format:  {"message": "...", "type": "..."}
-        if let Some(msg) = json.get("message").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        if let Some(msg) = json
+            .get("message")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             return sanitize_error(msg);
         }
         // FastAPI / generic format:  {"detail": "..."}
-        if let Some(msg) = json.get("detail").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        if let Some(msg) = json
+            .get("detail")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             return sanitize_error(msg);
         }
     }
@@ -46,7 +54,10 @@ fn friendly_http_status(code: u16) -> String {
         403 => "Forbidden — your API key may not have access to this model.".into(),
         404 => "Model not found — it may have been removed or renamed.".into(),
         413 => "Request too large — the conversation context is too long.".into(),
-        422 => "Invalid request — the model may not support tool calling or the input is malformed.".into(),
+        422 => {
+            "Invalid request — the model may not support tool calling or the input is malformed."
+                .into()
+        }
         429 => "Rate limit reached — too many requests. Wait a moment and try again.".into(),
         500 => "Provider server error — try again in a few seconds.".into(),
         502 | 503 => "Provider temporarily unavailable — try again shortly.".into(),

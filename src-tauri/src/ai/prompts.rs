@@ -22,7 +22,11 @@ answer: <concise answer in 1-3 sentences>\n\
 \n\
 IMPORTANT: Respond ONLY in TOON key-value format. No JSON, no markdown, no backticks.";
 
-pub fn build_user_prompt(query: &str, context: &TerminalContext, history: &[ChatMessage]) -> String {
+pub fn build_user_prompt(
+    query: &str,
+    context: &TerminalContext,
+    history: &[ChatMessage],
+) -> String {
     let mut prompt = format!(
         "OS: {os}\nShell: {shell}\nCWD: {cwd}\nConnection: {conn}",
         os = context.os.as_deref().unwrap_or("Linux"),
@@ -54,7 +58,10 @@ pub fn build_user_prompt(query: &str, context: &TerminalContext, history: &[Chat
 
     if let Some(attached) = context.attached_content.as_deref() {
         if !attached.is_empty() {
-            let label = context.attached_label.as_deref().unwrap_or("attached context");
+            let label = context
+                .attached_label
+                .as_deref()
+                .unwrap_or("attached context");
             let trimmed = if attached.len() > 1200 {
                 let safe_end = attached
                     .char_indices()
@@ -73,6 +80,14 @@ pub fn build_user_prompt(query: &str, context: &TerminalContext, history: &[Chat
     prompt
 }
 
-pub fn build_single_prompt(query: &str, context: &TerminalContext, history: &[ChatMessage]) -> String {
-    format!("{}\n\n{}", SYSTEM_PROMPT, build_user_prompt(query, context, history))
+pub fn build_single_prompt(
+    query: &str,
+    context: &TerminalContext,
+    history: &[ChatMessage],
+) -> String {
+    format!(
+        "{}\n\n{}",
+        SYSTEM_PROMPT,
+        build_user_prompt(query, context, history)
+    )
 }

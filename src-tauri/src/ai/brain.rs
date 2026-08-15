@@ -6,13 +6,13 @@
 //!     walkthrough.md   — human-readable narrative of what was done
 //!     actions.json     — raw action log array
 
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
-use serde::{Deserialize, Serialize};
 
-use crate::commands::get_data_dir;
 use super::util::slugify;
+use crate::commands::get_data_dir;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -31,8 +31,6 @@ struct Meta {
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
-
-
 
 /// Initialize the session directory early, allowing artifacts to be saved during the run.
 pub fn init_session(
@@ -61,13 +59,20 @@ pub fn init_session(
     // ── Session folder: {YYYY-MM-DD_HH-mm-ss}_{goal-slug} ──────────────────────
     let ts = format_now();
     let goal_slug = slugify(goal);
-    let goal_slug = if goal_slug.is_empty() { "run".to_string() } else { goal_slug };
+    let goal_slug = if goal_slug.is_empty() {
+        "run".to_string()
+    } else {
+        goal_slug
+    };
     let session_name = format!("{}_{}", ts, goal_slug);
 
     let session_dir = brain_dir.join(&conn_folder).join(&session_name);
 
     if let Err(e) = std::fs::create_dir_all(&session_dir) {
-        eprintln!("[brain] failed to create session dir {:?}: {}", session_dir, e);
+        eprintln!(
+            "[brain] failed to create session dir {:?}: {}",
+            session_dir, e
+        );
         return None;
     }
 
@@ -86,8 +91,26 @@ pub fn finalize_session(
     summary: &str,
     actions: &[String],
 ) -> std::io::Result<()> {
-    write_meta(session_dir, run_id, goal, connection_label, model, success, summary, actions)?;
-    write_walkthrough(session_dir, goal, connection_label, model, ts, success, summary, actions)?;
+    write_meta(
+        session_dir,
+        run_id,
+        goal,
+        connection_label,
+        model,
+        success,
+        summary,
+        actions,
+    )?;
+    write_walkthrough(
+        session_dir,
+        goal,
+        connection_label,
+        model,
+        ts,
+        success,
+        summary,
+        actions,
+    )?;
     write_actions(session_dir, actions)?;
     Ok(())
 }
@@ -97,7 +120,10 @@ pub fn finalize_session(
 pub fn save_artifact(session_dir: &Path, tool_call_id: &str, content: &str) -> Option<String> {
     let artifacts_dir = session_dir.join("artifacts");
     if let Err(e) = std::fs::create_dir_all(&artifacts_dir) {
-        eprintln!("[brain] failed to create artifacts dir {:?}: {}", artifacts_dir, e);
+        eprintln!(
+            "[brain] failed to create artifacts dir {:?}: {}",
+            artifacts_dir, e
+        );
         return None;
     }
 
@@ -109,7 +135,10 @@ pub fn save_artifact(session_dir: &Path, tool_call_id: &str, content: &str) -> O
         .collect();
 
     if safe_id.is_empty() {
-        eprintln!("[brain] failed to save artifact: invalid tool_call_id '{}'", tool_call_id);
+        eprintln!(
+            "[brain] failed to save artifact: invalid tool_call_id '{}'",
+            tool_call_id
+        );
         return None;
     }
 
@@ -119,7 +148,7 @@ pub fn save_artifact(session_dir: &Path, tool_call_id: &str, content: &str) -> O
         eprintln!("[brain] failed to write artifact {:?}: {}", file_path, e);
         return None;
     }
-    
+
     // Convert all backslashes to forward slashes for AI consistency.
     // Return relative path to session_dir: artifacts/{safe_id}.txt
     Some(format!("artifacts/{}.txt", safe_id))
@@ -213,12 +242,15 @@ fn format_now() -> String {
         .as_secs();
 
     let (year, month, day, hour, min, sec) = epoch_to_datetime(secs);
-    format!("{:04}-{:02}-{:02}_{:02}-{:02}-{:02}", year, month, day, hour, min, sec)
+    format!(
+        "{:04}-{:02}-{:02}_{:02}-{:02}-{:02}",
+        year, month, day, hour, min, sec
+    )
 }
 
 fn epoch_to_datetime(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
-    let sec  = (secs % 60) as u32;
-    let min  = ((secs % 3600) / 60) as u32;
+    let sec = (secs % 60) as u32;
+    let min = ((secs % 3600) / 60) as u32;
     let hour = ((secs % 86400) / 3600) as u32;
 
     let mut days = (secs / 86400) as u32;
@@ -226,18 +258,32 @@ fn epoch_to_datetime(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
 
     loop {
         let days_in_year = if is_leap(year) { 366 } else { 365 };
-        if days < days_in_year { break; }
+        if days < days_in_year {
+            break;
+        }
         days -= days_in_year;
         year += 1;
     }
 
     let month_days: [u32; 12] = [
-        31, if is_leap(year) { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        if is_leap(year) { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut month = 1u32;
     for &m in &month_days {
-        if days < m { break; }
+        if days < m {
+            break;
+        }
         days -= m;
         month += 1;
     }

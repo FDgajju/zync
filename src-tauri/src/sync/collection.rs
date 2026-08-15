@@ -110,7 +110,9 @@ pub fn collection_key_wrap_object_name(sync_collection_id: &str) -> String {
     format!("zync-sync-{sync_collection_id}-collection-keywrap.zkey")
 }
 
-pub fn remote_key_wrap_from_manifest(manifest: &SyncCollectionManifest) -> Option<RemoteCollectionKeyWrapV1> {
+pub fn remote_key_wrap_from_manifest(
+    manifest: &SyncCollectionManifest,
+) -> Option<RemoteCollectionKeyWrapV1> {
     Some(RemoteCollectionKeyWrapV1 {
         version: REMOTE_KEY_WRAP_VERSION,
         provider: manifest.provider.clone(),
@@ -167,12 +169,17 @@ pub fn apply_remote_key_wrap_to_manifest(
         && wrap.recovery_key_wrap_nonce.is_some()
         && wrap.recovery_key_wrap_ciphertext.is_some()
     {
-        manifest.recovery_key_wrap_salt =
-            Some(base64_data(wrap.recovery_key_wrap_salt.clone().unwrap_or_default())?);
-        manifest.recovery_key_wrap_nonce =
-            Some(base64_data(wrap.recovery_key_wrap_nonce.clone().unwrap_or_default())?);
-        manifest.recovery_key_wrap_ciphertext =
-            Some(base64_data(wrap.recovery_key_wrap_ciphertext.clone().unwrap_or_default())?);
+        manifest.recovery_key_wrap_salt = Some(base64_data(
+            wrap.recovery_key_wrap_salt.clone().unwrap_or_default(),
+        )?);
+        manifest.recovery_key_wrap_nonce = Some(base64_data(
+            wrap.recovery_key_wrap_nonce.clone().unwrap_or_default(),
+        )?);
+        manifest.recovery_key_wrap_ciphertext = Some(base64_data(
+            wrap.recovery_key_wrap_ciphertext
+                .clone()
+                .unwrap_or_default(),
+        )?);
         manifest.has_recovery_key = true;
     }
     Ok(())
@@ -291,12 +298,11 @@ Start a new empty collection and re-upload hosts, or recover from a machine that
 
     let recovery_key = if has_recovery_key {
         let (recovery_key, recovery_key_bytes) = generate_recovery_key();
-        let (salt, nonce, ciphertext) =
-            wrap_collection_key_with_secret(
-                &collection_key,
-                &recovery_key_bytes,
-                &recovery_key_wrap_aad(&manifest),
-            )?;
+        let (salt, nonce, ciphertext) = wrap_collection_key_with_secret(
+            &collection_key,
+            &recovery_key_bytes,
+            &recovery_key_wrap_aad(&manifest),
+        )?;
         manifest.recovery_key_wrap_salt = Some(base64_data(salt)?);
         manifest.recovery_key_wrap_nonce = Some(base64_data(nonce)?);
         manifest.recovery_key_wrap_ciphertext = Some(base64_data(ciphertext)?);
@@ -397,7 +403,9 @@ pub fn enforce_collection_key_cache_ttl(
     if !is_collection_key_cached(manifest) {
         return Ok(false);
     }
-    let anchor = manifest.key_cache_unlocked_at.unwrap_or(manifest.updated_at);
+    let anchor = manifest
+        .key_cache_unlocked_at
+        .unwrap_or(manifest.updated_at);
     let now = now_secs();
     let ttl = manifest
         .key_cache_ttl_secs
@@ -481,12 +489,8 @@ fn persist_collection_key_and_manifest(
     persist_collection_key(manifest, key)?;
     if let Err(error) = save_manifest(data_dir, manifest) {
         let rollback_result = match previous_secret {
-            Some(secret) => {
-                save_collection_key_secret(&account, &secret)
-            }
-            None => {
-                delete_collection_key_secret(&account)
-            }
+            Some(secret) => save_collection_key_secret(&account, &secret),
+            None => delete_collection_key_secret(&account),
         };
         if let Err(rollback_error) = rollback_result {
             return Err(SyncError::new(
@@ -579,14 +583,12 @@ fn wrap_collection_key_with_secret(
     aad: &str,
 ) -> SyncResult<(String, String, String)> {
     let salt = generate_salt();
-    let kek = derive_kek(secret, &salt, &KdfParams::default_production()).map_err(
-        |e| {
-            SyncError::new(
-                "sync_collection_key_wrap_failed",
-                format!("Failed to derive sync key wrap key: {e}"),
-            )
-        },
-    )?;
+    let kek = derive_kek(secret, &salt, &KdfParams::default_production()).map_err(|e| {
+        SyncError::new(
+            "sync_collection_key_wrap_failed",
+            format!("Failed to derive sync key wrap key: {e}"),
+        )
+    })?;
     let envelope = encrypt_record(&kek, collection_key, aad.as_bytes()).map_err(|e| {
         SyncError::new(
             "sync_collection_key_wrap_failed",
@@ -644,15 +646,17 @@ fn unwrap_collection_key(
                 format!("Invalid wrapped key salt: {e}"),
             )
         })?;
-    let kek =
-        derive_kek(passphrase.as_bytes(), &salt_bytes, &KdfParams::default_production()).map_err(
-            |e| {
-                SyncError::new(
-                    "sync_collection_key_unwrap_failed",
-                    format!("Failed to derive wrapped-key KEK: {e}"),
-                )
-            },
-        )?;
+    let kek = derive_kek(
+        passphrase.as_bytes(),
+        &salt_bytes,
+        &KdfParams::default_production(),
+    )
+    .map_err(|e| {
+        SyncError::new(
+            "sync_collection_key_unwrap_failed",
+            format!("Failed to derive wrapped-key KEK: {e}"),
+        )
+    })?;
 
     let nonce_bytes = base64::engine::general_purpose::STANDARD
         .decode(nonce)
@@ -890,21 +894,22 @@ fn delete_collection_key_secret(account: &str) -> SyncResult<()> {
     match entry.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
-        Err(error) => Err(SyncError::new("sync_collection_keyring_failed", error.to_string())),
+        Err(error) => Err(SyncError::new(
+            "sync_collection_keyring_failed",
+            error.to_string(),
+        )),
     }
 }
 
 #[cfg(test)]
 fn load_collection_key_secret(account: &str) -> SyncResult<String> {
     let store = key_store();
-    let lock = store
-        .lock()
-        .map_err(|_| {
-            SyncError::new(
-                "sync_collection_keyring_failed",
-                "test key store lock poisoned",
-            )
-        })?;
+    let lock = store.lock().map_err(|_| {
+        SyncError::new(
+            "sync_collection_keyring_failed",
+            "test key store lock poisoned",
+        )
+    })?;
     lock.get(account)
         .cloned()
         .ok_or_else(|| SyncError::new("sync_collection_keyring_failed", "key not found"))
@@ -913,28 +918,24 @@ fn load_collection_key_secret(account: &str) -> SyncResult<String> {
 #[cfg(test)]
 fn load_optional_collection_key_secret(account: &str) -> SyncResult<Option<String>> {
     let store = key_store();
-    let lock = store
-        .lock()
-        .map_err(|_| {
-            SyncError::new(
-                "sync_collection_keyring_failed",
-                "test key store lock poisoned",
-            )
-        })?;
+    let lock = store.lock().map_err(|_| {
+        SyncError::new(
+            "sync_collection_keyring_failed",
+            "test key store lock poisoned",
+        )
+    })?;
     Ok(lock.get(account).cloned())
 }
 
 #[cfg(test)]
 fn save_collection_key_secret(account: &str, value: &str) -> SyncResult<()> {
     let store = key_store();
-    let mut lock = store
-        .lock()
-        .map_err(|_| {
-            SyncError::new(
-                "sync_collection_keyring_failed",
-                "test key store lock poisoned",
-            )
-        })?;
+    let mut lock = store.lock().map_err(|_| {
+        SyncError::new(
+            "sync_collection_keyring_failed",
+            "test key store lock poisoned",
+        )
+    })?;
     lock.insert(account.to_string(), value.to_string());
     Ok(())
 }
@@ -942,14 +943,12 @@ fn save_collection_key_secret(account: &str, value: &str) -> SyncResult<()> {
 #[cfg(test)]
 fn delete_collection_key_secret(account: &str) -> SyncResult<()> {
     let store = key_store();
-    let mut lock = store
-        .lock()
-        .map_err(|_| {
-            SyncError::new(
-                "sync_collection_keyring_failed",
-                "test key store lock poisoned",
-            )
-        })?;
+    let mut lock = store.lock().map_err(|_| {
+        SyncError::new(
+            "sync_collection_keyring_failed",
+            "test key store lock poisoned",
+        )
+    })?;
     lock.remove(account);
     Ok(())
 }
@@ -1136,7 +1135,7 @@ mod tests {
             &mut manifest_after_unlock,
             &recovery_key,
         )
-            .expect("recovery key should restore key cache");
+        .expect("recovery key should restore key cache");
 
         let key_after = load_collection_key(&manifest_after_unlock).expect("key after");
         assert_eq!(key_after, key_before);
@@ -1214,7 +1213,10 @@ mod tests {
         )
         .expect("setup manifest");
 
-        assert_eq!(outcome.manifest.sync_collection_id, "collection-from-provider");
+        assert_eq!(
+            outcome.manifest.sync_collection_id,
+            "collection-from-provider"
+        );
 
         let _ = std::fs::remove_dir_all(&data_dir_path);
     }
@@ -1247,8 +1249,7 @@ mod tests {
             .expect("seed previous cached secret");
 
         std::fs::remove_dir_all(&data_dir_path).expect("remove manifest directory");
-        std::fs::write(&data_dir_path, "blocks directory creation")
-            .expect("create blocking file");
+        std::fs::write(&data_dir_path, "blocks directory creation").expect("create blocking file");
 
         let error =
             unlock_collection_key_with_passphrase(&data_dir_path, &mut manifest, passphrase)

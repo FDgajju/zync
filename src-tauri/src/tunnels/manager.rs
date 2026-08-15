@@ -353,10 +353,7 @@ impl TunnelManager {
         {
             let mut map = self.remote_forwards.lock().await;
             if map.contains_key(&map_key) {
-                println!(
-                    "[TUNNEL] Remote tunnel {} already active",
-                    map_key
-                );
+                println!("[TUNNEL] Remote tunnel {} already active", map_key);
                 return Ok(runtime_id);
             }
             map.insert(
@@ -416,10 +413,7 @@ impl TunnelManager {
             if let Some((_, _, saved_bind_address)) = found_entry {
                 if let Some(session) = session {
                     let handle = session.lock().await;
-                    let bind_addr = tunnel
-                        .bind_address
-                        .clone()
-                        .unwrap_or(saved_bind_address);
+                    let bind_addr = tunnel.bind_address.clone().unwrap_or(saved_bind_address);
                     let res = handle
                         .cancel_tcpip_forward(bind_addr.clone(), tunnel.remote_port as u32)
                         .await;
@@ -609,9 +603,6 @@ mod tests {
         let mut t = sample_tunnel("dynamic", "conn-d");
         t.remote_host = "*".to_string();
         t.remote_port = 0;
-        assert_eq!(
-            tunnel_runtime_id(&t),
-            "dynamic:conn-d:8080:127.0.0.1"
-        );
+        assert_eq!(tunnel_runtime_id(&t), "dynamic:conn-d:8080:127.0.0.1");
     }
 }

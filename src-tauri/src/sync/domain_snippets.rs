@@ -62,8 +62,7 @@ fn snippet_timestamp_from_sync(updated_at: u64) -> u64 {
 }
 
 fn map_snippet(snip: Snippet, logical_id: String) -> SnippetSyncRecord {
-    let updated_at =
-        normalize_snippet_timestamp(snip.updated_at.or(snip.created_at).unwrap_or(0));
+    let updated_at = normalize_snippet_timestamp(snip.updated_at.or(snip.created_at).unwrap_or(0));
     SnippetSyncRecord {
         logical_id,
         name: snip.name,
@@ -82,7 +81,11 @@ fn snippet_fallback_logical_id(snip: &Snippet) -> String {
 pub(crate) fn snippet_record_logical_id(record: &SnippetSyncRecord) -> String {
     let logical_id = record.logical_id.trim();
     if logical_id.is_empty() {
-        snippet_content_logical_id(&record.name, &record.command, record.connection_id.as_deref())
+        snippet_content_logical_id(
+            &record.name,
+            &record.command,
+            record.connection_id.as_deref(),
+        )
     } else {
         logical_id.to_string()
     }
@@ -108,7 +111,10 @@ fn snippet_content_logical_id(name: &str, command: &str, connection_id: Option<&
     format!("{label}:{short_hash}")
 }
 
-pub fn apply_snippet_restore_records(data_dir: &Path, records: &[SnippetSyncRecord]) -> SyncResult<(u64, u64)> {
+pub fn apply_snippet_restore_records(
+    data_dir: &Path,
+    records: &[SnippetSyncRecord],
+) -> SyncResult<(u64, u64)> {
     if records.is_empty() {
         return Ok((0, 0));
     }
@@ -130,7 +136,11 @@ pub fn apply_snippet_restore_records(data_dir: &Path, records: &[SnippetSyncReco
             existing.name = record.name.clone();
             existing.command = record.command.clone();
             existing.category = record.category.clone();
-            existing.tags = if record.tags.is_empty() { None } else { Some(record.tags.clone()) };
+            existing.tags = if record.tags.is_empty() {
+                None
+            } else {
+                Some(record.tags.clone())
+            };
             existing.connection_id = record.connection_id.clone();
             let restored_at = snippet_timestamp_from_sync(record.updated_at);
             existing.updated_at = Some(restored_at);
@@ -143,7 +153,11 @@ pub fn apply_snippet_restore_records(data_dir: &Path, records: &[SnippetSyncReco
             name: record.name.clone(),
             command: record.command.clone(),
             category: record.category.clone(),
-            tags: if record.tags.is_empty() { None } else { Some(record.tags.clone()) },
+            tags: if record.tags.is_empty() {
+                None
+            } else {
+                Some(record.tags.clone())
+            },
             connection_id: record.connection_id.clone(),
             created_at: Some(restored_at),
             updated_at: Some(restored_at),
@@ -169,7 +183,9 @@ fn load_saved(path: &Path) -> SyncResult<SnippetsData> {
                 return Ok(data);
             }
         }
-        return Ok(SnippetsData { snippets: Vec::new() });
+        return Ok(SnippetsData {
+            snippets: Vec::new(),
+        });
     }
     parse_saved_file(path)
 }
@@ -180,19 +196,31 @@ fn parse_saved_candidate(path: &Path) -> Option<SnippetsData> {
 
 fn parse_saved_file(path: &Path) -> SyncResult<SnippetsData> {
     let raw = std::fs::read_to_string(path).map_err(|e| {
-        SyncError::new("sync_snippets_read_failed", format!("Failed to read snippets file: {e}"))
+        SyncError::new(
+            "sync_snippets_read_failed",
+            format!("Failed to read snippets file: {e}"),
+        )
     })?;
     serde_json::from_str::<SnippetsData>(&raw).map_err(|e| {
-        SyncError::new("sync_snippets_parse_failed", format!("Failed to parse snippets file: {e}"))
+        SyncError::new(
+            "sync_snippets_parse_failed",
+            format!("Failed to parse snippets file: {e}"),
+        )
     })
 }
 
 fn save_saved_atomic(path: &Path, data: &SnippetsData) -> SyncResult<()> {
     let json = serde_json::to_string_pretty(data).map_err(|e| {
-        SyncError::new("sync_snippets_write_failed", format!("Failed to serialize snippets data: {e}"))
+        SyncError::new(
+            "sync_snippets_write_failed",
+            format!("Failed to serialize snippets data: {e}"),
+        )
     })?;
     crate::atomic_io::durable_replace(path, json.as_bytes()).map_err(|e| {
-        SyncError::new("sync_snippets_write_failed", format!("Failed to write snippets file: {e}"))
+        SyncError::new(
+            "sync_snippets_write_failed",
+            format!("Failed to write snippets file: {e}"),
+        )
     })
 }
 
@@ -362,7 +390,11 @@ mod tests {
             }],
         };
         let path = dir.join("snippets.json");
-        std::fs::write(&path, serde_json::to_string_pretty(&initial).expect("serialize")).expect("write");
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&initial).expect("serialize"),
+        )
+        .expect("write");
 
         let changes = vec![
             SnippetSyncRecord {

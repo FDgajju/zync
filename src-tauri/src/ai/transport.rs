@@ -30,10 +30,7 @@ fn emit_stream_chunk(app: &AppHandle, request_id: &str, token: String) {
 
 /// Call `f` with each `data:` value from an SSE response stream.
 /// Skips `[DONE]` and comment lines. Returns when the stream ends.
-pub async fn for_each_sse_data<F>(
-    mut response: reqwest::Response,
-    mut f: F,
-) -> Result<(), String>
+pub async fn for_each_sse_data<F>(mut response: reqwest::Response, mut f: F) -> Result<(), String>
 where
     F: FnMut(&str),
 {

@@ -1,8 +1,8 @@
+use base64::Engine as _;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use base64::Engine as _;
 
 /// In-memory icon cache shared across the app session.
 /// Key: distro name lowercased. Value: `Some("png:{b64}")` / `Some("ico:{b64}")` / `None` (no icon found).
@@ -135,7 +135,10 @@ fn save_disk_cache(path: &Path, data: &HashMap<String, Option<String>>) -> std::
     let json = serde_json::to_vec_pretty(data)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("shell-icon-cache.json");
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("shell-icon-cache.json");
     let tmp_path = parent.join(format!("{}.tmp", file_name));
     let backup_path = parent.join(format!("{}.bak", file_name));
 
@@ -248,18 +251,35 @@ fn read_icon_from_base_path(base_path: &str) -> Option<String> {
     let bytes = match std::fs::read(&ico_path) {
         Ok(b) => b,
         Err(e) => {
-            log::debug!("[ShellIcons] shortcut.ico not readable at '{}': {}", ico_path.display(), e);
+            log::debug!(
+                "[ShellIcons] shortcut.ico not readable at '{}': {}",
+                ico_path.display(),
+                e
+            );
             return None;
         }
     };
 
     // Prefer an embedded PNG frame (modern ICOs); fall back to raw ICO bytes.
     if let Some(png) = extract_png_from_ico(&bytes) {
-        log::debug!("[ShellIcons] extracted {} byte PNG from '{}'", png.len(), ico_path.display());
-        Some(format!("png:{}", base64::engine::general_purpose::STANDARD.encode(&png)))
+        log::debug!(
+            "[ShellIcons] extracted {} byte PNG from '{}'",
+            png.len(),
+            ico_path.display()
+        );
+        Some(format!(
+            "png:{}",
+            base64::engine::general_purpose::STANDARD.encode(&png)
+        ))
     } else {
-        log::debug!("[ShellIcons] BMP-only ICO at '{}', serving raw ICO", ico_path.display());
-        Some(format!("ico:{}", base64::engine::general_purpose::STANDARD.encode(&bytes)))
+        log::debug!(
+            "[ShellIcons] BMP-only ICO at '{}', serving raw ICO",
+            ico_path.display()
+        );
+        Some(format!(
+            "ico:{}",
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        ))
     }
 }
 
@@ -280,13 +300,27 @@ fn extract_png_from_ico(ico: &[u8]) -> Option<Vec<u8>> {
         if base + 16 > ico.len() {
             break;
         }
-        let w = if ico[base] == 0 { 256u32 } else { ico[base] as u32 };
-        let h = if ico[base + 1] == 0 { 256u32 } else { ico[base + 1] as u32 };
-        let size = match ico.get(base + 8..base + 12).and_then(|bytes| bytes.try_into().ok()) {
+        let w = if ico[base] == 0 {
+            256u32
+        } else {
+            ico[base] as u32
+        };
+        let h = if ico[base + 1] == 0 {
+            256u32
+        } else {
+            ico[base + 1] as u32
+        };
+        let size = match ico
+            .get(base + 8..base + 12)
+            .and_then(|bytes| bytes.try_into().ok())
+        {
             Some(raw) => u32::from_le_bytes(raw) as usize,
             None => continue,
         };
-        let offset = match ico.get(base + 12..base + 16).and_then(|bytes| bytes.try_into().ok()) {
+        let offset = match ico
+            .get(base + 12..base + 16)
+            .and_then(|bytes| bytes.try_into().ok())
+        {
             Some(raw) => u32::from_le_bytes(raw) as usize,
             None => continue,
         };

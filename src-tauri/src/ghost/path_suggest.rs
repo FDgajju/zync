@@ -6,8 +6,8 @@ use crate::commands::AppState;
 use crate::fs::FileEntry;
 use crate::ghost::context::recent_entry_name_bonus;
 use crate::ghost::token::{
-    get_command_name, get_last_arg, has_path_separator, is_directory_command, is_file_aware_command,
-    line_for_suggestion_parsing, strip_leading_unmatched_quote,
+    get_command_name, get_last_arg, has_path_separator, is_directory_command,
+    is_file_aware_command, line_for_suggestion_parsing, strip_leading_unmatched_quote,
 };
 
 const FS_LIST_CACHE_TTL_MS: u64 = 1200;
@@ -61,7 +61,10 @@ fn expand_tilde_path_for_remote(path: &str, home: &str) -> String {
     if trimmed == "~" {
         return home.to_string();
     }
-    if let Some(rest) = trimmed.strip_prefix("~/").or_else(|| trimmed.strip_prefix("~\\")) {
+    if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
         let rest = rest.replace('\\', "/").trim_start_matches('/').to_string();
         return if rest.is_empty() {
             home.to_string()
@@ -81,7 +84,9 @@ async fn get_remote_home_dir(state: &AppState, connection_id: &str) -> Option<St
             }
         }
     }
-    let home = crate::commands::ghost_fs_cwd(state, connection_id).await.ok()?;
+    let home = crate::commands::ghost_fs_cwd(state, connection_id)
+        .await
+        .ok()?;
     let trimmed = home.trim();
     if !trimmed.starts_with('/') {
         return None;
@@ -411,15 +416,14 @@ async fn path_suggestions(params: PathSuggestionsParams<'_>) -> Vec<String> {
         new_path_arg = classified_new;
     }
 
-    let use_wsl = params
-        .wsl_shell_id
-        .is_some_and(shell_id_indicates_wsl);
+    let use_wsl = params.wsl_shell_id.is_some_and(shell_id_indicates_wsl);
 
     let mut effective_cwd = params.cwd.map(|s| s.to_string());
     if let Some(ref cwd) = effective_cwd {
         if cwd.contains('~') {
             if params.connection_id != "local" {
-                let Some(home) = get_remote_home_dir(params.state, params.connection_id).await else {
+                let Some(home) = get_remote_home_dir(params.state, params.connection_id).await
+                else {
                     return Vec::new();
                 };
                 effective_cwd = Some(expand_tilde_path_for_remote(cwd, &home));

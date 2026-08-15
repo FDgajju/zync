@@ -1,14 +1,12 @@
 use crate::commands::AppState;
 use crate::ghost::context::RankingContext;
 use crate::ghost::manager::GhostManager;
-use crate::ghost::path_suggest::{path_suggestion, PathSuggestParams, shell_id_indicates_wsl};
-use crate::ghost::suffix::{
-    normalize_suggestion_suffix, normalize_suggestion_suffix_with_reason,
-};
+use crate::ghost::path_suggest::{path_suggestion, shell_id_indicates_wsl, PathSuggestParams};
+use crate::ghost::suffix::{normalize_suggestion_suffix, normalize_suggestion_suffix_with_reason};
 use crate::ghost::suggest_types::{GhostSuggestV2Request, GhostSuggestV2Response};
 use crate::ghost::token::{
-    has_unmatched_quote_on_active_token, is_bare_directory_listing_line, should_prefer_path_suggestion,
-    should_use_ghost_for_line,
+    has_unmatched_quote_on_active_token, is_bare_directory_listing_line,
+    should_prefer_path_suggestion, should_use_ghost_for_line,
 };
 
 const HISTORY_CONFIDENCE: f32 = 0.72;
@@ -31,7 +29,10 @@ pub async fn suggest_v2(
         .or(scope)
         .unwrap_or("local");
     let cwd = request.cwd.as_deref();
-    let wsl_shell_id = request.shell_id.as_deref().filter(|id| shell_id_indicates_wsl(id));
+    let wsl_shell_id = request
+        .shell_id
+        .as_deref()
+        .filter(|id| shell_id_indicates_wsl(id));
 
     let history_enabled = request.providers.history_enabled();
     let filesystem_enabled = request.providers.filesystem_enabled();
@@ -105,10 +106,7 @@ fn hit_normalized(
             Some(format!("{}:{}", source, normalized.spacing_reason)),
         )
     } else {
-        GhostSuggestV2Response::hit(
-            normalize_suggestion_suffix(line, raw_suffix),
-            confidence,
-        )
+        GhostSuggestV2Response::hit(normalize_suggestion_suffix(line, raw_suffix), confidence)
     }
 }
 

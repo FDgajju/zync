@@ -8,7 +8,9 @@ pub enum VaultError {
     InUseByAnotherInstance,
     Locked,
     WrongPassphrase,
-    InvalidPassphraseLength { min: usize },
+    InvalidPassphraseLength {
+        min: usize,
+    },
     RecordNotFound(String),
     InvalidData(String),
     Crypto(VaultCryptoError),

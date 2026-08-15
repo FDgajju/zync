@@ -242,7 +242,10 @@ pub fn secret_values_from_legacy(kind: &str, secret: &str) -> BTreeMap<String, S
         }
     }
 
-    values.insert(primary_secret_field_name(&normalized_kind).to_string(), secret.to_string());
+    values.insert(
+        primary_secret_field_name(&normalized_kind).to_string(),
+        secret.to_string(),
+    );
     values
 }
 
@@ -538,8 +541,14 @@ mod tests {
         assert_eq!(credential.kind, CredentialKind::SshPrivateKey);
         assert_eq!(credential.fields.len(), 1);
         assert_eq!(credential.fields[0].name, "privateKey");
-        assert_eq!(credential.fields[0].format, Some(CredentialFieldFormat::PrivateKey));
-        assert_eq!(credential.fields[0].encoding, Some(CredentialFieldEncoding::Pem));
+        assert_eq!(
+            credential.fields[0].format,
+            Some(CredentialFieldFormat::PrivateKey)
+        );
+        assert_eq!(
+            credential.fields[0].encoding,
+            Some(CredentialFieldEncoding::Pem)
+        );
         assert_eq!(
             credential.fields[0].value_ref.as_deref(),
             Some("secret:privateKey")
@@ -578,10 +587,7 @@ mod tests {
         let mut record = legacy_record("ssh-password");
         normalize_record_credential(&mut record);
 
-        let credential = record
-            .credential
-            .as_ref()
-            .expect("credential envelope");
+        let credential = record.credential.as_ref().expect("credential envelope");
         assert_eq!(credential.credential_id, "cred-1");
         assert_eq!(credential.kind, CredentialKind::SshPassword);
         assert_eq!(credential.label, "Prod credential");
@@ -603,7 +609,10 @@ mod tests {
         normalize_record_credential(&mut record);
 
         assert_eq!(
-            record.credential.as_ref().map(|credential| &credential.kind),
+            record
+                .credential
+                .as_ref()
+                .map(|credential| &credential.kind),
             Some(&CredentialKind::UsernamePassword)
         );
         assert_eq!(record.kind, "username-password");
@@ -745,11 +754,17 @@ mod tests {
         assert_eq!(record.kind, "ssh-private-key");
         assert!(record.secret.is_empty());
         assert_eq!(
-            record.secret_values.get(PRIVATE_KEY_FIELD).map(String::as_str),
+            record
+                .secret_values
+                .get(PRIVATE_KEY_FIELD)
+                .map(String::as_str),
             Some("private-key-data")
         );
         assert_eq!(
-            record.secret_values.get(PASSPHRASE_FIELD).map(String::as_str),
+            record
+                .secret_values
+                .get(PASSPHRASE_FIELD)
+                .map(String::as_str),
             Some("key-passphrase")
         );
         let fields = &record.credential.as_ref().expect("credential").fields;
@@ -762,7 +777,10 @@ mod tests {
         let mut record = legacy_record("ssh-private-key");
         record.secret.clear();
         record.secret_values = BTreeMap::from([
-            (PRIVATE_KEY_FIELD.to_string(), "private-key-data".to_string()),
+            (
+                PRIVATE_KEY_FIELD.to_string(),
+                "private-key-data".to_string(),
+            ),
             (PASSPHRASE_FIELD.to_string(), "key-passphrase".to_string()),
         ]);
         normalize_record_credential(&mut record);

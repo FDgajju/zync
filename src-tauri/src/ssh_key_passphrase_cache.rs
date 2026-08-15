@@ -12,7 +12,10 @@ fn normalize_lexically(path: &Path) -> PathBuf {
         match component {
             Component::CurDir => {}
             Component::ParentDir => {
-                if matches!(normalized.components().next_back(), Some(Component::Normal(_))) {
+                if matches!(
+                    normalized.components().next_back(),
+                    Some(Component::Normal(_))
+                ) {
                     normalized.pop();
                 } else if !normalized.has_root() {
                     normalized.push(component.as_os_str());
@@ -39,9 +42,7 @@ fn normalized_key_path(path: &str) -> String {
             .unwrap_or_else(|| PathBuf::from("."))
             .join(path)
     };
-    let normalized = normalize_lexically(&absolute)
-        .to_string_lossy()
-        .to_string();
+    let normalized = normalize_lexically(&absolute).to_string_lossy().to_string();
     #[cfg(windows)]
     {
         normalized.to_lowercase()
@@ -124,9 +125,8 @@ pub fn clear(path: &str) -> Result<(), String> {
 
 #[cfg(test)]
 fn test_store() -> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
-    static STORE: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<String, String>>,
-    > = std::sync::OnceLock::new();
+    static STORE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> =
+        std::sync::OnceLock::new();
     STORE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
@@ -160,14 +160,14 @@ mod tests {
     #[test]
     fn account_is_stable_for_missing_relative_paths() {
         let base = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-        let expected = base
-            .join("missing-key")
-            .to_string_lossy()
-            .to_string();
+        let expected = base.join("missing-key").to_string_lossy().to_string();
         #[cfg(windows)]
         let expected = expected.to_lowercase();
 
-        assert_eq!(normalized_key_path(" ./missing-key "), normalized_key_path("missing-key"));
+        assert_eq!(
+            normalized_key_path(" ./missing-key "),
+            normalized_key_path("missing-key")
+        );
         assert_eq!(normalized_key_path("missing-key/../missing-key"), expected);
     }
 }

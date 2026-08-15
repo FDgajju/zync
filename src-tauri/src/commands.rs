@@ -39,9 +39,7 @@ fn warn_data_dir_fallback(custom_dir: &Path, error: &std::io::Error, default_dir
     *warned = Some(key);
     eprintln!(
         "[DataDir] Could not create custom dataPath {:?} ({}). Using default {:?}.",
-        custom_dir,
-        error,
-        default_dir
+        custom_dir, error, default_dir
     );
 }
 
@@ -384,31 +382,31 @@ pub fn get_data_dir(app: &AppHandle) -> std::path::PathBuf {
     let merged_settings =
         read_effective_settings(app).unwrap_or_else(|_| Value::Object(serde_json::Map::new()));
 
-    let (resolved, cache_result) = if let Some(data_path) = merged_settings.get("dataPath").and_then(|v| v.as_str())
-    {
-        if !data_path.is_empty() {
-            let custom_dir = std::path::PathBuf::from(data_path);
-            if custom_dir.is_file() {
-                eprintln!(
+    let (resolved, cache_result) =
+        if let Some(data_path) = merged_settings.get("dataPath").and_then(|v| v.as_str()) {
+            if !data_path.is_empty() {
+                let custom_dir = std::path::PathBuf::from(data_path);
+                if custom_dir.is_file() {
+                    eprintln!(
                     "[DataDir] Custom dataPath is a file, not a directory: {:?}. Using default.",
                     custom_dir
                 );
-                (default_dir.clone(), true)
-            } else if custom_dir.is_dir() {
-                (custom_dir, true)
-            } else if let Err(e) = std::fs::create_dir_all(&custom_dir) {
-                warn_data_dir_fallback(&custom_dir, &e, &default_dir);
-                // Retry on transient I/O errors; cache default for stale/invalid paths.
-                (default_dir.clone(), !is_transient_data_dir_error(&e))
+                    (default_dir.clone(), true)
+                } else if custom_dir.is_dir() {
+                    (custom_dir, true)
+                } else if let Err(e) = std::fs::create_dir_all(&custom_dir) {
+                    warn_data_dir_fallback(&custom_dir, &e, &default_dir);
+                    // Retry on transient I/O errors; cache default for stale/invalid paths.
+                    (default_dir.clone(), !is_transient_data_dir_error(&e))
+                } else {
+                    (custom_dir, true)
+                }
             } else {
-                (custom_dir, true)
+                (default_dir.clone(), true)
             }
         } else {
             (default_dir.clone(), true)
-        }
-    } else {
-        (default_dir.clone(), true)
-    };
+        };
 
     if let Err(e) = std::fs::create_dir_all(&resolved) {
         eprintln!(
@@ -659,12 +657,14 @@ async fn reconnect_connection(
 /// to a concrete `Password` or `PrivateKeyData` using the vault service.
 /// Must be called before any SSH connect/test operation.
 fn config_uses_vault_auth(config: &ConnectionConfig) -> bool {
-    matches!(config.auth_method, crate::types::AuthMethod::VaultRef { .. })
-        || config
-            .jump_host
-            .as_ref()
-            .map(|jump| config_uses_vault_auth(jump.as_ref()))
-            .unwrap_or(false)
+    matches!(
+        config.auth_method,
+        crate::types::AuthMethod::VaultRef { .. }
+    ) || config
+        .jump_host
+        .as_ref()
+        .map(|jump| config_uses_vault_auth(jump.as_ref()))
+        .unwrap_or(false)
 }
 
 #[derive(Debug, Clone)]
@@ -679,9 +679,7 @@ fn resolve_vault_refs<'a>(
     config: &'a mut ConnectionConfig,
     vault: &'a tokio::sync::Mutex<crate::vault::store::VaultService>,
 ) -> std::pin::Pin<
-    Box<
-        dyn std::future::Future<Output = Result<Vec<RelinkedVaultRefUpdate>, String>> + Send + 'a,
-    >,
+    Box<dyn std::future::Future<Output = Result<Vec<RelinkedVaultRefUpdate>, String>> + Send + 'a>,
 > {
     Box::pin(async move {
         let mut relinked = Vec::new();
@@ -717,7 +715,9 @@ fn resolve_vault_refs<'a>(
             config.auth_method = match record.kind.as_str() {
                 "ssh-password" => crate::types::AuthMethod::Password {
                     password: crate::vault::credential::primary_secret_value(&record)
-                        .ok_or_else(|| "Vault password credential has no password value".to_string())?
+                        .ok_or_else(|| {
+                            "Vault password credential has no password value".to_string()
+                        })?
                         .to_string(),
                 },
                 "ssh-private-key" => {
@@ -852,12 +852,15 @@ pub async fn ssh_connect(
     inject_remembered_key_passphrases_blocking(&mut config).await?;
     if !relinked.is_empty() {
         let app_handle = app.clone();
-        let persist_result =
-            tokio::task::spawn_blocking(move || persist_relinked_vault_refs(&app_handle, &relinked))
-                .await;
+        let persist_result = tokio::task::spawn_blocking(move || {
+            persist_relinked_vault_refs(&app_handle, &relinked)
+        })
+        .await;
         match persist_result {
             Ok(Ok(())) => {}
-            Ok(Err(error)) => return Err(format!("Failed to persist relinked vault refs: {error}")),
+            Ok(Err(error)) => {
+                return Err(format!("Failed to persist relinked vault refs: {error}"))
+            }
             Err(join_error) => {
                 return Err(format!(
                     "Failed to persist relinked vault refs: task join error: {join_error}"
@@ -1039,7 +1042,9 @@ pub async fn ssh_extract_pem(app_handle: tauri::AppHandle, path: String) -> Resu
 }
 
 fn looks_like_private_key_pem(content: &str) -> bool {
-    content.contains("-----BEGIN ") && content.contains("PRIVATE KEY-----") && content.contains("-----END ")
+    content.contains("-----BEGIN ")
+        && content.contains("PRIVATE KEY-----")
+        && content.contains("-----END ")
 }
 
 fn set_private_key_file_permissions(path: &std::path::Path) -> Result<(), String> {
@@ -1069,7 +1074,8 @@ fn write_private_key_file(path: &std::path::Path, content: &str) -> Result<(), S
         options.mode(0o600);
     }
     let mut file = options.open(path).map_err(|e| e.to_string())?;
-    file.write_all(content.as_bytes()).map_err(|e| e.to_string())?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| e.to_string())?;
     // Guarantee 0o600 even when umask softened create-time mode, or when truncating an older file.
     set_private_key_file_permissions(path)?;
     Ok(())
@@ -1254,10 +1260,8 @@ fn ssh_private_key_readiness_sync(path: String) -> Result<InspectPrivateKeyRespo
             return Ok(initial);
         }
     };
-    let mut remembered = inspect_private_key_content(
-        content.expose_secret(),
-        Some(passphrase.expose_secret()),
-    );
+    let mut remembered =
+        inspect_private_key_content(content.expose_secret(), Some(passphrase.expose_secret()));
     if remembered.status == "valid" {
         remembered.remembered = true;
         return Ok(remembered);
@@ -1285,9 +1289,7 @@ pub struct RememberKeyPassphraseRequest {
     pub passphrase: SecretString,
 }
 
-fn ssh_remember_key_passphrase_sync(
-    request: RememberKeyPassphraseRequest,
-) -> Result<(), String> {
+fn ssh_remember_key_passphrase_sync(request: RememberKeyPassphraseRequest) -> Result<(), String> {
     let content = read_private_key_file(&request.path)?;
     let inspection = inspect_private_key_content(
         content.expose_secret(),
@@ -1405,13 +1407,12 @@ pub async fn ssh_write_managed_key(
     } else {
         safe_name
     };
-    let dest_filename = if safe_name.to_ascii_lowercase().ends_with(".pem")
-        || safe_name.starts_with("id_")
-    {
-        format!("{:x}_{}", hash, safe_name)
-    } else {
-        format!("{:x}_{}.pem", hash, safe_name)
-    };
+    let dest_filename =
+        if safe_name.to_ascii_lowercase().ends_with(".pem") || safe_name.starts_with("id_") {
+            format!("{:x}_{}", hash, safe_name)
+        } else {
+            format!("{:x}_{}.pem", hash, safe_name)
+        };
     let dest_path = keys_dir.join(dest_filename);
 
     write_private_key_file(&dest_path, &format!("{trimmed}\n"))?;
@@ -1673,7 +1674,9 @@ pub async fn ssh_transport_lost(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    if let Err(error) = crate::tunnels::stop_tunnels_for_connections(&app, &state, &[id.clone()]).await {
+    if let Err(error) =
+        crate::tunnels::stop_tunnels_for_connections(&app, &state, &[id.clone()]).await
+    {
         eprintln!("[TUNNEL] stop on transport lost for {id}: {error}");
     }
 
@@ -1694,7 +1697,9 @@ pub async fn ssh_disconnect(
         .await
         .map_err(|e| e.to_string())?;
 
-    if let Err(error) = crate::tunnels::stop_tunnels_for_connections(&app, &state, &[id.clone()]).await {
+    if let Err(error) =
+        crate::tunnels::stop_tunnels_for_connections(&app, &state, &[id.clone()]).await
+    {
         eprintln!("[TUNNEL] stop on disconnect for {id}: {error}");
     }
 
@@ -2395,7 +2400,9 @@ async fn reconnect_stored_connection(
         connections
             .get(connection_id)
             .map(|h| h.reconnect_lock.clone())
-            .ok_or_else(|| format!("Connection {connection_id} was disconnected during reconnect"))?
+            .ok_or_else(|| {
+                format!("Connection {connection_id} was disconnected during reconnect")
+            })?
     };
     let _reconnect_guard = reconnect_lock.clone().lock_owned().await;
 
@@ -2420,9 +2427,10 @@ async fn reconnect_stored_connection(
         let relinked = resolve_vault_refs(&mut connect_config, &vault).await?;
         if !relinked.is_empty() {
             let app_handle = state.app_handle.clone();
-            let persist_result =
-                tokio::task::spawn_blocking(move || persist_relinked_vault_refs(&app_handle, &relinked))
-                    .await;
+            let persist_result = tokio::task::spawn_blocking(move || {
+                persist_relinked_vault_refs(&app_handle, &relinked)
+            })
+            .await;
             match persist_result {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
@@ -2439,12 +2447,8 @@ async fn reconnect_stored_connection(
 
     inject_remembered_key_passphrases_blocking(&mut connect_config).await?;
 
-    let mut new_handle = reconnect_connection(
-        &connect_config,
-        &state.ssh_manager,
-        &state.tunnel_manager,
-    )
-    .await?;
+    let mut new_handle =
+        reconnect_connection(&connect_config, &state.ssh_manager, &state.tunnel_manager).await?;
     new_handle.config = original_config;
     new_handle.uses_vault_auth = uses_vault_auth;
     let mut connections = state.connections.lock().await;
@@ -2591,9 +2595,7 @@ async fn get_sftp_or_reconnect(
     };
     let sftp = {
         let connections = state.connections.lock().await;
-        connections
-            .get(id)
-            .and_then(|c| c.sftp_session.clone())
+        connections.get(id).and_then(|c| c.sftp_session.clone())
     }
     .ok_or_else(|| "Reconnection succeeded but SFTP initialization failed".to_string())?;
 
@@ -2700,12 +2702,7 @@ pub(crate) async fn read_remote_connection_file(
     let sftp = get_sftp_or_reconnect(state, connection_id).await?;
     let timeout_duration = std::time::Duration::from_secs(timeout_secs);
 
-    match tokio::time::timeout(
-        timeout_duration,
-        state.file_system.read_remote(&sftp, path),
-    )
-    .await
-    {
+    match tokio::time::timeout(timeout_duration, state.file_system.read_remote(&sftp, path)).await {
         Ok(Ok(res)) => Ok(res),
         Ok(Err(e)) if sftp_error_is_dead_session(&e) => {
             println!("[FS] SFTP session closed during read, retrying...");
@@ -2716,11 +2713,8 @@ pub(crate) async fn read_remote_connection_file(
                 }
             }
             let sftp = get_sftp_or_reconnect(state, connection_id).await?;
-            match tokio::time::timeout(
-                timeout_duration,
-                state.file_system.read_remote(&sftp, path),
-            )
-            .await
+            match tokio::time::timeout(timeout_duration, state.file_system.read_remote(&sftp, path))
+                .await
             {
                 Ok(Ok(res)) => Ok(res),
                 Ok(Err(e)) => Err(e.to_string()),
@@ -2948,7 +2942,10 @@ pub async fn wsl_get_cwd(wsl_distro: Option<String>) -> Result<String, String> {
 
 /// List a directory inside a WSL distro for ghost path completion.
 #[tauri::command]
-pub async fn fs_list_wsl(wsl_distro: Option<String>, path: String) -> Result<Vec<FileEntry>, String> {
+pub async fn fs_list_wsl(
+    wsl_distro: Option<String>,
+    path: String,
+) -> Result<Vec<FileEntry>, String> {
     fs_list_wsl_impl(wsl_distro, path).await
 }
 
@@ -3011,7 +3008,10 @@ fn wsl_list_path_shell(path: &str) -> String {
 }
 
 #[cfg(target_os = "windows")]
-async fn fs_list_wsl_impl(wsl_distro: Option<String>, path: String) -> Result<Vec<FileEntry>, String> {
+async fn fs_list_wsl_impl(
+    wsl_distro: Option<String>,
+    path: String,
+) -> Result<Vec<FileEntry>, String> {
     use tokio::process::Command;
 
     // Inline the path in the script — `wsl.exe -- sh -lc` drops assignments like
@@ -3038,11 +3038,16 @@ async fn fs_list_wsl_impl(wsl_distro: Option<String>, path: String) -> Result<Ve
         return Err(format!("WSL list failed for {path:?}: {detail}"));
     }
 
-    Ok(parse_wsl_ls_listing(&String::from_utf8_lossy(&output.stdout)))
+    Ok(parse_wsl_ls_listing(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
 }
 
 #[cfg(not(target_os = "windows"))]
-async fn fs_list_wsl_impl(_wsl_distro: Option<String>, _path: String) -> Result<Vec<FileEntry>, String> {
+async fn fs_list_wsl_impl(
+    _wsl_distro: Option<String>,
+    _path: String,
+) -> Result<Vec<FileEntry>, String> {
     Err("WSL is only available on Windows".to_string())
 }
 
@@ -3060,11 +3065,8 @@ pub(crate) async fn ghost_fs_list(
     } else {
         let sftp = get_sftp_or_reconnect(state, connection_id).await?;
         let timeout_duration = std::time::Duration::from_secs(10);
-        match tokio::time::timeout(
-            timeout_duration,
-            state.file_system.list_remote(&sftp, path),
-        )
-        .await
+        match tokio::time::timeout(timeout_duration, state.file_system.list_remote(&sftp, path))
+            .await
         {
             Ok(Ok(res)) => Ok(res),
             Ok(Err(e)) if sftp_error_is_dead_session(&e) => {
@@ -3185,8 +3187,10 @@ mod wsl_list_tests {
         let stdout = "data/\nfile.txt\nlink@\nother -> target\n";
         let entries = parse_wsl_ls_listing(stdout);
         assert_eq!(entries.len(), 4);
-        let by_name: std::collections::HashMap<_, _> =
-            entries.iter().map(|e| (e.name.as_str(), e.r#type.as_str())).collect();
+        let by_name: std::collections::HashMap<_, _> = entries
+            .iter()
+            .map(|e| (e.name.as_str(), e.r#type.as_str()))
+            .collect();
         assert_eq!(by_name.get("data"), Some(&"d"));
         assert_eq!(by_name.get("file.txt"), Some(&"-"));
         assert_eq!(by_name.get("link"), Some(&"l"));
@@ -4351,9 +4355,7 @@ pub async fn ssh_import_config(
     inspect_imported_connection_keys_blocking(connections).await
 }
 
-fn inspect_imported_connection_keys(
-    connections: &mut [crate::ssh_config::ParsedSshConnection],
-) {
+fn inspect_imported_connection_keys(connections: &mut [crate::ssh_config::ParsedSshConnection]) {
     for connection in connections {
         let Some(path) = connection.private_key_path.as_deref() else {
             continue;

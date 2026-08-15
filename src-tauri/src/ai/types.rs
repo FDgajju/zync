@@ -86,8 +86,9 @@ pub struct AiStreamDone {
     pub error: Option<String>,
 }
 
-
-fn default_step_status() -> String { "pending".to_string() }
+fn default_step_status() -> String {
+    "pending".to_string()
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

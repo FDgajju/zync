@@ -91,7 +91,11 @@ pub async fn vault_unlock(
 
 #[tauri::command]
 pub async fn vault_forget_device(vault: State<'_, Mutex<VaultService>>) -> VaultResult<()> {
-    vault.lock().await.forget_device_session().map_err(Into::into)
+    vault
+        .lock()
+        .await
+        .forget_device_session()
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -126,7 +130,8 @@ pub async fn vault_item_create(
     args: ItemCreateArgs,
 ) -> VaultResult<VaultItemMeta> {
     let vault = vault.lock().await;
-    let record = if let Some(secret_values) = args.secret_values.as_ref().filter(|v| !v.is_empty()) {
+    let record = if let Some(secret_values) = args.secret_values.as_ref().filter(|v| !v.is_empty())
+    {
         let mut sanitized = sanitize_secret_values(&args.kind, secret_values)?;
         let result = vault.item_create_with_secret_values(
             &args.label,
@@ -242,7 +247,8 @@ pub async fn vault_item_update(
     args: ItemUpdateArgs,
 ) -> VaultResult<VaultItemMeta> {
     let vault = vault.lock().await;
-    let record = if let Some(secret_values) = args.secret_values.as_ref().filter(|v| !v.is_empty()) {
+    let record = if let Some(secret_values) = args.secret_values.as_ref().filter(|v| !v.is_empty())
+    {
         let mut sanitized = sanitize_secret_values(&args.kind, secret_values)?;
         let result = vault.item_update_with_secret_values(
             &args.item_id,
