@@ -10,7 +10,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 ### Changed
 - **Custom font in Font Family dropdown**: When the active stack is not a built-in preset, the Font Family select shows **Custom** with the saved stack instead of an empty “Select…” label. ([402ec67])
 - **Default Shell icons**: Settings shell picker uses the same real shell icons as the tab bar (bundled assets, OS-extracted WSL icons when available).
-- **Default window size**: Main window opens at 1200×800 (was 1000×700).
+- **Default window size**: Main window opens at 1300×800 (was 1000×700).
 - **Status bar height**: Bottom bar is slightly taller (32px) with larger type and icons for readability.
 - **Sidebar / AI toggles**: Moved from the top tab bar to the bottom status bar (sidebar left, AI right), with separators and tooltips that include keyboard shortcuts (e.g. Ctrl/⌘+B, Ctrl/⌘+I).
 
