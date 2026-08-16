@@ -32,20 +32,15 @@ type WebglAddonWithAtlas = {
   clearTextureAtlas?: () => void;
 };
 
-/** Picks a bold weight one step above the regular terminal weight. */
+/** Picks a bold weight one step above the regular terminal weight (capped at 900). */
 export function resolveTerminalFontWeightBold(
   fontWeight: TerminalFontWeightSetting | 'normal' | undefined,
 ): FontWeight {
-  switch (fontWeight) {
-    case 500:
-      return 600;
-    case 600:
-      return 700;
-    case 700:
-      return 800;
-    default:
-      return 'bold';
+  if (typeof fontWeight === 'number' && fontWeight >= 100 && fontWeight <= 900) {
+    return Math.min(900, fontWeight + 100) as FontWeight;
   }
+  // `'normal'` / unknown → classic bold step
+  return 'bold';
 }
 
 function resolveTypographyWeights(settings: TerminalXtermSettings): {
@@ -53,18 +48,16 @@ function resolveTypographyWeights(settings: TerminalXtermSettings): {
   fontWeightBold: FontWeight;
 } {
   const nextWeight: FontWeight = settings.fontWeight ?? 'normal';
-  const resolvedRegularWeight = typeof nextWeight === 'number'
-    ? nextWeight
-    : nextWeight === 'bold'
-      ? 700
-      : undefined;
-  const fontWeightBold = settings.fontWeightBold ?? resolveTerminalFontWeightBold(
-    resolvedRegularWeight === 500 || resolvedRegularWeight === 600 || resolvedRegularWeight === 700
-      ? resolvedRegularWeight
-      : 'normal',
-  );
+  // Normalize before xterm so regular + bold stay on the same weight ladder.
+  const resolvedRegularWeight: TerminalFontWeightSetting | 'normal' =
+    typeof nextWeight === 'number' && nextWeight >= 100 && nextWeight <= 900
+      ? (nextWeight === 400 ? 'normal' : nextWeight as TerminalFontWeightSetting)
+      : nextWeight === 'bold'
+        ? 700
+        : 'normal';
+  const fontWeightBold = settings.fontWeightBold ?? resolveTerminalFontWeightBold(resolvedRegularWeight);
 
-  return { fontWeight: nextWeight, fontWeightBold };
+  return { fontWeight: resolvedRegularWeight, fontWeightBold };
 }
 
 export function buildWebglTypographyStamp(term: Terminal, sessionId: string): string {

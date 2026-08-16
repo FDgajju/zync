@@ -260,38 +260,62 @@ function normalizeTerminalFontWeight(fontWeight: unknown): TerminalFontWeightSet
     if (fontWeight === 'normal' || fontWeight === 400 || fontWeight === '400') {
         return 'normal';
     }
-    if (fontWeight === '500' || fontWeight === 500) {
-        return 500;
-    }
-    if (fontWeight === '600' || fontWeight === 600) {
-        return 600;
-    }
     if (fontWeight === 'bold' || fontWeight === 700 || fontWeight === '700') {
         return 700;
+    }
+    const numeric = typeof fontWeight === 'number'
+        ? fontWeight
+        : typeof fontWeight === 'string' && /^[1-9]00$/.test(fontWeight)
+            ? Number(fontWeight)
+            : undefined;
+    // Full CSS weight ladder (100–900). 400 maps to `'normal'` above.
+    if (
+        numeric === 100
+        || numeric === 200
+        || numeric === 300
+        || numeric === 500
+        || numeric === 600
+        || numeric === 700
+        || numeric === 800
+        || numeric === 900
+    ) {
+        return numeric;
     }
     return undefined;
 }
 
+/**
+ * Load-time font family normalization.
+ * Custom stacks (including Nerd Font first families) must pass through unchanged (#93).
+ * Only expand legacy single-name aliases into built-in preset stacks.
+ */
 function normalizeTerminalFontFamily(fontFamily: string | undefined): string | undefined {
     if (typeof fontFamily !== 'string' || !fontFamily.trim()) return undefined;
-    const normalized = fontFamily
-        .trim()
-        .replace(/\s*,\s*/g, ',')
-        .replace(/\s+/g, ' ')
-        .toLowerCase();
-    const firstFamily = normalized.split(',')[0]?.replace(/^['"]|['"]$/g, '') ?? '';
-    const compactFirstFamily = firstFamily.replace(/[-_\s]+/g, '');
+    const trimmed = fontFamily.trim();
+    const families = trimmed
+        .split(',')
+        .map((part) => part.trim().replace(/^['"]|['"]$/g, ''))
+        .filter(Boolean);
 
-    if (firstFamily.includes('fira code') || compactFirstFamily.includes('firacode')) {
+    // Multi-family stacks are user customizations — never rewrite them.
+    if (families.length !== 1) {
+        return trimmed;
+    }
+
+    const sole = families[0] ?? '';
+    const lower = sole.toLowerCase();
+    const compact = sole.replace(/[-_\s]+/g, '').toLowerCase();
+
+    if (lower === 'fira code' || compact === 'firacode') {
         return "'Fira Code', 'Fira Code VF', 'FiraCode Nerd Font', 'FiraCode NFM', 'Cascadia Code', Consolas, 'Courier New', monospace";
     }
-    if (firstFamily.includes('jetbrains mono') || compactFirstFamily.includes('jetbrainsmono')) {
+    if (lower === 'jetbrains mono' || compact === 'jetbrainsmono') {
         return "'JetBrains Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NFM', 'Cascadia Mono', Consolas, 'Courier New', monospace";
     }
-    if (firstFamily.includes('menlo') || compactFirstFamily.includes('menlo')) {
+    if (lower === 'menlo' || compact === 'menlo') {
         return "Menlo, Monaco, Consolas, 'Courier New', monospace";
     }
-    return fontFamily;
+    return trimmed;
 }
 
 async function persistSettings(settings: Record<string, unknown>): Promise<void> {

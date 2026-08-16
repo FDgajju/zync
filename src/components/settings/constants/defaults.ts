@@ -18,17 +18,32 @@ export const DEFAULT_TERMINAL_LINE_HEIGHT = 1.2;
 export const DEFAULT_TERMINAL_LIGATURES = false;
 export const DEFAULT_TERMINAL_GPU_ACCELERATION = true;
 
-export type TerminalFontWeightSetting = 'normal' | 500 | 600 | 700;
+/** CSS numeric weights xterm accepts for regular terminal text (plus `'normal'` = 400). */
+export type TerminalFontWeightSetting =
+    | 'normal'
+    | 100
+    | 200
+    | 300
+    | 500
+    | 600
+    | 700
+    | 800
+    | 900;
 
 export const TERMINAL_FONT_WEIGHT_OPTIONS: ReadonlyArray<{
     value: TerminalFontWeightSetting;
     label: string;
     description: string;
 }> = [
+    { value: 100, label: 'Thin (100)', description: 'Hairline — only if the font ships this face' },
+    { value: 200, label: 'Extra Light (200)', description: 'Very light stroke' },
+    { value: 300, label: 'Light (300)', description: 'Light regular text' },
     { value: 'normal', label: 'Regular (400)', description: 'Default xterm weight' },
     { value: 500, label: 'Medium (500)', description: 'Recommended on Windows for thin monospace fonts' },
     { value: 600, label: 'Semi-bold (600)', description: 'Heavier strokes for high-DPI displays' },
-    { value: 700, label: 'Bold (700)', description: 'Maximum weight for regular text' },
+    { value: 700, label: 'Bold (700)', description: 'Bold regular text (not ANSI bold)' },
+    { value: 800, label: 'Extra Bold (800)', description: 'Heavier bold face when available' },
+    { value: 900, label: 'Black (900)', description: 'Heaviest face when available' },
 ];
 
 function isWindowsPlatform(): boolean {

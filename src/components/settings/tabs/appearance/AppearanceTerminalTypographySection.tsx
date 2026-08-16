@@ -46,6 +46,44 @@ export function AppearanceTerminalTypographySection({
         }
     };
 
+    const baseFontOptions = [
+        {
+            value: recommendedFontStack,
+            label: isWindows ? 'Windows Monospace (Recommended)' : 'System Monospace (Recommended)',
+            description: isWindows
+                ? 'Consolas and Cascadia Mono — heavier and clearer on Windows'
+                : 'Best cross-platform default using built-in monospace fonts',
+        },
+        {
+            value: "'Fira Code', 'Fira Code VF', 'FiraCode Nerd Font', 'FiraCode NFM', 'Cascadia Code', Consolas, 'Courier New', monospace",
+            label: 'Fira Code',
+            description: 'Supports Fira Code + common Nerd Font variants',
+        },
+        {
+            value: "'JetBrains Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NFM', 'Cascadia Mono', Consolas, 'Courier New', monospace",
+            label: 'JetBrains Mono',
+            description: 'Supports JetBrains Mono + common Nerd Font variants',
+        },
+        {
+            value: "Menlo, Monaco, Consolas, 'Courier New', monospace",
+            label: 'Menlo',
+            description: 'Uses Menlo on macOS; falls back to Monaco/Consolas on Windows',
+        },
+        { value: "'Courier New', monospace", label: 'Courier New', description: 'Classic typewriter' },
+    ] as const;
+
+    const hasMatchingFontOption = baseFontOptions.some((option) => option.value === settings.terminal.fontFamily);
+    const fontOptions = hasMatchingFontOption
+        ? [...baseFontOptions]
+        : [
+            {
+                value: settings.terminal.fontFamily,
+                label: 'Custom',
+                description: settings.terminal.fontFamily,
+            },
+            ...baseFontOptions,
+        ];
+
     return (
         <Section title="Monospace font">
             <div className="space-y-4">
@@ -54,31 +92,7 @@ export function AppearanceTerminalTypographySection({
                         label="Font Family"
                         value={settings.terminal.fontFamily}
                         onChange={(value) => { onUpdateTerminalSettings({ fontFamily: value }); }}
-                        options={[
-                            {
-                                value: recommendedFontStack,
-                                label: isWindows ? 'Windows Monospace (Recommended)' : 'System Monospace (Recommended)',
-                                description: isWindows
-                                    ? 'Consolas and Cascadia Mono — heavier and clearer on Windows'
-                                    : 'Best cross-platform default using built-in monospace fonts',
-                            },
-                            {
-                                value: "'Fira Code', 'Fira Code VF', 'FiraCode Nerd Font', 'FiraCode NFM', 'Cascadia Code', Consolas, 'Courier New', monospace",
-                                label: 'Fira Code',
-                                description: 'Supports Fira Code + common Nerd Font variants',
-                            },
-                            {
-                                value: "'JetBrains Mono', 'JetBrainsMono Nerd Font', 'JetBrainsMono NFM', 'Cascadia Mono', Consolas, 'Courier New', monospace",
-                                label: 'JetBrains Mono',
-                                description: 'Supports JetBrains Mono + common Nerd Font variants',
-                            },
-                            {
-                                value: "Menlo, Monaco, Consolas, 'Courier New', monospace",
-                                label: 'Menlo',
-                                description: 'Uses Menlo on macOS; falls back to Monaco/Consolas on Windows',
-                            },
-                            { value: "'Courier New', monospace", label: 'Courier New', description: 'Classic typewriter' },
-                        ]}
+                        options={[...fontOptions]}
                         triggerClassName="bg-app-bg/50"
                     />
                     <div className="space-y-2">
@@ -218,9 +232,10 @@ export function AppearanceTerminalTypographySection({
                 </div>
 
                 <div className="text-[11px] leading-relaxed text-[var(--color-app-muted)] rounded-xl border border-[var(--color-app-border)]/60 bg-[var(--color-app-surface)]/30 px-3 py-2.5">
-                    If a font looks unchanged, confirm it is installed. Weight changes need a multi-weight font —
-                    for Fira Code use <span className="font-mono text-[var(--color-app-text)]/80">Fira Code VF</span>
-                    {' '}or static Medium/SemiBold/Bold files. Single-weight Nerd Font builds ignore weight settings.
+                    If a font looks unchanged, confirm it is installed. Weight only works when that face is installed
+                    (variable fonts or separate Thin/Light/Medium/Bold files). Many Nerd Font builds are single-weight
+                    and will ignore this setting. For Fira Code, prefer{' '}
+                    <span className="font-mono text-[var(--color-app-text)]/80">Fira Code VF</span>.
                 </div>
 
                 <div className="flex items-center justify-between rounded-xl border border-[var(--color-app-border)]/60 bg-[var(--color-app-surface)]/30 px-3 py-2.5">
