@@ -4,28 +4,30 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.23.1] - 2026-08-16
+
 ### Added
 - **Terminal font weight range**: Font Weight options cover the full CSS ladder Thin (100) through Black (900), not only Regular/Medium/Semi-bold/Bold. ([402ec67])
 
 ### Changed
 - **Custom font in Font Family dropdown**: When the active stack is not a built-in preset, the Font Family select shows **Custom** with the saved stack instead of an empty “Select…” label. ([402ec67])
-- **Default Shell icons**: Settings shell picker uses the same real shell icons as the tab bar (bundled assets, OS-extracted WSL icons when available).
-- **Default window size**: Main window opens at 1300×800 (was 1000×700).
-- **Status bar height**: Bottom bar is slightly taller (32px) with larger type and icons for readability.
-- **Sidebar / AI toggles**: Moved from the top tab bar to the bottom status bar (sidebar left, AI right), with separators and tooltips that include keyboard shortcuts (e.g. Ctrl/⌘+B, Ctrl/⌘+I).
+- **Default Shell icons**: Settings shell picker uses the same real shell icons as the tab bar (bundled assets, OS-extracted WSL icons when available). ([caa6e37])
+- **Default window size**: Main window opens at 1300×800 (was 1000×700). ([b50b074], [79aee11])
+- **Status bar height**: Bottom bar is slightly taller (32px) with larger type and icons for readability. ([b50b074])
+- **Sidebar / AI toggles**: Moved from the top tab bar to the bottom status bar (sidebar left, AI right), with separators and tooltips that include keyboard shortcuts (e.g. Ctrl/⌘+B, Ctrl/⌘+I). ([b50b074])
 
 ### Fixed
 - **Custom Font Stack after restart**: Multi-family custom stacks (e.g. JetBrainsMono Nerd Font + Sarasa Term SC) are no longer rewritten into built-in presets on load while `settings.json` still held the custom value. ([#93], [402ec67])
 - **AI Settings provider switch**: Choosing a provider in Settings now writes that provider’s default model (same as the AI sidebar) so deep-merge no longer keeps the previous provider’s model id on disk. ([010a742])
-- **Orphan Settings selects**: Windows local shell (missing WSL distro) and default file editor (uninstalled plugin) show an unavailable option instead of a blank “Select…” label.
-- **Terminal font size range**: Appearance slider matches zoom (Ctrl/Cmd +/-) at 8–32px; load/save clamps into that range.
-- **Settings save errors**: Terminal, local shell, ghost suggestions, and general settings surface a toast when persist fails (instead of silent rollback); failed updates no longer rethrow unhandled rejections from General handlers.
-- **Tablet sidebar auto-collapse**: Narrow layouts collapse the sidebar for the session only and no longer write `sidebarCollapsed: true` into settings.json.
-- **Raw settings.json last-known-good**: In-app raw editor saves promote the previous file to `settings.last-known-good.json` before overwrite; real read errors abort before overwrite; schema-invalid previous files log why LKG was skipped.
-- **Open shell tab icon vs Default Shell**: Changing Settings → Default Shell no longer rebrands already-open local terminal tabs; shell is stamped at create/spawn so icons stay fixed.
-- **Local shell id normalization**: Empty/`default`/padded Windows shell values normalize consistently for spawn and the Settings selector.
+- **Orphan Settings selects**: Windows local shell (missing WSL distro) and default file editor (uninstalled plugin) show an unavailable option instead of a blank “Select…” label. ([caa6e37])
+- **Terminal font size range**: Appearance slider matches zoom (Ctrl/Cmd +/-) at 8–32px; load/save clamps into that range. ([caa6e37])
+- **Settings save errors**: Terminal, local shell, ghost suggestions, and general settings surface a toast when persist fails (instead of silent rollback); failed updates no longer rethrow unhandled rejections from General handlers. ([caa6e37])
+- **Tablet sidebar auto-collapse**: Narrow layouts collapse the sidebar for the session only and no longer write `sidebarCollapsed: true` into settings.json. ([caa6e37])
+- **Raw settings.json last-known-good**: In-app raw editor saves promote the previous file to `settings.last-known-good.json` before overwrite; real read errors abort before overwrite; schema-invalid previous files log why LKG was skipped. ([caa6e37])
+- **Open shell tab icon vs Default Shell**: Changing Settings → Default Shell no longer rebrands already-open local terminal tabs; shell is stamped at create/spawn so icons stay fixed. ([caa6e37])
+- **Local shell id normalization**: Empty/`default`/padded Windows shell values normalize consistently for spawn and the Settings selector. ([caa6e37])
 - **Local workspace chrome**: Status bar shows **Local** (not “No Connection”) on the local terminal workspace; top tab and sidebar New Terminal use the same Monitor icon. ([cb9ad27])
-- **Status bar connection accuracy**: Green “Connected” only when the host status is actually `connected`; restored/offline hosts show offline (not a false green link).
+- **Status bar connection accuracy**: Green “Connected” only when the host status is actually `connected`; restored/offline hosts show offline (not a false green link). ([b50b074])
 
 ## [2.23.0] - 2026-08-13
 
@@ -999,7 +1001,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 - Auto-updates
 - Multiple themes (Dark, Light, Dracula)
 
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.23.0...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.23.1...HEAD
+[2.23.1]: https://github.com/zync-sh/zync/compare/v2.23.0...v2.23.1
 [2.23.0]: https://github.com/zync-sh/zync/compare/v2.22.5...v2.23.0
 [2.22.5]: https://github.com/zync-sh/zync/compare/v2.22.4...v2.22.5
 [2.22.4]: https://github.com/zync-sh/zync/compare/v2.22.2...v2.22.4
@@ -1014,6 +1017,11 @@ All notable changes to Zync are documented in this file. The format is based on 
 [#92]: https://github.com/zync-sh/zync/issues/92
 [#93]: https://github.com/zync-sh/zync/issues/93
 [402ec67]: https://github.com/zync-sh/zync/commit/402ec67
+[010a742]: https://github.com/zync-sh/zync/commit/010a742
+[caa6e37]: https://github.com/zync-sh/zync/commit/caa6e37
+[cb9ad27]: https://github.com/zync-sh/zync/commit/cb9ad27
+[b50b074]: https://github.com/zync-sh/zync/commit/b50b074
+[79aee11]: https://github.com/zync-sh/zync/commit/79aee11
 [fb93f5c]: https://github.com/zync-sh/zync/commit/fb93f5c
 [26e702a]: https://github.com/zync-sh/zync/commit/26e702a
 [d98c8cc]: https://github.com/zync-sh/zync/commit/d98c8cc
