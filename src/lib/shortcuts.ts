@@ -37,3 +37,27 @@ export function isXtermKeyboardTarget(target: EventTarget | null | undefined): b
     if (target.classList.contains('xterm-helper-textarea')) return true;
     return Boolean(target.closest('.xterm'));
 }
+
+/**
+ * Human-readable shortcut for tooltips (e.g. `Mod+B` → `Ctrl+B` / `⌘B`).
+ */
+export function formatShortcutLabel(shortcut: string, isMac?: boolean): string {
+    if (!shortcut?.trim()) return '';
+    const mac = isMac
+        ?? (typeof navigator !== 'undefined' && /mac/i.test(navigator.platform));
+    return shortcut
+        .split('+')
+        .map((part) => {
+            const p = part.trim();
+            const lower = p.toLowerCase();
+            if (lower === 'mod') return mac ? '⌘' : 'Ctrl';
+            if (lower === 'meta' || lower === 'cmd' || lower === 'command') return mac ? '⌘' : 'Win';
+            if (lower === 'ctrl' || lower === 'control') return mac ? '⌃' : 'Ctrl';
+            if (lower === 'alt' || lower === 'option') return mac ? '⌥' : 'Alt';
+            if (lower === 'shift') return mac ? '⇧' : 'Shift';
+            if (lower === 'plus') return '+';
+            if (p.length === 1) return p.toUpperCase();
+            return p;
+        })
+        .join(mac ? '' : '+');
+}

@@ -10,6 +10,9 @@ All notable changes to Zync are documented in this file. The format is based on 
 ### Changed
 - **Custom font in Font Family dropdown**: When the active stack is not a built-in preset, the Font Family select shows **Custom** with the saved stack instead of an empty “Select…” label. ([402ec67])
 - **Default Shell icons**: Settings shell picker uses the same real shell icons as the tab bar (bundled assets, OS-extracted WSL icons when available).
+- **Default window size**: Main window opens at 1200×800 (was 1000×700).
+- **Status bar height**: Bottom bar is slightly taller (32px) with larger type and icons for readability.
+- **Sidebar / AI toggles**: Moved from the top tab bar to the bottom status bar (sidebar left, AI right), with separators and tooltips that include keyboard shortcuts (e.g. Ctrl/⌘+B, Ctrl/⌘+I).
 
 ### Fixed
 - **Custom Font Stack after restart**: Multi-family custom stacks (e.g. JetBrainsMono Nerd Font + Sarasa Term SC) are no longer rewritten into built-in presets on load while `settings.json` still held the custom value. ([#93], [402ec67])
@@ -21,7 +24,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Raw settings.json last-known-good**: In-app raw editor saves promote the previous file to `settings.last-known-good.json` before overwrite; real read errors abort before overwrite; schema-invalid previous files log why LKG was skipped.
 - **Open shell tab icon vs Default Shell**: Changing Settings → Default Shell no longer rebrands already-open local terminal tabs; shell is stamped at create/spawn so icons stay fixed.
 - **Local shell id normalization**: Empty/`default`/padded Windows shell values normalize consistently for spawn and the Settings selector.
-- **Local workspace chrome**: Status bar shows **Local** (not “No Connection”) on the local terminal workspace; top tab and sidebar New Terminal use the same Monitor icon.
+- **Local workspace chrome**: Status bar shows **Local** (not “No Connection”) on the local terminal workspace; top tab and sidebar New Terminal use the same Monitor icon. ([cb9ad27])
+- **Status bar connection accuracy**: Green “Connected” only when the host status is actually `connected`; restored/offline hosts show offline (not a false green link).
 
 ## [2.23.0] - 2026-08-13
 

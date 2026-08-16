@@ -1,4 +1,4 @@
-import { X, Settings as SettingsIcon, PanelLeft, Network, Gift, Plus, Laptop, FolderPlus, Sparkles, Home, Shield, UserRound, ChevronDown, LogOut, RefreshCw, Monitor } from 'lucide-react';
+import { X, Settings as SettingsIcon, Network, Gift, Plus, Laptop, FolderPlus, Home, Shield, UserRound, ChevronDown, LogOut, RefreshCw, Monitor } from 'lucide-react';
 import { GoogleMarkIcon } from '../icons/providerIcons';
 import { OSIcon } from '../icons/OSIcon';
 import { ZyncMark } from '../brand/ZyncMark';
@@ -157,14 +157,10 @@ export function TabBar() {
 
     // Settings Slice
     const goHome = useAppStore(state => state.goHome);
-    const settings = useAppStore(state => state.settings);
-    const updateSettings = useAppStore(state => state.updateSettings);
     const openSettings = useAppStore(state => state.openSettings);
     const openVaultTab = useAppStore(state => state.openVaultTab);
     const openSyncBackupTab = useAppStore(state => state.openSyncBackupTab);
     const setAddConnectionModalOpen = useAppStore(state => state.setAddConnectionModalOpen);
-    const toggleAiSidebar = useAppStore(state => state.toggleAiSidebar);
-    const isAiSidebarOpen = useAppStore(state => state.isAiSidebarOpen);
     const showToast = useAppStore(state => state.showToast);
 
 
@@ -419,42 +415,8 @@ export function TabBar() {
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0 drag-none px-1">
-                        {/* Header Actions */}
+                        {/* Header Actions (sidebar + AI toggles live in the bottom status bar) */}
                         <div className="flex items-center gap-1">
-                            {/* Left Panel Toggle */}
-                            <Tooltip content={settings.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"} position="bottom">
-                                <button
-                                    onClick={() => {
-                                        window.dispatchEvent(new CustomEvent('zync:layout-transition-start'));
-                                        updateSettings({ sidebarCollapsed: !settings.sidebarCollapsed });
-                                        setTimeout(() => {
-                                            window.dispatchEvent(new CustomEvent('zync:layout-transition-end'));
-                                        }, 320);
-                                    }}
-                                    className={cn(
-                                        "h-7 w-7 shrink-0 rounded-md text-app-muted hover:text-app-text hover:bg-app-surface border border-transparent hover:border-app-border/40 transition-colors drag-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 focus-visible:ring-offset-0 flex items-center justify-center",
-                                        !settings.sidebarCollapsed && "text-app-accent bg-app-accent/10 border-app-accent/20"
-                                    )}
-                                    aria-label={settings.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
-                                >
-                                    <PanelLeft size={16} />
-                                </button>
-                            </Tooltip>
-
-                            {/* AI Panel Toggle */}
-                            <Tooltip content={`AI Assistant (${isMac ? '⌘I' : 'Ctrl+I'})`} position="bottom">
-                                <button
-                                    onClick={toggleAiSidebar}
-                                    className={cn(
-                                        "h-7 w-7 shrink-0 rounded-md text-app-muted hover:text-app-text hover:bg-app-surface border border-transparent hover:border-app-border/40 transition-colors drag-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 focus-visible:ring-offset-0 flex items-center justify-center",
-                                        isAiSidebarOpen && "text-app-accent bg-app-accent/10 border-app-accent/20"
-                                    )}
-                                    aria-label="Toggle AI Sidebar"
-                                >
-                                    <Sparkles size={14} />
-                                </button>
-                            </Tooltip>
-
                             {/* Profile / Sync */}
                             <div className="relative" ref={profileMenuRef}>
                                 <Tooltip content="Profile & Sync" position="bottom" disabled={isProfileMenuOpen}>
