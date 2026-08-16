@@ -4,6 +4,16 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Terminal font weight range**: Font Weight options cover the full CSS ladder Thin (100) through Black (900), not only Regular/Medium/Semi-bold/Bold. ([402ec67])
+
+### Changed
+- **Custom font in Font Family dropdown**: When the active stack is not a built-in preset, the Font Family select shows **Custom** with the saved stack instead of an empty “Select…” label. ([402ec67])
+
+### Fixed
+- **Custom Font Stack after restart**: Multi-family custom stacks (e.g. JetBrainsMono Nerd Font + Sarasa Term SC) are no longer rewritten into built-in presets on load while `settings.json` still held the custom value. ([#93], [402ec67])
+- **AI Settings provider switch**: Choosing a provider in Settings now writes that provider’s default model (same as the AI sidebar) so deep-merge no longer keeps the previous provider’s model id on disk.
+
 ## [2.23.0] - 2026-08-13
 
 ### Added
@@ -989,6 +999,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 [2.19.1]: https://github.com/zync-sh/zync/compare/v2.18.0...v2.19.1
 [2.18.0]: https://github.com/zync-sh/zync/compare/v2.17.0...v2.18.0
 [#92]: https://github.com/zync-sh/zync/issues/92
+[#93]: https://github.com/zync-sh/zync/issues/93
+[402ec67]: https://github.com/zync-sh/zync/commit/402ec67
 [fb93f5c]: https://github.com/zync-sh/zync/commit/fb93f5c
 [26e702a]: https://github.com/zync-sh/zync/commit/26e702a
 [d98c8cc]: https://github.com/zync-sh/zync/commit/d98c8cc

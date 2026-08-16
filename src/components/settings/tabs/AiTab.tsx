@@ -1,6 +1,7 @@
 import { Sparkles } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useEffect, useRef, useState, type FocusEvent } from 'react';
+import { DEFAULT_MODEL, type ProviderValue } from '../../ai/providerCatalog';
 import type { AppSettings } from '../../../store/settingsSlice';
 import { useAppStore } from '../../../store/useAppStore';
 import { Select } from '../../ui/Select';
@@ -18,8 +19,6 @@ interface AiTabProps {
     updateAiSettings: (updates: Partial<AppSettings['ai']>) => Promise<void>;
     saveApiKey: (provider: string, key: string) => Promise<void>;
 }
-
-type AiProvider = AppSettings['ai']['provider'];
 
 export function AiTab({
     settings,
@@ -112,7 +111,15 @@ export function AiTab({
                         <div className="w-52">
                             <Select
                                 value={settings.ai?.provider || 'ollama'}
-                                onChange={(v) => safeUpdateAiSettings({ provider: v as AiProvider, model: undefined })}
+                                onChange={(v) => {
+                                    // Same as AI sidebar: set an explicit default model so deep-merge
+                                    // does not keep the previous provider's model id on disk.
+                                    const provider = v as ProviderValue;
+                                    safeUpdateAiSettings({
+                                        provider,
+                                        model: DEFAULT_MODEL[provider] ?? '',
+                                    });
+                                }}
                                 options={[
                                     { value: 'ollama', label: 'Ollama (Local / Free)' },
                                     { value: 'gemini', label: 'Gemini (Free BYOK)' },
