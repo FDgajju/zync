@@ -226,15 +226,15 @@ export function Select({
                             className={cn(
                                 "flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs transition-all cursor-pointer select-none group/item mb-0.5 last:mb-0",
                                 "aria-selected:bg-app-accent/10 aria-selected:text-app-accent",
+                                // Selected: accent background only — keep text-white off the row so icons keep their colors.
                                 value === option.value
-                                    ? "bg-app-accent text-white font-semibold shadow-md shadow-app-accent/10 aria-selected:bg-app-accent aria-selected:text-white"
+                                    ? "bg-app-accent font-semibold shadow-md shadow-app-accent/10 aria-selected:bg-app-accent"
                                     : "text-app-text/60 hover:bg-app-accent/5 hover:text-app-accent",
                                 itemClassName
                             )}
                         >
                             {option.icon && (
                                 <div className={cn(
-                                    // Do not force text-white on icons — shell badges/images need their own colors.
                                     "flex-none transition-all duration-300 group-hover/item:scale-105 scale-90 shrink-0",
                                     value !== option.value && "text-app-muted group-aria-selected:text-app-accent"
                                 )}>
@@ -242,11 +242,16 @@ export function Select({
                                 </div>
                             )}
                             <div className="flex-1 overflow-hidden">
-                                <div className="truncate leading-none font-medium text-[11px]">{option.label}</div>
+                                <div className={cn(
+                                    "truncate leading-none font-medium text-[11px]",
+                                    value === option.value && "text-white",
+                                )}>
+                                    {option.label}
+                                </div>
                                 {option.description && (
                                     <div className={cn(
                                         "text-[8px] truncate mt-0.5 opacity-30 group-aria-selected:opacity-70 transition-opacity",
-                                        value === option.value && "opacity-70"
+                                        value === option.value && "text-white/80 opacity-80"
                                     )}>
                                         {option.description}
                                     </div>

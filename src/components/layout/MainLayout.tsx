@@ -485,8 +485,11 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
         if (!tab.connectionId) return;
         if (shell) {
             createTerminal(tab.connectionId, { shellOverride: shell.id, title: shell.label });
-        } else if (tab.connectionId === LOCAL_TERMINAL_CONNECTION_ID) {
-            // Stamp settings default at create so tab icons do not track later Default Shell changes.
+        } else if (
+            tab.connectionId === LOCAL_TERMINAL_CONNECTION_ID
+            && window.electronUtils?.platform === 'win32'
+        ) {
+            // Windows only: stamp settings default so tab icons do not track later Default Shell changes.
             const raw = useAppStore.getState().settings.localTerm?.windowsShell;
             const shellId = resolveLocalWindowsShellId(raw);
             createTerminal(tab.connectionId, { shellOverride: shellId });

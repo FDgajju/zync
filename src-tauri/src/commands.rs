@@ -4665,6 +4665,27 @@ pub async fn settings_write_raw(
     let validated = ensure_object_settings(parsed)?;
     validate_settings_schema(&validated)?;
 
+    // Under mutation lock: re-read immediately before LKG + overwrite so an external
+    // change after the first read cannot be clobbered or promoted as last-known-good.
+    let latest_raw = match std::fs::read_to_string(&settings_path) {
+        Ok(content) => Some(content),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+        Err(err) => {
+            return Err(format!(
+                "Failed to re-read settings.json before overwrite: {}",
+                err
+            ));
+        }
+    };
+    if latest_raw.as_deref() != current_raw.as_deref()
+        || settings_mtime_ms(&settings_path) != expected_modified_ms
+    {
+        return Err(settings_command_error(
+            SETTINGS_CHANGED_ON_DISK_ERROR_CODE,
+            "settings.json changed on disk. Reload before saving.",
+        ));
+    }
+
     // Promote current file to last-known-good before overwrite (same as managed settings_set).
     let backup_path = get_last_known_good_settings_path(&app)?;
     if let Some(existing) = current_raw.as_ref() {

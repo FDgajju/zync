@@ -61,7 +61,18 @@ export function TerminalTab({
                 icon: icon(`wsl:${distro}`),
             })),
         ];
-        return withOrphanSelectOption(base, windowsShell, {
+        const baseIds = new Set(base.map((option) => option.value));
+        // Detected shells (e.g. pwsh) that are not already in the fixed list.
+        const detectedExtras = detectedShells
+            .filter((shell) => shell.id && !baseIds.has(shell.id) && shell.id !== 'default')
+            .map((shell) => ({
+                value: shell.id,
+                label: shell.label || shell.id,
+                description: 'Detected on this machine',
+                icon: icon(shell.id),
+            }));
+        const merged = [...base, ...detectedExtras];
+        return withOrphanSelectOption(merged, windowsShell, {
             label: windowsShell.startsWith('wsl:')
                 ? `WSL: ${windowsShell.slice(4)} (unavailable)`
                 : `${windowsShell} (unavailable)`,
