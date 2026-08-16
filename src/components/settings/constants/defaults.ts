@@ -10,6 +10,9 @@ export const DEFAULT_TERMINAL_FONT_STACK_WIN32 =
     "Consolas, 'Cascadia Mono', 'Cascadia Code', ui-monospace, monospace";
 export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 export const DEFAULT_TERMINAL_FONT_SIZE_WIN32 = 15;
+/** Matches terminal zoom (Ctrl/Cmd + / -) and Appearance font size slider. */
+export const TERMINAL_FONT_SIZE_MIN = 8;
+export const TERMINAL_FONT_SIZE_MAX = 32;
 export const DEFAULT_TERMINAL_FONT_WEIGHT = 'normal' satisfies FontWeight;
 export const DEFAULT_TERMINAL_FONT_WEIGHT_WIN32 = 500 satisfies FontWeight;
 export const DEFAULT_TERMINAL_FONT_WEIGHT_BOLD = 'bold' satisfies FontWeight;

@@ -23,7 +23,6 @@ interface CombinedTabBarProps {
     shellsLoading?: boolean;
     shellsError?: string | null;
     onRefetchShells?: () => void;
-    defaultShellId?: string;
     onTabSelect: (view: string, termId?: string) => void;
     onFeatureClose: (feature: string) => void;
     onTerminalClose: (termId: string) => void;
@@ -105,7 +104,6 @@ export const CombinedTabBar = memo(function CombinedTabBar({
     shellsLoading = false,
     shellsError = null,
     onRefetchShells,
-    defaultShellId,
     onTabSelect,
     onFeatureClose,
     onTerminalClose,
@@ -124,31 +122,30 @@ export const CombinedTabBar = memo(function CombinedTabBar({
         return findPreferredShellId(availableShells);
     }, [availableShells, connectionId]);
 
-    const localFallbackShellId = useMemo(() => {
+    /**
+     * Icon fallback when a tab has no shellOverride yet.
+     * Must be stable (not live settings) so changing Default Shell does not rebrand open shells.
+     */
+    const localDisplayFallbackShellId = useMemo(() => {
         if (connectionId !== 'local') return undefined;
         const platform = window.electronUtils?.platform;
-        if (platform === 'win32') {
-            return defaultShellId && defaultShellId !== 'default' ? defaultShellId : 'powershell';
-        }
-
+        if (platform === 'win32') return 'powershell';
         return availableShells[0]?.id;
-    }, [availableShells, connectionId, defaultShellId]);
+    }, [availableShells, connectionId]);
 
     const resolveShell = useCallback((shellId?: string): ShellEntry | undefined => {
         let effectiveShellId = shellId;
         if (!effectiveShellId) {
-            effectiveShellId = connectionId === 'local' ? localFallbackShellId : remoteFallbackShellId;
+            effectiveShellId = connectionId === 'local'
+                ? localDisplayFallbackShellId
+                : remoteFallbackShellId;
         }
 
-        // Local settings may store "default" to represent Windows PowerShell.
+        // Settings may store "default" — never resolve that to the *current* settings default.
         if (effectiveShellId === 'default') {
-            if (connectionId === 'local') {
-                effectiveShellId = (localFallbackShellId && localFallbackShellId !== 'default')
-                    ? localFallbackShellId
-                    : 'powershell';
-            } else {
-                effectiveShellId = remoteFallbackShellId;
-            }
+            effectiveShellId = connectionId === 'local'
+                ? 'powershell'
+                : remoteFallbackShellId;
         }
 
         if (!effectiveShellId) return undefined;
@@ -157,7 +154,7 @@ export const CombinedTabBar = memo(function CombinedTabBar({
         // Fallback entry lets ShellIcon render CSS badge even if shell detection
         // has not resolved a concrete icon payload yet.
         return { id: effectiveShellId, label: effectiveShellId };
-    }, [connectionId, localFallbackShellId, remoteFallbackShellId, shellById]);
+    }, [connectionId, localDisplayFallbackShellId, remoteFallbackShellId, shellById]);
 
     // Window drag hook for Linux compatibility
     const dragRegionRef = useRef<HTMLDivElement>(null);
@@ -204,9 +201,10 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                 {/* 1. Terminal Tabs */}
                 {terminals.map(term => {
                     const isActive = activeView === 'terminal' && activeTerminalId === term.id;
+                    // Prefer tab-stamped shell only. Do not fall back to live Default Shell settings.
                     const effectiveShellId = term.shellOverride
                         ?? (connectionId === 'local'
-                            ? localFallbackShellId
+                            ? localDisplayFallbackShellId
                             : remoteFallbackShellId);
                     const shell = resolveShell(effectiveShellId);
                     return (

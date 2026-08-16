@@ -109,7 +109,13 @@ export function handleTerminalReady(termId: string, generation: number): boolean
     cached.pendingSpawnShell = undefined;
     const termTab = store.terminals[cached.connectionId]?.find((t) => t.id === termId);
     if (pendingSpawnShell && !termTab?.shellOverride) {
-      store.setTerminalShellOverride(cached.connectionId, termId, pendingSpawnShell);
+      // Expand settings "default" so the tab icon stays fixed after spawn.
+      const stamped = cached.connectionId === 'local'
+        ? (pendingSpawnShell === 'default' || !pendingSpawnShell.trim()
+          ? 'powershell'
+          : pendingSpawnShell)
+        : pendingSpawnShell;
+      store.setTerminalShellOverride(cached.connectionId, termId, stamped);
     }
     const shellId = termTab?.shellOverride
       ?? pendingSpawnShell

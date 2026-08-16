@@ -10,6 +10,8 @@ import {
     DEFAULT_TERMINAL_LIGATURES,
     DEFAULT_TERMINAL_LINE_HEIGHT,
     DEFAULT_TERMINAL_PADDING,
+    TERMINAL_FONT_SIZE_MAX,
+    TERMINAL_FONT_SIZE_MIN,
     TERMINAL_FONT_WEIGHT_OPTIONS,
     resolveDefaultTerminalTypography,
     type TerminalFontWeightSetting,
@@ -162,14 +164,21 @@ export function AppearanceTerminalTypographySection({
                         <input
                             id="terminal-font-size-slider"
                             type="range"
-                            min="10"
-                            max="24"
+                            min={TERMINAL_FONT_SIZE_MIN}
+                            max={TERMINAL_FONT_SIZE_MAX}
                             step="1"
                             aria-labelledby="terminal-font-size-label"
                             aria-valuetext={`${settings.terminal.fontSize} pixels`}
                             className="w-full accent-[var(--color-app-accent)] h-2 bg-[var(--color-app-surface)] rounded-lg appearance-none cursor-pointer"
                             value={settings.terminal.fontSize}
-                            onChange={(e) => { onUpdateTerminalSettings({ fontSize: Number.parseInt(e.target.value, 10) }); }}
+                            onChange={(e) => {
+                                const parsed = Number.parseInt(e.target.value, 10);
+                                const next = Math.max(
+                                    TERMINAL_FONT_SIZE_MIN,
+                                    Math.min(TERMINAL_FONT_SIZE_MAX, Number.isFinite(parsed) ? parsed : TERMINAL_FONT_SIZE_MIN),
+                                );
+                                onUpdateTerminalSettings({ fontSize: next });
+                            }}
                         />
                     </div>
 

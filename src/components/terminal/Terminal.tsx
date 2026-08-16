@@ -54,17 +54,13 @@ export const TerminalComponent = memo(function TerminalComponent({
   const setTabView = useAppStore((state) => state.setTabView);
   const activeTabId = useAppStore((state) => state.activeTabId);
   const settings = useAppStore((state) => state.settings);
-  const updateSettings = useAppStore((state) => state.updateSettings);
+  const updateTerminalSettingsFromStore = useAppStore((state) => state.updateTerminalSettings);
   const ghostSettings = settings.ghostSuggestions;
-  const terminalSettingsRef = useRef(settings.terminal);
 
-  useEffect(() => {
-    terminalSettingsRef.current = settings.terminal;
-  }, [settings.terminal]);
-
+  // Prefer store updater so font size / weight normalization matches Settings.
   const updateTerminalSettings = useCallback((newSettings: Partial<typeof settings.terminal>) => {
-    updateSettings({ terminal: { ...terminalSettingsRef.current, ...newSettings } });
-  }, [updateSettings]);
+    void updateTerminalSettingsFromStore(newSettings);
+  }, [updateTerminalSettingsFromStore]);
 
   const activeConnectionId = connectionId || globalActiveId;
   const terminalKey = activeConnectionId || LOCAL_TERMINAL_CONNECTION_ID;

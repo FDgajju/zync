@@ -234,8 +234,9 @@ export function Select({
                         >
                             {option.icon && (
                                 <div className={cn(
-                                    "flex-none transition-all duration-300 group-hover/item:scale-105 scale-90",
-                                    value === option.value ? "text-white" : "text-app-muted group-aria-selected:text-app-accent"
+                                    // Do not force text-white on icons — shell badges/images need their own colors.
+                                    "flex-none transition-all duration-300 group-hover/item:scale-105 scale-90 shrink-0",
+                                    value !== option.value && "text-app-muted group-aria-selected:text-app-accent"
                                 )}>
                                     {option.icon}
                                 </div>
@@ -286,9 +287,9 @@ export function Select({
             >
                 <div className="flex-1 flex items-center gap-2 overflow-hidden text-left min-w-0">
                     {selectedOption?.icon && (
-                        <div className="flex-none transition-transform duration-300 group-hover:scale-105">
-                            {/* Force smaller icon for trigger */}
-                            <div className="scale-90 opacity-80">{selectedOption.icon}</div>
+                        <div className="flex-none shrink-0 transition-transform duration-300 group-hover:scale-105">
+                            {/* Keep badge/image colors fully visible on the closed trigger */}
+                            <div className="scale-90">{selectedOption.icon}</div>
                         </div>
                     )}
                     <span className={cn("truncate font-medium tracking-tight", !selectedOption && "text-app-muted opacity-70")}>

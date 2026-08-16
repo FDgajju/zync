@@ -9,10 +9,18 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ### Changed
 - **Custom font in Font Family dropdown**: When the active stack is not a built-in preset, the Font Family select shows **Custom** with the saved stack instead of an empty “Select…” label. ([402ec67])
+- **Default Shell icons**: Settings shell picker uses the same real shell icons as the tab bar (bundled assets, OS-extracted WSL icons when available).
 
 ### Fixed
 - **Custom Font Stack after restart**: Multi-family custom stacks (e.g. JetBrainsMono Nerd Font + Sarasa Term SC) are no longer rewritten into built-in presets on load while `settings.json` still held the custom value. ([#93], [402ec67])
-- **AI Settings provider switch**: Choosing a provider in Settings now writes that provider’s default model (same as the AI sidebar) so deep-merge no longer keeps the previous provider’s model id on disk.
+- **AI Settings provider switch**: Choosing a provider in Settings now writes that provider’s default model (same as the AI sidebar) so deep-merge no longer keeps the previous provider’s model id on disk. ([010a742])
+- **Orphan Settings selects**: Windows local shell (missing WSL distro) and default file editor (uninstalled plugin) show an unavailable option instead of a blank “Select…” label.
+- **Terminal font size range**: Appearance slider matches zoom (Ctrl/Cmd +/-) at 8–32px; load/save clamps into that range.
+- **Settings save errors**: Terminal, local shell, ghost suggestions, and general settings surface a toast when persist fails (instead of silent rollback); failed updates no longer rethrow unhandled rejections from General handlers.
+- **Tablet sidebar auto-collapse**: Narrow layouts collapse the sidebar for the session only and no longer write `sidebarCollapsed: true` into settings.json.
+- **Raw settings.json last-known-good**: In-app raw editor saves promote the previous file to `settings.last-known-good.json` before overwrite; real read errors abort before overwrite; schema-invalid previous files log why LKG was skipped.
+- **Open shell tab icon vs Default Shell**: Changing Settings → Default Shell no longer rebrands already-open local terminal tabs; shell is stamped at create/spawn so icons stay fixed.
+- **Local shell id normalization**: Empty/`default`/padded Windows shell values normalize consistently for spawn and the Settings selector.
 
 ## [2.23.0] - 2026-08-13
 

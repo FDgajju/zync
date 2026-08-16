@@ -30,6 +30,7 @@ import {
     shouldIdleSuspendConnection,
     terminalService,
 } from '../../lib/terminal';
+import { resolveLocalWindowsShellId } from '../../lib/terminal/spawnContext';
 import { refreshAllCachedTerminalThemes } from '../terminal/terminalTheme';
 import { registerTunnelTransportLostListener } from '../../features/tunnels/application/tunnelTransportLost';
 
@@ -481,13 +482,18 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
     }, [tab.connectionId, closeTerminal]);
 
     const handleNewTerminal = useCallback((shell?: ShellEntry) => {
-        if (tab.connectionId) {
-            createTerminal(
-                tab.connectionId,
-                shell ? { shellOverride: shell.id, title: shell.label } : undefined,
-            );
-            setTabView(tab.id, 'terminal');
+        if (!tab.connectionId) return;
+        if (shell) {
+            createTerminal(tab.connectionId, { shellOverride: shell.id, title: shell.label });
+        } else if (tab.connectionId === LOCAL_TERMINAL_CONNECTION_ID) {
+            // Stamp settings default at create so tab icons do not track later Default Shell changes.
+            const raw = useAppStore.getState().settings.localTerm?.windowsShell;
+            const shellId = resolveLocalWindowsShellId(raw);
+            createTerminal(tab.connectionId, { shellOverride: shellId });
+        } else {
+            createTerminal(tab.connectionId);
         }
+        setTabView(tab.id, 'terminal');
     }, [tab.connectionId, createTerminal, tab.id, setTabView]);
 
     // Ensure we start with at least 'terminal' available conceptually, 
@@ -718,6 +724,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
     const settings = useAppStore(state => state.settings);
     const sidebarCollapsed = settings.sidebarCollapsed;
     const updateSettings = useAppStore(state => state.updateSettings);
+    const setSidebarCollapsedLocal = useAppStore(state => state.setSidebarCollapsedLocal);
 
     // Shutdown Management
     const [isShutdownModalOpen, setIsShutdownModalOpen] = useState(false);
@@ -775,14 +782,14 @@ export function MainLayout({ children }: { children: ReactNode }) {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Auto-collapse sidebar on tablet/mobile if it was open
+    // Auto-collapse sidebar on tablet/mobile if it was open (session only — do not persist).
     const initialCollapseRef = useRef(false);
     useEffect(() => {
         if (!initialCollapseRef.current && !isLoadingSettings && isTablet && !sidebarCollapsed) {
-            updateSettings({ sidebarCollapsed: true });
+            setSidebarCollapsedLocal(true);
             initialCollapseRef.current = true;
         }
-    }, [isTablet, updateSettings, isLoadingSettings, sidebarCollapsed]); // only run once when threshold crossed
+    }, [isTablet, setSidebarCollapsedLocal, isLoadingSettings, sidebarCollapsed]);
 
     useEffect(() => {
         checkConfig();

@@ -1,6 +1,11 @@
-import { Terminal } from 'lucide-react';
+import { useMemo } from 'react';
+import { useAvailableShells } from '../../../hooks/useAvailableShells';
+import { shellEntryForIcon } from '../../../lib/shells/bundledShellIcon';
+import type { ShellEntry } from '../../../lib/shells/types';
 import type { AppSettings } from '../../../store/settingsSlice';
+import { ShellIcon } from '../../icons/ShellIcon';
 import { Select } from '../../ui/Select';
+import { withOrphanSelectOption } from '../../ui/selectOptions';
 import { Section } from '../common/Section';
 import { Toggle } from '../common/Toggle';
 import {
@@ -10,6 +15,10 @@ import {
 } from '../constants/defaults';
 import { TerminalRendererStatus } from './TerminalRendererStatus';
 import { TerminalTabIntro } from './TerminalTabIntro';
+
+function shellSelectIcon(shellId: string, detected?: ReadonlyArray<ShellEntry>) {
+    return <ShellIcon shell={shellEntryForIcon(shellId, detected)} size={14} />;
+}
 
 interface TerminalTabProps {
     settings: AppSettings;
@@ -34,6 +43,33 @@ export function TerminalTab({
     setGhostSuggestionsField,
     setGhostProviderField,
 }: TerminalTabProps) {
+    const { shells: detectedShells } = useAvailableShells({ isWindows, connectionId: 'local' });
+    // Match resolveLocalWindowsShellId trimming so padded/empty values do not look "unavailable".
+    const windowsShellRaw = settings.localTerm?.windowsShell?.trim() || 'default';
+    const windowsShell = windowsShellRaw === '' ? 'default' : windowsShellRaw;
+    const shellOptions = useMemo(() => {
+        const icon = (id: string) => shellSelectIcon(id, detectedShells);
+        const base = [
+            { value: 'default', label: 'Default', icon: icon('powershell'), description: 'System Decision (PowerShell)' },
+            { value: 'powershell', label: 'PowerShell', icon: icon('powershell') },
+            { value: 'cmd', label: 'Command Prompt', icon: icon('cmd') },
+            { value: 'gitbash', label: 'Git Bash', icon: icon('gitbash') },
+            { value: 'wsl', label: 'WSL (Default)', icon: icon('wsl') },
+            ...wslDistros.map((distro) => ({
+                value: `wsl:${distro}`,
+                label: `WSL: ${distro}`,
+                icon: icon(`wsl:${distro}`),
+            })),
+        ];
+        return withOrphanSelectOption(base, windowsShell, {
+            label: windowsShell.startsWith('wsl:')
+                ? `WSL: ${windowsShell.slice(4)} (unavailable)`
+                : `${windowsShell} (unavailable)`,
+            description: 'Saved shell is missing — pick another option',
+            icon: icon(windowsShell),
+        });
+    }, [windowsShell, wslDistros, detectedShells]);
+
     return (
         <div className="space-y-6">
             <TerminalTabIntro
@@ -47,20 +83,9 @@ export function TerminalTab({
                         <div className="space-y-3">
                             <Select
                                 label="Default Shell"
-                                value={settings.localTerm?.windowsShell || 'default'}
+                                value={windowsShell}
                                 onChange={(value) => { void updateLocalTermSettings({ windowsShell: value }); }}
-                                options={[
-                                    { value: 'default', label: 'Default', icon: <Terminal size={14} />, description: 'System Decision' },
-                                    { value: 'powershell', label: 'PowerShell', icon: <Terminal size={14} /> },
-                                    { value: 'cmd', label: 'Command Prompt', icon: <Terminal size={14} /> },
-                                    { value: 'gitbash', label: 'Git Bash', icon: <Terminal size={14} /> },
-                                    { value: 'wsl', label: 'WSL (Default)', icon: <Terminal size={14} /> },
-                                    ...wslDistros.map((distro) => ({
-                                        value: `wsl:${distro}`,
-                                        label: `WSL: ${distro}`,
-                                        icon: <Terminal size={14} />,
-                                    })),
-                                ]}
+                                options={shellOptions}
                                 className="bg-app-bg/50"
                             />
                             <div className="text-[10px] text-[var(--color-app-muted)] pl-1">

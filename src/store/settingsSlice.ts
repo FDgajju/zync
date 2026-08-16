@@ -10,6 +10,8 @@ import {
 import type { FontWeight } from '@xterm/xterm';
 import {
     resolveDefaultTerminalTypography,
+    TERMINAL_FONT_SIZE_MAX,
+    TERMINAL_FONT_SIZE_MIN,
     type TerminalFontWeightSetting,
 } from '../components/settings/constants/defaults';
 import { resolveTerminalFontWeightBold } from '../lib/terminal/terminalTypography.js';
@@ -256,6 +258,13 @@ function normalizeTerminalFontWeightBold(fontWeight: unknown): FontWeight | unde
     return undefined;
 }
 
+function normalizeTerminalFontSize(fontSize: unknown): number | undefined {
+    if (typeof fontSize !== 'number' || !Number.isFinite(fontSize)) {
+        return undefined;
+    }
+    return Math.max(TERMINAL_FONT_SIZE_MIN, Math.min(TERMINAL_FONT_SIZE_MAX, Math.round(fontSize)));
+}
+
 function normalizeTerminalFontWeight(fontWeight: unknown): TerminalFontWeightSetting | undefined {
     if (fontWeight === 'normal' || fontWeight === 400 || fontWeight === '400') {
         return 'normal';
@@ -352,6 +361,8 @@ export interface SettingsSlice {
     updateGhostSuggestionsSettings: (updates: Partial<AppSettings['ghostSuggestions']>) => Promise<void>;
     updateKeybindings: (updates: Partial<AppSettings['keybindings']>) => Promise<void>;
     toggleExpandedFolder: (folderPath: string) => Promise<void>;
+    /** In-memory only (responsive layout). Does not write settings.json. */
+    setSidebarCollapsedLocal: (collapsed: boolean) => void;
 
     openSettings: (tab?: SettingsTabId) => void;
     clearSettingsFocusTab: () => void;
@@ -378,6 +389,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
                     ...defaultSettings.terminal,
                     ...(loaded?.terminal || {}),
                     fontFamily: normalizeTerminalFontFamily(loaded?.terminal?.fontFamily) ?? defaultSettings.terminal.fontFamily,
+                    fontSize: normalizeTerminalFontSize(loaded?.terminal?.fontSize) ?? defaultSettings.terminal.fontSize,
                     fontWeight: (() => {
                         const resolved = normalizeTerminalFontWeight(loaded?.terminal?.fontWeight)
                             ?? defaultSettings.terminal.fontWeight;
@@ -547,6 +559,12 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
         }
     },
 
+    setSidebarCollapsedLocal: (collapsed) => {
+        const previous = get().settings;
+        if (previous.sidebarCollapsed === collapsed) return;
+        set({ settings: { ...previous, sidebarCollapsed: collapsed } });
+    },
+
     updateTerminalSettings: async (updates) => {
         const previous = get().settings;
         const normalizedUpdates = { ...updates };
@@ -554,6 +572,10 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
             normalizedUpdates.idleHostPtySuspendMinutes = normalizeIdleHostPtySuspendMinutes(
                 normalizedUpdates.idleHostPtySuspendMinutes,
             );
+        }
+        if ('fontSize' in normalizedUpdates) {
+            normalizedUpdates.fontSize = normalizeTerminalFontSize(normalizedUpdates.fontSize)
+                ?? previous.terminal.fontSize;
         }
         if ('fontWeight' in normalizedUpdates) {
             const nextWeight = normalizeTerminalFontWeight(normalizedUpdates.fontWeight)

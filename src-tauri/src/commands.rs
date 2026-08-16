@@ -4639,10 +4639,16 @@ pub async fn settings_write_raw(
 ) -> Result<SettingsFilePayload, String> {
     let _mutation_guard = SETTINGS_MUTATION_LOCK.lock().await;
     let settings_path = get_native_settings_path(&app)?;
-    let current_raw = if settings_path.exists() {
-        std::fs::read_to_string(&settings_path).ok()
-    } else {
-        None
+    // Preserve real I/O errors; only treat missing file as "no previous content".
+    let current_raw = match std::fs::read_to_string(&settings_path) {
+        Ok(content) => Some(content),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+        Err(err) => {
+            return Err(format!(
+                "Failed to read existing settings.json before overwrite: {}",
+                err
+            ));
+        }
     };
     let current_data_path = current_raw.as_deref().and_then(data_path_from_raw_json);
 
@@ -4658,6 +4664,38 @@ pub async fn settings_write_raw(
         .map_err(|e| format!("Invalid JSON in settings.json: {}", e))?;
     let validated = ensure_object_settings(parsed)?;
     validate_settings_schema(&validated)?;
+
+    // Promote current file to last-known-good before overwrite (same as managed settings_set).
+    let backup_path = get_last_known_good_settings_path(&app)?;
+    if let Some(existing) = current_raw.as_ref() {
+        match serde_json::from_str::<Value>(existing) {
+            Ok(existing_parsed) => match ensure_object_settings(existing_parsed) {
+                Ok(valid_existing) => match validate_settings_schema(&valid_existing) {
+                    Ok(()) => {
+                        write_atomic_file(&backup_path, existing)?;
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "[settings] Skipping last-known-good backup (raw write) due to schema validation failure: {}",
+                            error
+                        );
+                    }
+                },
+                Err(error) => {
+                    eprintln!(
+                        "[settings] Skipping last-known-good backup (raw write) due to invalid existing settings: {}",
+                        error
+                    );
+                }
+            },
+            Err(error) => {
+                eprintln!(
+                    "[settings] Skipping last-known-good backup (raw write) due to invalid JSON: {}",
+                    error
+                );
+            }
+        }
+    }
 
     write_atomic_file(&settings_path, &content)?;
     let next_data_path = data_path_from_raw_json(&content);

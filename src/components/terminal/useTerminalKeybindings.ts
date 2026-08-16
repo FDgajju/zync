@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import type { Terminal as XTerm } from '@xterm/xterm';
+import {
+  TERMINAL_FONT_SIZE_MAX,
+  TERMINAL_FONT_SIZE_MIN,
+} from '../settings/constants/defaults.js';
 import type { TerminalSettingsSlice } from './useTerminalTheme';
 
 export interface UseTerminalKeybindingsOptions {
@@ -46,14 +50,14 @@ export function useTerminalKeybindings({
       if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
         const currentSize = currentFontSizeRef.current;
-        updateTerminalSettings({ fontSize: Math.min(currentSize + 1, 32) });
+        updateTerminalSettings({ fontSize: Math.min(currentSize + 1, TERMINAL_FONT_SIZE_MAX) });
         return false;
       }
 
       if ((e.ctrlKey || e.metaKey) && e.key === '-') {
         e.preventDefault();
         const currentSize = currentFontSizeRef.current;
-        updateTerminalSettings({ fontSize: Math.max(currentSize - 1, 8) });
+        updateTerminalSettings({ fontSize: Math.max(currentSize - 1, TERMINAL_FONT_SIZE_MIN) });
         return false;
       }
 
