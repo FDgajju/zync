@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useAppStore, Connection, Folder } from '../../store/useAppStore';
-import { Files, FolderPlus, Info, Network, Pencil, Plus, Power, RefreshCw, Search, Server, TerminalIcon, Trash2 } from 'lucide-react';
+import { Files, FolderPlus, Info, Monitor, Network, Pencil, Plus, Power, RefreshCw, Search, Server, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -896,7 +896,7 @@ export function Sidebar({ className }: { className?: string }) {
                 <div className={cn(compactMode ? "px-3 pt-2 mb-2" : "px-4 pt-3 mb-2")}>
                     <div className="flex flex-col gap-1.5 w-full">
                         <SidebarActionButton
-                            icon={<TerminalIcon size={13} />}
+                            icon={<Monitor size={13} />}
                             label="New Terminal"
                             onClick={() => openTab('local')}
                         />

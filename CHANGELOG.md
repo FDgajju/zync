@@ -21,6 +21,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Raw settings.json last-known-good**: In-app raw editor saves promote the previous file to `settings.last-known-good.json` before overwrite; real read errors abort before overwrite; schema-invalid previous files log why LKG was skipped.
 - **Open shell tab icon vs Default Shell**: Changing Settings → Default Shell no longer rebrands already-open local terminal tabs; shell is stamped at create/spawn so icons stay fixed.
 - **Local shell id normalization**: Empty/`default`/padded Windows shell values normalize consistently for spawn and the Settings selector.
+- **Local workspace chrome**: Status bar shows **Local** (not “No Connection”) on the local terminal workspace; top tab and sidebar New Terminal use the same Monitor icon.
 
 ## [2.23.0] - 2026-08-13
 

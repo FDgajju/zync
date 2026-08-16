@@ -1,7 +1,8 @@
-import { X, Settings as SettingsIcon, PanelLeft, Network, Gift, Plus, Laptop, FolderPlus, Sparkles, Home, Shield, UserRound, ChevronDown, LogOut, RefreshCw } from 'lucide-react';
+import { X, Settings as SettingsIcon, PanelLeft, Network, Gift, Plus, Laptop, FolderPlus, Sparkles, Home, Shield, UserRound, ChevronDown, LogOut, RefreshCw, Monitor } from 'lucide-react';
 import { GoogleMarkIcon } from '../icons/providerIcons';
 import { OSIcon } from '../icons/OSIcon';
 import { ZyncMark } from '../brand/ZyncMark';
+import { LOCAL_TERMINAL_CONNECTION_ID } from '../../features/connections/application/tabService';
 import { useAppStore, Tab, Connection } from '../../store/useAppStore'; // Updated Import
 import { cn } from '../../lib/utils';
 import { WindowControls } from './WindowControls';
@@ -38,6 +39,10 @@ function getIconForTab(tab: Tab, connections: Connection[], size: 12 | 13 = 12) 
     if (tab.type === 'release-notes') return <Gift size={size} className="text-[var(--color-app-accent)]" />;
     if (tab.type === 'vault') return <Shield size={size} />;
     if (tab.type === 'sync') return <GoogleMarkIcon size={size} variant="mono" />;
+    // Local workspace — same Monitor mark as status bar + sidebar
+    if (tab.connectionId === LOCAL_TERMINAL_CONNECTION_ID) {
+        return <Monitor size={size} className="text-app-muted" />;
+    }
 
     const conn = connections.find((c: Connection) => c.id === tab.connectionId);
     const iconClassName = size === 13 ? "w-[13px] h-[13px]" : "w-[12px] h-[12px]";

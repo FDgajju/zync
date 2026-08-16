@@ -1,4 +1,5 @@
-import { CircleAlert, Wifi, WifiOff } from 'lucide-react';
+import { CircleAlert, Monitor, Wifi, WifiOff } from 'lucide-react';
+import { LOCAL_TERMINAL_CONNECTION_ID } from '../../features/connections/application/tabService';
 import { useAppStore } from '../../store/useAppStore';
 import { cn } from '../../lib/utils';
 import { StatusBarTransferIndicator } from '../file-manager/StatusBarTransferIndicator';
@@ -7,6 +8,7 @@ export function StatusBar() {
   const activeConnectionId = useAppStore(state => state.activeConnectionId);
   const connections = useAppStore(state => state.connections);
   const activeConnection = connections.find((c) => c.id === activeConnectionId);
+  const isLocalWorkspace = activeConnectionId === LOCAL_TERMINAL_CONNECTION_ID;
   const editorDiagnosticsCount = useAppStore(state => state.editorDiagnosticsCount);
   const editorDiagnosticsSeverity = useAppStore(state => state.editorDiagnosticsSeverity);
   const editorDiagnosticsVisible = useAppStore(state => state.editorDiagnosticsVisible);
@@ -22,6 +24,11 @@ export function StatusBar() {
             <>
               <Wifi size={10} className="text-app-success" />
               <span className="font-medium">Connected to {activeConnection.name}</span>
+            </>
+          ) : isLocalWorkspace ? (
+            <>
+              <Monitor size={10} className="text-app-muted" />
+              <span className="text-app-muted">Local</span>
             </>
           ) : (
             <>
