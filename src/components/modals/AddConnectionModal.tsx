@@ -147,6 +147,7 @@ function PrivateKeyInspectionFeedback({
 
 export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: AddConnectionModalProps) {
     const importConnections = useAppStore(state => state.importConnections);
+    const saveTunnel = useAppStore(state => state.saveTunnel);
     const showToast = useAppStore(state => state.showToast);
     const openTab = useAppStore(state => state.openTab);
     const requestVaultUnlock = useVaultStore(state => state.requestUnlock);
@@ -622,11 +623,21 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                 status: 'disconnected',
             }));
             importConnections(mappedConnections, imported.folders || []);
+            const importedTunnels = imported.tunnels || [];
+            for (const tunnel of importedTunnels) {
+                await saveTunnel({
+                    ...tunnel,
+                    status: tunnel.status === 'active' ? 'stopped' : (tunnel.status || 'stopped'),
+                });
+            }
             const plaintextCount = mappedConnections.filter(c => !c.authRef && (c.password || c.privateKeyPath)).length;
+            const tunnelNote = importedTunnels.length > 0
+                ? ` and ${importedTunnels.length} tunnel(s)`
+                : '';
             if (plaintextCount > 0 && vaultStatus?.status !== 'uninitialized') {
-                showToast('success', `Imported ${mappedConnections.length} connection(s) — ${plaintextCount} have plaintext credentials. Open Vault tab to secure them to vault.`);
+                showToast('success', `Imported ${mappedConnections.length} connection(s)${tunnelNote} — ${plaintextCount} have plaintext credentials. Open Vault tab to secure them to vault.`);
             } else {
-                showToast('success', `Imported ${mappedConnections.length} connection(s) from file.`);
+                showToast('success', `Imported ${mappedConnections.length} connection(s)${tunnelNote} from file.`);
             }
             onClose();
         } catch (error: unknown) {

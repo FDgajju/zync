@@ -79,6 +79,17 @@ struct ZyncConnectionsExport {
     exported_at_ms: u64,
     connections: Vec<SavedConnection>,
     folders: Vec<Folder>,
+    #[serde(default)]
+    tunnels: Vec<SavedTunnel>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionImportResult {
+    pub connections: Vec<SavedConnection>,
+    pub folders: Vec<Folder>,
+    #[serde(default)]
+    pub tunnels: Vec<SavedTunnel>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2223,6 +2234,7 @@ pub async fn connections_export_to_file(
                     .unwrap_or(0),
                 connections: selected_connections,
                 folders,
+                tunnels: vec![],
             })
             .map_err(|error| error.to_string())?
         }
@@ -2247,7 +2259,7 @@ pub async fn connections_export_to_file(
 #[tauri::command]
 pub async fn connections_import_from_file(
     request: ConnectionImportRequest,
-) -> Result<SavedData, String> {
+) -> Result<ConnectionImportResult, String> {
     let path = request.path.trim();
     if path.is_empty() {
         return Err("Import path is required.".to_string());
@@ -2290,24 +2302,31 @@ pub async fn connections_import_from_file(
     };
 
     match effective_format.as_str() {
-        "csv" => Ok(SavedData {
+        "csv" => Ok(ConnectionImportResult {
             connections: parse_csv_connections(&content)?,
             folders: vec![],
+            tunnels: vec![],
         }),
         "json" | "zync" => {
             if let Ok(zync_data) = serde_json::from_str::<ZyncConnectionsExport>(&content) {
-                return Ok(SavedData {
+                return Ok(ConnectionImportResult {
                     connections: zync_data.connections,
                     folders: zync_data.folders,
+                    tunnels: zync_data.tunnels,
                 });
             }
             if let Ok(saved_data) = serde_json::from_str::<SavedData>(&content) {
-                return Ok(saved_data);
+                return Ok(ConnectionImportResult {
+                    connections: saved_data.connections,
+                    folders: saved_data.folders,
+                    tunnels: vec![],
+                });
             }
             if let Ok(connections) = serde_json::from_str::<Vec<SavedConnection>>(&content) {
-                return Ok(SavedData {
+                return Ok(ConnectionImportResult {
                     connections,
                     folders: vec![],
+                    tunnels: vec![],
                 });
             }
             Err("Unsupported JSON import shape. Expected zync/json connection export.".to_string())

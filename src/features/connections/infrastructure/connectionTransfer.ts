@@ -1,3 +1,4 @@
+import type { TunnelConfig } from '../../../store/tunnelSlice.js';
 import type { Connection, Folder } from '../domain/types.js';
 
 export type ConnectionExchangeExportFormat = 'zync' | 'json' | 'csv' | 'ssh_config';
@@ -18,6 +19,7 @@ export interface ConnectionImportFromFileRequest {
 export interface ImportedConnectionsData {
     connections: Array<Omit<Connection, 'status'>>;
     folders: Folder[];
+    tunnels?: TunnelConfig[];
 }
 
 export const exportConnectionsToFileIpc = async (
