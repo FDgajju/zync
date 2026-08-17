@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS,
   buildDefaultKeyVaultLabel,
+  buildDefaultPasswordVaultLabel,
   buildUniqueVaultLabel,
   formatConnectionEndpoint,
   formatConnectionListEndpoint,
@@ -101,6 +102,25 @@ runTest('isLikelyIpAddress detects IPv4', () => {
   assert.equal(isLikelyIpAddress('prod.local'), false);
 });
 
+runTest('isLikelyIpAddress treats scoped IPv6 as IP', () => {
+  assert.equal(isLikelyIpAddress('fe80::1'), true);
+  assert.equal(isLikelyIpAddress('fe80::1%en0'), true);
+  assert.equal(isLikelyIpAddress('[fe80::1]'), true);
+  assert.equal(isLikelyIpAddress('[fe80::1%en0]'), true);
+  assert.equal(isLikelyIpAddress('[fe80::1%25en0]'), true);
+});
+
+runTest('buildDefaultPasswordVaultLabel uses IP-safe path for scoped IPv6 hosts', () => {
+  assert.equal(
+    buildDefaultPasswordVaultLabel({ name: '', host: 'fe80::1%en0', username: 'root' }),
+    'SSH password (root)',
+  );
+  assert.equal(
+    buildDefaultPasswordVaultLabel({ name: '', host: '[fe80::1%25en0]', username: 'ops' }),
+    'SSH password (ops)',
+  );
+});
+
 runTest('createConnectionTabState uses privacy-aware title', () => {
   const state = createConnectionTabState([], unnamedIpConn, 'terminal', { showHostAddressesInLists: false });
   assert.equal(state.tabs[0].title, 'admin');
@@ -195,6 +215,22 @@ runTest('buildDefaultKeyVaultLabel prefers name and never embeds endpoints', () 
     'ops key',
   );
   assert.equal(buildDefaultKeyVaultLabel({}), 'user key');
+});
+
+runTest('buildDefaultPasswordVaultLabel is a display name, not a secret placeholder', () => {
+  assert.equal(
+    buildDefaultPasswordVaultLabel({ name: 'ci-staging', host: '140.238.226.234', username: 'jenkins' }),
+    'ci-staging · SSH password (jenkins)',
+  );
+  assert.equal(
+    buildDefaultPasswordVaultLabel({ name: '', host: 'prod-web.internal', username: 'ops' }),
+    'prod-web.internal · SSH password (ops)',
+  );
+  assert.equal(
+    buildDefaultPasswordVaultLabel({ name: '', host: '10.0.0.1', username: 'root' }),
+    'SSH password (root)',
+  );
+  assert.equal(buildDefaultPasswordVaultLabel({}), 'SSH password');
 });
 
 runTest('isLikelyIpAddress treats bracketed IPv6 as IP', () => {

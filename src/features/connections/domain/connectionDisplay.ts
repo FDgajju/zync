@@ -14,8 +14,18 @@ function unwrapBracketedHost(host: string): string {
     return trimmed;
 }
 
+/**
+ * Drop IPv6 zone / scope id so link-local addresses still classify as IPs.
+ * Handles `fe80::1%en0` and percent-encoded `fe80::1%25en0` (from `[fe80::1%25en0]`).
+ */
+function stripIpv6ZoneId(host: string): string {
+    const zoneAt = host.indexOf('%');
+    if (zoneAt === -1) return host;
+    return host.slice(0, zoneAt);
+}
+
 export function isLikelyIpAddress(host: string): boolean {
-    const trimmed = unwrapBracketedHost(host);
+    const trimmed = stripIpv6ZoneId(unwrapBracketedHost(host));
     if (!trimmed) return false;
     if (IPV4_RE.test(trimmed)) return true;
     // Basic IPv6 heuristic (contains multiple colons).
@@ -200,6 +210,34 @@ export function buildDefaultKeyVaultLabel(
     }
 
     return `${username} key`;
+}
+
+/**
+ * Default vault credential label for a secured SSH login password.
+ * Wording is intentionally a display name (“SSH password …”), not a secret
+ * placeholder that could be mistaken for the password field itself.
+ * Same privacy rules as {@link buildDefaultKeyVaultLabel} (no raw IP in stem).
+ */
+export function buildDefaultPasswordVaultLabel(
+    formData: Partial<Pick<Connection, 'name' | 'host' | 'username'>>,
+): string {
+    const name = formData.name?.trim();
+    const username = formData.username?.trim() || '';
+    const host = formData.host?.trim() || '';
+
+    if (name) {
+        return username ? `${name} · SSH password (${username})` : `${name} · SSH password`;
+    }
+
+    if (host && !isLikelyIpAddress(host)) {
+        return username ? `${host} · SSH password (${username})` : `${host} · SSH password`;
+    }
+
+    if (username) {
+        return `SSH password (${username})`;
+    }
+
+    return 'SSH password';
 }
 
 export function buildUniqueVaultLabel(baseLabel: string, existingLabels: Iterable<string>): string {

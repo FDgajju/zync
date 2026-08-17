@@ -6,6 +6,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ### Added
 - **Import tunnels with connection files**: Zync JSON/`.zync` imports can include a `tunnels` array; import applies those forwards with the host so dummy and full workspace files work in one step. ([cb1cdc6])
+- **Password → Vault on host create**: Password auth offers **On this host** or **Save to Vault**; vault path creates an `ssh-password` credential and links the host via `authRef` (no plaintext password on the host).
 
 ## [2.23.1] - 2026-08-16
 

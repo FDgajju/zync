@@ -20,8 +20,8 @@ const options = [
     },
     {
         value: 'device' as const,
-        label: 'Remember this key on this device',
-        description: "Store the key's passphrase in the OS credential store.",
+        label: 'On this device',
+        description: "Remember this key's passphrase in the OS credential store.",
         icon: Laptop,
     },
     {
@@ -40,46 +40,58 @@ export function KeyPassphraseRetentionOptions({
     isForgetting = false,
     onForgetFromDevice,
 }: KeyPassphraseRetentionOptionsProps) {
+    const visibleOptions = options.filter(option => option.value !== 'vault' || vaultAvailable);
+    // When the parent still holds a hidden value (e.g. 'vault' after vault disappears),
+    // fall back so checked state, description, and focus stay aligned.
+    const selected = visibleOptions.find(option => option.value === value) ?? visibleOptions[0];
+    const effectiveValue = selected?.value ?? 'once';
+    const selectedDescription = rememberedOnDevice && effectiveValue === 'once'
+        ? 'Forget this key from the device first to require prompts.'
+        : selected?.description;
+
     return (
         <div className="space-y-2">
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-app-muted">
-                Keep passphrase
-            </span>
-            <div className="overflow-hidden rounded-md border border-app-border bg-app-bg" role="radiogroup" aria-label="Keep key passphrase">
-                {options.filter(option => option.value !== 'vault' || vaultAvailable).map((option, index) => {
+            <div
+                className="flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-app-border bg-app-surface/50 p-0.5"
+                role="radiogroup"
+                aria-label="Key passphrase retention"
+            >
+                {visibleOptions.map((option) => {
                     const Icon = option.icon;
-                    const selected = value === option.value;
+                    const isSelected = effectiveValue === option.value;
                     const disabled = rememberedOnDevice && option.value === 'once';
-                    const description = disabled
-                        ? 'Forget this key from the device first to require prompts.'
-                        : option.description;
                     return (
-                        <label
+                        <button
                             key={option.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={isSelected}
+                            disabled={disabled}
+                            title={disabled
+                                ? 'Forget this key from the device first to require prompts.'
+                                : option.description}
+                            onClick={() => {
+                                if (!disabled) onChange(option.value);
+                            }}
                             className={cn(
-                                'flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors',
-                                index > 0 && 'border-t border-app-border',
-                                selected ? 'bg-app-accent/10' : 'hover:bg-app-surface/60',
-                                disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
+                                'inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-all',
+                                isSelected
+                                    ? 'bg-app-accent text-white shadow-sm'
+                                    : 'text-app-muted hover:text-app-text',
+                                disabled && 'cursor-not-allowed opacity-50 hover:text-app-muted',
                             )}
                         >
-                            <input
-                                type="radio"
-                                name="key-passphrase-retention"
-                                checked={selected}
-                                disabled={disabled}
-                                onChange={() => onChange(option.value)}
-                                className="mt-0.5 h-3.5 w-3.5 accent-app-accent"
-                            />
-                            <Icon size={14} className="mt-0.5 shrink-0 text-app-muted" />
-                            <span className="min-w-0">
-                                <span className="block text-xs font-medium text-app-text">{option.label}</span>
-                                <span className="block text-[10px] leading-4 text-app-muted">{description}</span>
-                            </span>
-                        </label>
+                            <Icon size={11} />
+                            {option.label}
+                        </button>
                     );
                 })}
             </div>
+            {selectedDescription && (
+                <p className="text-[10px] leading-4 text-app-muted/70">
+                    {selectedDescription}
+                </p>
+            )}
             {rememberedOnDevice && onForgetFromDevice && (
                 <button
                     type="button"
