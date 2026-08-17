@@ -4,6 +4,9 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Import tunnels with connection files**: Zync JSON/`.zync` imports can include a `tunnels` array; import applies those forwards with the host so dummy and full workspace files work in one step. ([cb1cdc6])
+
 ## [2.23.1] - 2026-08-16
 
 ### Added
