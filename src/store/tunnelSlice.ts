@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand';
 import type { AppStore } from './useAppStore';
+import { notify } from '../features/notifications';
 
 export interface TunnelConfig {
     id: string;
@@ -117,7 +118,7 @@ export const createTunnelSlice: StateCreator<AppStore, [], [], TunnelSlice> = (s
                     [connectionId]: oldList
                 }
             }));
-            get().showToast('error', 'Failed to save tunnel');
+            notify.error('Failed to save tunnel', { source: 'tunnels' });
             throw error;
         }
     },
@@ -145,7 +146,7 @@ export const createTunnelSlice: StateCreator<AppStore, [], [], TunnelSlice> = (s
                     [connectionId]: oldList
                 }
             }));
-            get().showToast('error', 'Failed to delete tunnel');
+            notify.error('Failed to delete tunnel', { source: 'tunnels' });
             throw error;
         }
     },
@@ -167,7 +168,7 @@ export const createTunnelSlice: StateCreator<AppStore, [], [], TunnelSlice> = (s
             get().updateTunnelStatus(id, connectionId, 'stopped');
         } catch (error: any) {
             console.error('Failed to stop tunnel:', error);
-            get().showToast('error', 'Failed to stop tunnel');
+            notify.error('Failed to stop tunnel', { source: 'tunnels' });
             throw error;
         }
     },

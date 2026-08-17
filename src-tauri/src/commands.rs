@@ -293,6 +293,35 @@ fn validate_settings_schema(settings: &Value) -> Result<(), String> {
             return Err("Invalid \"editor\": expected object.".to_string());
         }
     }
+    if let Some(notifications) = obj.get("notifications") {
+        let notifications_obj = notifications
+            .as_object()
+            .ok_or_else(|| "Invalid \"notifications\": expected object.".to_string())?;
+        if let Some(position) = notifications_obj.get("position") {
+            let position = position
+                .as_str()
+                .ok_or_else(|| "Invalid \"notifications.position\": expected string.".to_string())?;
+            if !matches!(
+                position,
+                "bottom-right" | "bottom-left" | "top-right" | "top-left"
+            ) {
+                return Err(
+                    "Invalid \"notifications.position\": expected bottom-right, bottom-left, top-right, or top-left."
+                        .to_string(),
+                );
+            }
+        }
+        if let Some(do_not_disturb) = notifications_obj.get("doNotDisturb") {
+            if !do_not_disturb.is_boolean() {
+                return Err("Invalid \"notifications.doNotDisturb\": expected boolean.".to_string());
+            }
+        }
+        if let Some(play_sound) = notifications_obj.get("playSound") {
+            if !play_sound.is_boolean() {
+                return Err("Invalid \"notifications.playSound\": expected boolean.".to_string());
+            }
+        }
+    }
     Ok(())
 }
 

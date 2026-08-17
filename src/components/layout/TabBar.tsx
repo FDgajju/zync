@@ -6,6 +6,7 @@ import { LOCAL_TERMINAL_CONNECTION_ID } from '../../features/connections/applica
 import { useAppStore, Tab, Connection } from '../../store/useAppStore'; // Updated Import
 import { cn } from '../../lib/utils';
 import { WindowControls } from './WindowControls';
+import { NotificationBell, useNotificationBellPlacement } from '../notifications/NotificationBell';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 import { Button } from '../ui/Button';
@@ -162,7 +163,7 @@ export function TabBar() {
     const openSyncBackupTab = useAppStore(state => state.openSyncBackupTab);
     const setAddConnectionModalOpen = useAppStore(state => state.setAddConnectionModalOpen);
     const showToast = useAppStore(state => state.showToast);
-
+    const { showInTitleLeft, showInTitleRight } = useNotificationBellPlacement();
 
     const [tabToClose, setTabToClose] = useState<string | null>(null);
 
@@ -317,23 +318,24 @@ export function TabBar() {
 
                 {/* Brand & Add (Now back on left) */}
                 <div className="flex items-center gap-1.5 shrink-0 drag-none px-1">
-                    {/* Zync Icon */}
-                    <Tooltip content="Zync" position="bottom">
-                        <div className="shrink-0 flex items-center opacity-90 hover:opacity-100 transition-opacity cursor-default px-2">
-                            <ZyncMark size={22} variant="theme" frame="bare" />
-                        </div>
-                    </Tooltip>
-
-                    {/* Home button */}
+                    {/* Zync mark → Home on hover (single control) */}
                     <Tooltip content="Welcome Screen" position="bottom">
                         <button
+                            type="button"
                             onClick={goHome}
                             aria-label="Go to welcome screen"
-                            className="h-7 w-7 rounded-md flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-surface border border-transparent hover:border-app-border/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+                            className="group relative h-7 w-7 shrink-0 rounded-md flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-surface border border-transparent hover:border-app-border/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
                         >
-                            <Home size={14} />
+                            <span className="absolute inset-0 flex items-center justify-center opacity-90 transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0">
+                                <ZyncMark size={20} variant="theme" frame="bare" />
+                            </span>
+                            <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
+                                <Home size={14} />
+                            </span>
                         </button>
                     </Tooltip>
+
+                    {showInTitleLeft && <NotificationBell tooltipPosition="bottom" size="title" />}
 
                     {/* Add New Button */}
                     <div className="relative shrink-0" ref={addMenuRef}>
@@ -417,6 +419,7 @@ export function TabBar() {
                     <div className="flex items-center gap-1 shrink-0 drag-none px-1">
                         {/* Header Actions (sidebar + AI toggles live in the bottom status bar) */}
                         <div className="flex items-center gap-1">
+                            {showInTitleRight && <NotificationBell tooltipPosition="bottom" size="title" />}
                             {/* Profile / Sync */}
                             <div className="relative" ref={profileMenuRef}>
                                 <Tooltip content="Profile & Sync" position="bottom" disabled={isProfileMenuOpen}>

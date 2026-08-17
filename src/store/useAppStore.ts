@@ -16,7 +16,7 @@ import { SessionSlice, createSessionSlice } from './sessionSlice';
 export type { Connection, Folder, Tab } from './connectionSlice';
 export type { AppSettings } from './settingsSlice';
 export type { Transfer } from './transferSlice';
-export type { Toast, ToastType } from './toastSlice';
+export type { NotificationRecord, Toast, ToastType } from './toastSlice';
 export type { Snippet } from './snippetsSlice';
 export type { TunnelConfig } from './tunnelSlice';
 export type { TerminalTab } from './terminalSlice';
