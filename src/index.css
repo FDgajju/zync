@@ -93,7 +93,7 @@
     animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes fadeInFromRight {
+@keyframes fade-in-from-right {
     from {
         opacity: 0;
         transform: translateX(8px);
@@ -105,7 +105,7 @@
     }
 }
 
-@keyframes fadeInFromLeft {
+@keyframes fade-in-from-left {
     from {
         opacity: 0;
         transform: translateX(-8px);
@@ -118,11 +118,11 @@
 }
 
 .animate-fade-in-from-right {
-    animation: fadeInFromRight 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: fade-in-from-right 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-fade-in-from-left {
-    animation: fadeInFromLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: fade-in-from-left 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* React fallback splash — aesthetics + GPU-only motion, matches index.html boot */
