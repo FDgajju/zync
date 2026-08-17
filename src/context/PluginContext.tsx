@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ipcRenderer } from '../lib/tauri-ipc';
 import { registerThemePluginModes } from '../lib/themeModeRegistry';
+import { notify } from '../features/notifications';
+import { parsePluginUiNotify } from '../features/notifications/pluginNotify';
+import {
+    createPluginNotifyActionRequestId,
+    rejectAllPendingPluginNotifyActions,
+    rejectPendingPluginNotifyActionsForPlugin,
+    resolvePluginNotifyActionResponse,
+    waitForPluginNotifyActionResult,
+} from '../features/notifications/pluginNotifyAction';
 import { useAppStore } from '../store/useAppStore';
 
 export interface EditorProviderManifest {
@@ -69,8 +78,11 @@ const PluginContext = createContext<PluginContextType>({
 
 export const usePlugins = () => useContext(PluginContext);
 
-// The code that runs INSIDE the Web Worker
-// We use a template literal to inject it securely
+/** Host-generated fallback ids for plugin notifies with actions (unique within process). */
+let pluginNotifySeq = 0;
+/** Prevents double-click concurrent RPC for the same notification action. */
+const pluginNotifyActionsInFlight = new Set<string>();
+
 // The code that runs INSIDE the Web Worker
 // We use a template literal to inject it securely
 const WORKER_BOOTSTRAP = `
@@ -100,9 +112,31 @@ const zync = {
     },
 
     ui: {
+        /**
+         * Show a host toast / inbox notification.
+         * JSON-only options (no functions). Host tags source as plugin:<id>.
+         * Supported: type, message|body|title, duration, persist, silent, history,
+         * channel ('auto'|'toast'|'inbox'|'both'), id, actions: [{ id, label, dismiss? }].
+         * Action clicks are delivered back as api:ui:notify:action (or zync.ui.onNotifyAction).
+         */
         notify: async (opts) => {
             self.postMessage({ type: 'api:ui:notify', payload: opts });
-        }
+        },
+        /**
+         * Register a handler for notification action button clicks.
+         * payload: { requestId, pluginId, actionId, notificationId?, message, type }
+         * Handler may be async and may return { ok: false, error: '...' } to fail the action.
+         * Returns an unsubscribe function.
+         */
+        onNotifyAction: (callback) => {
+            if (typeof callback !== 'function') return () => {};
+            if (!zync.callbacks['ui:notify:action']) zync.callbacks['ui:notify:action'] = [];
+            zync.callbacks['ui:notify:action'].push(callback);
+            return () => {
+                const list = zync.callbacks['ui:notify:action'] || [];
+                zync.callbacks['ui:notify:action'] = list.filter(cb => cb !== callback);
+            };
+        },
     },
 
     fs: {
@@ -190,6 +224,34 @@ self.onmessage = async (e) => {
     } else if (type === 'command:execute') {
         const handler = zync.commandHandlers[payload.id];
         if (handler) await handler();
+    } else if (type === 'api:ui:notify:action') {
+        const requestId = payload && payload.requestId;
+        const respond = (result, error) => {
+            if (!requestId) return;
+            self.postMessage({
+                type: 'api:ui:notify:action:response',
+                payload: error
+                    ? { requestId, error: String(error) }
+                    : { requestId, result: result ?? { ok: true } },
+            });
+        };
+        try {
+            const callbacks = zync.callbacks['ui:notify:action'] || [];
+            let lastResult = { ok: true };
+            for (const cb of callbacks) {
+                const out = await cb(payload);
+                if (out && typeof out === 'object') {
+                    lastResult = out;
+                }
+            }
+            if (lastResult && lastResult.ok === false) {
+                respond(lastResult, lastResult.error || 'Action failed');
+            } else {
+                respond(lastResult || { ok: true });
+            }
+        } catch (err) {
+            respond(null, err && err.message ? err.message : String(err || 'Action failed'));
+        }
     }
 };
 
@@ -203,7 +265,6 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [commands, setCommands] = useState<PluginCommand[]>([]);
     const [panels, setPanels] = useState<PluginPanel[]>([]);
     const workers = useRef<Map<string, Worker>>(new Map());
-    const showToast = useAppStore(state => state.showToast);
     const editorProviders = useMemo(
         () => plugins.filter((plugin) => plugin.enabled && plugin.manifest.type === 'editor-provider'),
         [plugins]
@@ -213,6 +274,7 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         loadPlugins();
         return () => {
             // Cleanup workers
+            rejectAllPendingPluginNotifyActions('Plugins shutting down');
             workers.current.forEach(w => w.terminate());
             workers.current.clear();
         };
@@ -247,6 +309,12 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     const blobContent = [WORKER_BOOTSTRAP, '\n\n// USER SCRIPT START\n\n', plugin.script];
                     const blob = new Blob(blobContent, { type: 'application/javascript' });
                     const workerUrl = URL.createObjectURL(blob);
+
+                    const previous = workers.current.get(plugin.manifest.id);
+                    if (previous) {
+                        rejectPendingPluginNotifyActionsForPlugin(plugin.manifest.id, 'Plugin reloaded');
+                        previous.terminate();
+                    }
 
                     const worker = new Worker(workerUrl);
                     URL.revokeObjectURL(workerUrl);
@@ -295,9 +363,83 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 // Also dispatch a DOM event so other components can react immediately
                 window.dispatchEvent(new CustomEvent('zync:panel:register', { detail: { id: payload.id, title: payload.title, pluginId } }));
                 break;
-            case 'api:ui:notify':
-                showToast(payload.type || 'info', payload.body || payload.message || payload.title || 'Plugin notification');
+            case 'api:ui:notify': {
+                const parsed = parsePluginUiNotify(pluginId, payload);
+                const options = { ...parsed.options };
+                // Collision-resistant host id when the plugin did not supply one.
+                if (parsed.actionSpecs.length > 0 && !options.id) {
+                    pluginNotifySeq += 1;
+                    options.id = `plugin-notify-${pluginId}-${Date.now().toString(36)}-${pluginNotifySeq.toString(36)}`;
+                }
+                if (parsed.actionSpecs.length > 0) {
+                    options.actions = parsed.actionSpecs.map((spec) => {
+                        // Host waits for RPC before dismiss; preserve caller's dismiss intent for success.
+                        const dismissOnSuccess = spec.dismiss !== false;
+                        return {
+                            ...spec,
+                            dismiss: false,
+                            onClick: () => {
+                                const worker = workers.current.get(pluginId);
+                                if (!worker) {
+                                    notify.error('Plugin is not running', {
+                                        source: `plugin:${pluginId}`,
+                                    });
+                                    return;
+                                }
+                                const notificationId = options.id;
+                                const flightKey = `${pluginId}:${notificationId ?? ''}:${spec.id}`;
+                                if (pluginNotifyActionsInFlight.has(flightKey)) return;
+                                pluginNotifyActionsInFlight.add(flightKey);
+
+                                const requestId = createPluginNotifyActionRequestId();
+                                const wait = waitForPluginNotifyActionResult(requestId, pluginId);
+                                worker.postMessage({
+                                    type: 'api:ui:notify:action',
+                                    payload: {
+                                        requestId,
+                                        pluginId,
+                                        actionId: spec.id,
+                                        notificationId,
+                                        message: parsed.message,
+                                        type: parsed.type,
+                                    },
+                                });
+                                void wait
+                                    .then((result) => {
+                                        if (!result.ok) {
+                                            notify.error(result.error || 'Plugin action failed', {
+                                                source: `plugin:${pluginId}`,
+                                                history: true,
+                                            });
+                                            return;
+                                        }
+                                        if (dismissOnSuccess && notificationId) {
+                                            useAppStore.getState().removeNotification(notificationId);
+                                        }
+                                    })
+                                    .catch((error: unknown) => {
+                                        const message = error instanceof Error
+                                            ? error.message
+                                            : 'Plugin action failed';
+                                        notify.error(message, {
+                                            source: `plugin:${pluginId}`,
+                                            history: true,
+                                        });
+                                    })
+                                    .finally(() => {
+                                        pluginNotifyActionsInFlight.delete(flightKey);
+                                    });
+                            },
+                        };
+                    });
+                }
+                notify.emit(parsed.type, parsed.message, options);
                 break;
+            }
+            case 'api:ui:notify:action:response': {
+                resolvePluginNotifyActionResponse(payload);
+                break;
+            }
             case 'api:ui:confirm':
                 const confirmed = await useAppStore.getState().showConfirmDialog({
                     title: payload.title || 'Confirm',
@@ -331,7 +473,7 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             case 'api:theme:set':
                 console.log('[PluginContext] Theme set requested:', payload.theme);
                 useAppStore.getState().updateSettings({ theme: payload.theme });
-                showToast('success', `Theme changed to ${payload.theme}`);
+                notify.success(`Theme changed to ${payload.theme}`, { source: `plugin:${pluginId}` });
                 break;
             case 'api:window:showQuickPick':
                 // Dispatch event for CommandPalette to handle
