@@ -11,6 +11,7 @@ import {
 import { terminalCache } from './terminalCache.js';
 import { touchTerminalActivity } from './terminalActivity.js';
 import { clearIdleHostSuspendNotice } from './terminalIdleSuspendNotice.js';
+import { isWin32Platform, resolveLocalWindowsShellId } from './spawnContext.js';
 
 const INPUT_BATCH_MS = 4;
 const INPUT_FLUSH_THRESHOLD = 64;
@@ -109,7 +110,19 @@ export function handleTerminalReady(termId: string, generation: number): boolean
     cached.pendingSpawnShell = undefined;
     const termTab = store.terminals[cached.connectionId]?.find((t) => t.id === termId);
     if (pendingSpawnShell && !termTab?.shellOverride) {
-      store.setTerminalShellOverride(cached.connectionId, termId, pendingSpawnShell);
+      // Stamp shell at spawn so tab icons stay fixed. PowerShell expand is Windows-only.
+      let stamped: string | undefined = pendingSpawnShell;
+      if (cached.connectionId === 'local') {
+        if (isWin32Platform()) {
+          stamped = resolveLocalWindowsShellId(pendingSpawnShell);
+        } else {
+          const trimmed = pendingSpawnShell.trim();
+          stamped = !trimmed || trimmed === 'default' ? undefined : trimmed;
+        }
+      }
+      if (stamped) {
+        store.setTerminalShellOverride(cached.connectionId, termId, stamped);
+      }
     }
     const shellId = termTab?.shellOverride
       ?? pendingSpawnShell

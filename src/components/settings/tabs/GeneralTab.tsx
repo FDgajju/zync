@@ -1,9 +1,10 @@
 import { Eye, FileText, Folder, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS } from '../../../features/connections/domain/connectionDisplay.js';
 import type { AppSettings } from '../../../store/settingsSlice';
 import type { SelectOption } from '../../ui/Select';
 import { Select } from '../../ui/Select';
+import { withOrphanSelectOption } from '../../ui/selectOptions';
 import { Section } from '../common/Section';
 
 interface ActiveEditorProvider {
@@ -58,6 +59,14 @@ export function GeneralTab({
     const [isUpdatingAutoCheck, setIsUpdatingAutoCheck] = useState(false);
     const showHostAddressesInLists =
         settings.privacy?.showHostAddressesInLists ?? DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS;
+    const selectedEditorProvider = settings.editor?.defaultProvider ?? defaultEditorProvider;
+    const editorSelectOptions = useMemo(
+        () => withOrphanSelectOption(editorProviderOptions, selectedEditorProvider, {
+            label: 'Unavailable editor',
+            description: selectedEditorProvider,
+        }),
+        [editorProviderOptions, selectedEditorProvider],
+    );
 
     const handleAutoUpdateToggle = async () => {
         if (isUpdatingAutoCheck) return;
@@ -154,14 +163,14 @@ export function GeneralTab({
                         </div>
                         <div className="w-64 shrink-0">
                             <Select
-                                value={settings.editor?.defaultProvider ?? defaultEditorProvider}
+                                value={selectedEditorProvider}
                                 onChange={(value) => onUpdateSettings({
                                     editor: {
                                         ...(settings.editor || {}),
                                         defaultProvider: value
                                     }
                                 })}
-                                options={editorProviderOptions}
+                                options={editorSelectOptions}
                                 showSearch={false}
                             />
                         </div>

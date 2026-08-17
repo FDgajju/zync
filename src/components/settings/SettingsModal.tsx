@@ -50,15 +50,52 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const updateKeybindings = useAppStore(state => state.updateKeybindings);
     const updateGhostSuggestionsSettings = useAppStore(state => state.updateGhostSuggestionsSettings);
     const openSettingsJsonTab = useAppStore(state => state.openSettingsJsonTab);
+    const showToast = useAppStore(state => state.showToast);
+
+    const toastSettingsError = (label: string, error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        showToast('error', `Failed to save ${label}: ${message}`);
+    };
+
+    const safeUpdateSettings = async (updates: Parameters<typeof updateSettings>[0]) => {
+        try {
+            await updateSettings(updates);
+        } catch (error) {
+            // Toast only — do not rethrow (GeneralTab handlers have no .catch).
+            toastSettingsError('settings', error);
+        }
+    };
+
+    const safeUpdateTerminalSettings = async (updates: Parameters<typeof updateTerminalSettings>[0]) => {
+        try {
+            await updateTerminalSettings(updates);
+        } catch (error) {
+            toastSettingsError('terminal settings', error);
+        }
+    };
+
+    const safeUpdateLocalTermSettings = async (updates: Parameters<typeof updateLocalTermSettings>[0]) => {
+        try {
+            await updateLocalTermSettings(updates);
+        } catch (error) {
+            toastSettingsError('local shell settings', error);
+        }
+    };
 
     // Use the store action so merges happen against current state, not the render snapshot.
     const setGhostSuggestionsField = (patch: Partial<typeof settings.ghostSuggestions>) => {
-        updateGhostSuggestionsSettings(patch);
+        updateGhostSuggestionsSettings(patch).catch((error: unknown) => {
+            toastSettingsError('ghost suggestion settings', error);
+        });
     };
 
     const setGhostProviderField = (patch: Partial<typeof settings.ghostSuggestions.providers>) => {
         // The reducer merges patch into current.providers, so a partial patch is safe.
-        updateGhostSuggestionsSettings({ providers: patch as typeof settings.ghostSuggestions.providers });
+        updateGhostSuggestionsSettings({ providers: patch as typeof settings.ghostSuggestions.providers }).catch(
+            (error: unknown) => {
+                toastSettingsError('ghost suggestion settings', error);
+            },
+        );
     };
 
     const handlePickDefaultDownloadPath = async () => {
@@ -124,7 +161,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
     const { executeCommand, editorProviders } = usePlugins();
     const showConfirmDialog = useAppStore(state => state.showConfirmDialog);
-    const showToast = useAppStore(state => state.showToast);
     const isWindows = window.navigator.userAgent.indexOf('Windows') !== -1;
 
     const {
@@ -451,7 +487,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 activeEditorProvider={activeEditorProvider}
                                 editorProviderOptions={editorProviderOptions}
                                 onToggleAutoUpdate={handleToggleAutoUpdate}
-                                onUpdateSettings={updateSettings}
+                                onUpdateSettings={safeUpdateSettings}
                                 onChangeLocation={handleChangeLocation}
                                 onResetLocation={handleResetLocation}
                                 onChangeLogLocation={handleChangeLogLocation}
@@ -467,8 +503,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 isWindows={isWindows}
                                 onOpenAppearanceTerminal={() => { openAppearance('terminal'); }}
                                 onOpenAppearanceApp={() => { openAppearance('app'); }}
-                                updateTerminalSettings={updateTerminalSettings}
-                                updateLocalTermSettings={updateLocalTermSettings}
+                                updateTerminalSettings={safeUpdateTerminalSettings}
+                                updateLocalTermSettings={safeUpdateLocalTermSettings}
                                 setGhostSuggestionsField={setGhostSuggestionsField}
                                 setGhostProviderField={setGhostProviderField}
                             />
@@ -485,8 +521,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 isWindows={isWindows}
                                 activeView={appearanceView}
                                 onActiveViewChange={setAppearanceView}
-                                updateSettings={updateSettings}
-                                updateTerminalSettings={updateTerminalSettings}
+                                updateSettings={safeUpdateSettings}
+                                updateTerminalSettings={safeUpdateTerminalSettings}
                             />
                         )}
 

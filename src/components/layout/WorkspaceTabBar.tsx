@@ -39,7 +39,6 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
     const activeTerminalId = useAppStore(
         state => state.activeTerminalIds[connectionId] ?? null,
     );
-    const defaultWindowsShell = useAppStore(state => state.settings.localTerm?.windowsShell);
     const hostIsWindows = connectionId === LOCAL_TERMINAL_CONNECTION_ID
         && window.electronUtils?.platform === 'win32';
     const {
@@ -61,7 +60,6 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
             shellsLoading={shellsLoading}
             shellsError={shellsError}
             onRefetchShells={refetchShells}
-            defaultShellId={connectionId === LOCAL_TERMINAL_CONNECTION_ID ? defaultWindowsShell : undefined}
             onTabSelect={onTabSelect}
             onFeatureClose={onFeatureClose}
             onTerminalClose={onTerminalClose}
