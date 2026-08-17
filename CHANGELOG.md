@@ -16,6 +16,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ### Changed
 - **Connection form password storage**: Segmented **On this host** / **Save to Vault** choice when creating a password-auth host (vault must be unlocked for the vault path). ([060f1c2])
+- **Status bar height**: Bottom bar is slightly taller again (36px, was 32px) for a bit more breathing room. Toast stack and notification center bottom offsets updated to match.
 - **Toast enter animation**: Corner-aware fade/slide uses project CSS (`animate-fade-in-from-left` / `from-right`) instead of missing tailwindcss-animate utilities. ([af92092])
 
 ### Fixed

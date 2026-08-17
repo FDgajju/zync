@@ -156,7 +156,7 @@ const tests = [
     });
     assert.equal(normalizeNotificationSettings({ position: 'top-left', doNotDisturb: true }).position, 'top-left');
     assert.match(notificationStackClass('top-left'), /top-12 left-3/);
-    assert.match(notificationStackClass('bottom-right'), /bottom-10 right-3/);
+    assert.match(notificationStackClass('bottom-right'), /bottom-11 right-3/);
     assert.equal(toastEnterClass('top-left'), 'animate-fade-in-from-left');
     assert.equal(toastEnterClass('bottom-right'), 'animate-fade-in-from-right');
   }),

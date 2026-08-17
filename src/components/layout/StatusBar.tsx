@@ -41,7 +41,7 @@ export function StatusBar() {
   const { showInStatusLeft, showInStatusRight } = useNotificationBellPlacement();
 
   return (
-    <div className="h-8 bg-app-panel border-t border-app-border flex items-center px-2 text-[11px] select-none text-app-text/80 justify-between shrink-0 gap-2">
+    <div className="h-9 bg-app-panel border-t border-app-border flex items-center px-2.5 text-[11px] select-none text-app-text/80 justify-between shrink-0 gap-2">
       {/* Bottom-left: sidebar toggle + connection status */}
       <div className="flex items-center gap-2 min-w-0">
         <Tooltip

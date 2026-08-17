@@ -29,18 +29,19 @@ export function normalizeNotificationSettings(
 
 export function notificationStackClass(position: NotificationPosition): string {
     const base = 'absolute z-[10000] flex w-[min(22rem,calc(100%-1.5rem))] items-stretch gap-2 pointer-events-auto';
-    if (position === 'bottom-left') return `${base} bottom-10 left-3 flex-col-reverse`;
+    // bottom-11 clears the slightly taller status bar (h-9) with a small gap
+    if (position === 'bottom-left') return `${base} bottom-11 left-3 flex-col-reverse`;
     if (position === 'top-right') return `${base} top-12 right-3 flex-col`;
     if (position === 'top-left') return `${base} top-12 left-3 flex-col`;
-    return `${base} bottom-10 right-3 flex-col-reverse`;
+    return `${base} bottom-11 right-3 flex-col-reverse`;
 }
 
 export function notificationCenterClass(position: NotificationPosition): string {
-    const base = 'absolute z-[10000] flex w-[min(22rem,calc(100%-1.5rem))] max-h-[min(24rem,calc(100%-4.5rem))] flex-col overflow-hidden rounded-lg border border-app-border bg-app-panel shadow-2xl';
-    if (position === 'bottom-left') return `${base} bottom-10 left-3`;
+    const base = 'absolute z-[10000] flex w-[min(22rem,calc(100%-1.5rem))] max-h-[min(24rem,calc(100%-5rem))] flex-col overflow-hidden rounded-lg border border-app-border bg-app-panel shadow-2xl';
+    if (position === 'bottom-left') return `${base} bottom-11 left-3`;
     if (position === 'top-right') return `${base} top-12 right-3`;
     if (position === 'top-left') return `${base} top-12 left-3`;
-    return `${base} bottom-10 right-3`;
+    return `${base} bottom-11 right-3`;
 }
 
 export function toastEnterClass(position: NotificationPosition): string {
