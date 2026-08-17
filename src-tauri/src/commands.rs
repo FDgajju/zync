@@ -2223,6 +2223,7 @@ pub async fn connections_export_to_file(
         return Err("Export path is required.".to_string());
     }
 
+    let tunnels_path = get_data_dir(&app).join("tunnels.json");
     let data = connections_get(app, vault).await?;
     let SavedData {
         connections: all_connections,
@@ -2254,6 +2255,39 @@ pub async fn connections_export_to_file(
             } else {
                 all_folders
             };
+            let all_tunnels = match std::fs::read_to_string(&tunnels_path) {
+                Ok(raw) => serde_json::from_str::<SavedTunnelsData>(&raw)
+                    .map(|data| data.tunnels)
+                    .map_err(|error| format!("Failed to parse tunnels.json: {error}"))?,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+                Err(error) => {
+                    return Err(format!("Failed to read tunnels.json: {error}"));
+                }
+            };
+            // Full export keeps every tunnel (including orphans). Scoped export keeps only
+            // tunnels whose host is in the selected connection set.
+            let scoped_tunnels = if is_scoped_export {
+                let selected_connection_ids: std::collections::HashSet<&str> = selected_connections
+                    .iter()
+                    .map(|connection| connection.id.as_str())
+                    .collect();
+                all_tunnels
+                    .into_iter()
+                    .filter(|tunnel| {
+                        selected_connection_ids.contains(tunnel.connection_id.as_str())
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                all_tunnels
+            };
+            let tunnels = scoped_tunnels
+                .into_iter()
+                .map(|mut tunnel| {
+                    // Export configs only — never mark tunnels as active on the other device.
+                    tunnel.status = Some("stopped".to_string());
+                    tunnel
+                })
+                .collect::<Vec<_>>();
             serde_json::to_string_pretty(&ZyncConnectionsExport {
                 format: "zync-connections".to_string(),
                 version: 1,
@@ -2263,7 +2297,7 @@ pub async fn connections_export_to_file(
                     .unwrap_or(0),
                 connections: selected_connections,
                 folders,
-                tunnels: vec![],
+                tunnels,
             })
             .map_err(|error| error.to_string())?
         }

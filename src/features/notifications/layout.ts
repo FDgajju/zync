@@ -44,8 +44,9 @@ export function notificationCenterClass(position: NotificationPosition): string 
 }
 
 export function toastEnterClass(position: NotificationPosition): string {
+    // Project-defined utilities in index.css (not tailwindcss-animate).
     if (position === 'bottom-left' || position === 'top-left') {
-        return 'animate-in fade-in slide-in-from-left-2 duration-200';
+        return 'animate-fade-in-from-left';
     }
-    return 'animate-in fade-in slide-in-from-right-2 duration-200';
+    return 'animate-fade-in-from-right';
 }

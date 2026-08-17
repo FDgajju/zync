@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { BellOff, BellRing, Settings2, Trash2, Volume2, VolumeX, X } from 'lucide-react';
 import { ZPortal } from '../ui/ZPortal';
 import { useAppStore } from '../../store/useAppStore';
@@ -16,6 +16,8 @@ const POSITION_OPTIONS: ReadonlyArray<{ value: NotificationPosition; label: stri
     { value: 'bottom-left', label: 'Bottom left' },
     { value: 'bottom-right', label: 'Bottom right' },
 ];
+
+const POSITION_OPTION_ID_PREFIX = 'notification-position';
 
 const RELATIVE_TIME_TICK_MS = 15_000;
 
@@ -51,6 +53,34 @@ export function NotificationCenter() {
         });
     };
 
+    const selectPosition = (next: NotificationPosition) => {
+        patchNotifications({ position: next });
+        requestAnimationFrame(() => {
+            document.getElementById(`${POSITION_OPTION_ID_PREFIX}-${next}`)?.focus();
+        });
+    };
+
+    const handlePositionKeyDown = (
+        event: ReactKeyboardEvent<HTMLButtonElement>,
+        currentIndex: number,
+    ) => {
+        const lastIndex = POSITION_OPTIONS.length - 1;
+        let nextIndex: number | null = null;
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+            nextIndex = (currentIndex + 1) % POSITION_OPTIONS.length;
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+            nextIndex = (currentIndex - 1 + POSITION_OPTIONS.length) % POSITION_OPTIONS.length;
+        } else if (event.key === 'Home') {
+            nextIndex = 0;
+        } else if (event.key === 'End') {
+            nextIndex = lastIndex;
+        }
+        if (nextIndex === null) return;
+        event.preventDefault();
+        const nextOption = POSITION_OPTIONS[nextIndex];
+        if (nextOption) selectPosition(nextOption.value);
+    };
+
     useEffect(() => {
         if (!open) return;
 
@@ -59,6 +89,8 @@ export function NotificationCenter() {
                 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
             );
             return [...nodes].filter((el) => {
+                // Respect roving tabindex (e.g. radiogroup): only tabIndex >= 0 is a Tab stop.
+                if (el.tabIndex < 0) return false;
                 if (el.getAttribute('aria-hidden') === 'true') return false;
                 const style = window.getComputedStyle(el);
                 return style.display !== 'none' && style.visibility !== 'hidden';
@@ -149,6 +181,13 @@ export function NotificationCenter() {
 
     return (
         <ZPortal className="pointer-events-auto">
+            {/* Backdrop: blocks underlying UI while aria-modal is active */}
+            <button
+                type="button"
+                aria-label="Close notifications"
+                className="fixed inset-0 z-[9999] cursor-default border-0 bg-black/20 p-0"
+                onClick={closeNotificationCenter}
+            />
             <div
                 ref={panelRef}
                 data-notification-center
@@ -198,25 +237,40 @@ export function NotificationCenter() {
                 {prefsOpen && (
                     <div className="space-y-2.5 border-b border-app-border px-3 py-2.5">
                         <div>
-                            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-app-muted">
+                            <p
+                                id="notification-position-label"
+                                className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-app-muted"
+                            >
                                 Position
                             </p>
-                            <div className="grid grid-cols-2 gap-1">
-                                {POSITION_OPTIONS.map(option => (
-                                    <button
-                                        key={option.value}
-                                        type="button"
-                                        onClick={() => patchNotifications({ position: option.value })}
-                                        className={cn(
-                                            'rounded-md border px-2 py-1 text-[10px] font-medium transition-colors',
-                                            position === option.value
-                                                ? 'border-app-accent bg-app-accent/15 text-app-text'
-                                                : 'border-app-border text-app-muted hover:text-app-text',
-                                        )}
-                                    >
-                                        {option.label}
-                                    </button>
-                                ))}
+                            <div
+                                className="grid grid-cols-2 gap-1"
+                                role="radiogroup"
+                                aria-labelledby="notification-position-label"
+                            >
+                                {POSITION_OPTIONS.map((option, index) => {
+                                    const selected = position === option.value;
+                                    return (
+                                        <button
+                                            key={option.value}
+                                            id={`${POSITION_OPTION_ID_PREFIX}-${option.value}`}
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={selected}
+                                            tabIndex={selected ? 0 : -1}
+                                            onClick={() => selectPosition(option.value)}
+                                            onKeyDown={event => handlePositionKeyDown(event, index)}
+                                            className={cn(
+                                                'rounded-md border px-2 py-1 text-[10px] font-medium transition-colors',
+                                                selected
+                                                    ? 'border-app-accent bg-app-accent/15 text-app-text'
+                                                    : 'border-app-border text-app-muted hover:text-app-text',
+                                            )}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                         <div className="flex items-center gap-1">

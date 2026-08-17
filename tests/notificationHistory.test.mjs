@@ -23,6 +23,7 @@ import {
   resolvePluginNotifyActionResponse,
   waitForPluginNotifyActionResult,
 } from '../.tmp-agent-tests/src/features/notifications/pluginNotifyAction.js';
+import { toastEnterClass } from '../.tmp-agent-tests/src/features/notifications/layout.js';
 
 async function runTest(name, fn) {
   try {
@@ -43,6 +44,9 @@ const tests = [
     assert.equal(defaultToastDuration('error'), 8000);
     assert.equal(defaultToastDuration('error', 0), 0);
     assert.equal(defaultToastDuration('success', 1200), 1200);
+    assert.equal(defaultToastDuration('error', Number.NaN), 8000);
+    assert.equal(defaultToastDuration('success', -1), 4000);
+    assert.equal(defaultToastDuration('warning', Number.POSITIVE_INFINITY), 6000);
   }),
 
   () => runTest('ephemeral success/info stay out of history; errors and sticky go in', () => {
@@ -153,6 +157,8 @@ const tests = [
     assert.equal(normalizeNotificationSettings({ position: 'top-left', doNotDisturb: true }).position, 'top-left');
     assert.match(notificationStackClass('top-left'), /top-12 left-3/);
     assert.match(notificationStackClass('bottom-right'), /bottom-10 right-3/);
+    assert.equal(toastEnterClass('top-left'), 'animate-fade-in-from-left');
+    assert.equal(toastEnterClass('bottom-right'), 'animate-fade-in-from-right');
   }),
 
   () => runTest('parsePluginUiNotify namespaces ids and maps options', () => {

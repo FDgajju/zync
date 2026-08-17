@@ -1,7 +1,9 @@
 import type { NotifyOptions, ToastType } from './types.js';
 
 export function defaultToastDuration(type: ToastType, duration?: number): number {
-    if (duration !== undefined) return duration;
+    if (duration !== undefined && Number.isFinite(duration) && duration >= 0) {
+        return duration;
+    }
     if (type === 'error') return 8000;
     if (type === 'warning') return 6000;
     return 4000;

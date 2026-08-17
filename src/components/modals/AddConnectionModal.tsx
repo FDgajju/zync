@@ -670,20 +670,34 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             }));
             importConnections(mappedConnections, imported.folders || []);
             const importedTunnels = imported.tunnels || [];
+            let tunnelsSaved = 0;
+            let tunnelsFailed = 0;
             for (const tunnel of importedTunnels) {
-                await saveTunnel({
-                    ...tunnel,
-                    status: tunnel.status === 'active' ? 'stopped' : (tunnel.status || 'stopped'),
-                });
+                try {
+                    await saveTunnel({
+                        ...tunnel,
+                        status: tunnel.status === 'active' ? 'stopped' : (tunnel.status || 'stopped'),
+                    });
+                    tunnelsSaved += 1;
+                } catch (tunnelError: unknown) {
+                    tunnelsFailed += 1;
+                    console.warn('[Import] Failed to save tunnel:', tunnel, tunnelError);
+                }
             }
             const plaintextCount = mappedConnections.filter(c => !c.authRef && (c.password || c.privateKeyPath)).length;
-            const tunnelNote = importedTunnels.length > 0
-                ? ` and ${importedTunnels.length} tunnel(s)`
+            const tunnelNote = tunnelsSaved > 0
+                ? ` and ${tunnelsSaved} tunnel(s)`
                 : '';
             if (plaintextCount > 0 && vaultStatus?.status !== 'uninitialized') {
                 showToast('success', `Imported ${mappedConnections.length} connection(s)${tunnelNote} — ${plaintextCount} have plaintext credentials. Open Vault tab to secure them to vault.`);
             } else {
                 showToast('success', `Imported ${mappedConnections.length} connection(s)${tunnelNote} from file.`);
+            }
+            if (tunnelsFailed > 0) {
+                showToast(
+                    'warning',
+                    `${tunnelsFailed} tunnel(s) could not be imported (connections were saved).`,
+                );
             }
             onClose();
         } catch (error: unknown) {
