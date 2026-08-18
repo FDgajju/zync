@@ -6233,6 +6233,12 @@ pub async fn app_get_exe_dir() -> Result<String, String> {
 pub async fn app_exit(app: tauri::AppHandle) {
     app.exit(0);
 }
+
+#[tauri::command]
+pub async fn app_relaunch(app: tauri::AppHandle) {
+    app.restart();
+}
+
 #[tauri::command]
 pub async fn plugins_load(app: AppHandle) -> Result<Vec<crate::plugins::Plugin>, String> {
     crate::plugins::PluginScanner::scan(&app).map_err(|e| e.to_string())

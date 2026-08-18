@@ -181,7 +181,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         showRestartConfirm,
         setShowRestartConfirm,
         platformLabel,
-        canAutoUpdate,
+        downloadProgress,
         handleUpdateAction,
         handleConfirmRestart,
     } = useSettingsUpdateFlow({
@@ -580,7 +580,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 platformLabel={platformLabel}
                                 updateStatus={updateStatus}
                                 updateInfo={updateInfo}
-                                canAutoUpdate={canAutoUpdate}
+                                downloadProgress={downloadProgress}
                                 stars={stars}
                                 contributors={contributors}
                                 onUpdateAction={handleUpdateAction}

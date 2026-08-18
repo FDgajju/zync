@@ -206,6 +206,7 @@ pub fn run() {
             commands::shell_get_connection_shells,
             commands::app_get_exe_dir,
             commands::app_exit,
+            commands::app_relaunch,
             commands::plugins_load,
             commands::plugins_toggle,
             commands::plugins_install,

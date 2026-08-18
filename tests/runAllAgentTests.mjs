@@ -44,6 +44,7 @@ const tests = [
   'tests/tunnelReconnectService.test.mjs',
   'tests/syncPassphrase.test.mjs',
   'tests/updateNotificationAutoUpdateFlow.test.mjs',
+  'tests/updaterFlow.test.mjs',
 ];
 
 for (const file of tests) {

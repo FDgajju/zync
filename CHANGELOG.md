@@ -4,6 +4,15 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Multi-platform auto-updater & background download**: Unified in-app updater across Windows, macOS, and Linux with silent background downloads, dedicated status bar progress indicator, and celebration toast upon launch. ([e2fa602])
+- **Status bar update indicator**: Translucent soft-highlight button in the bottom status bar displaying download progress (`Updating X%`), available update actions (`Download vX.X.X`), and one-click `Restart to update`. ([e2fa602])
+- **Updater dev simulation suite**: Built-in interactive test controls in Settings → About and `window.zyncUpdater` (development mode only) to test auto-download, manual flow, and post-update celebration. ([e2fa602])
+
+### Fixed
+- **Native restart on all platforms**: Added native Rust `app_relaunch` command ensuring clean restarts without permission or process lifecycle issues across Windows, macOS, and Linux. ([e2fa602])
+- **Status bar placeholder cleanup**: Removed unused static "Ready" label from the bottom status bar. ([e2fa602])
+
 ## [2.24.0] - 2026-08-18
 
 ### Added
@@ -1213,6 +1222,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 [2.2.1]: https://github.com/zync-sh/zync/releases/tag/v2.2.1
 
 
+[e2fa602]: https://github.com/zync-sh/zync/commit/e2fa602
 [feee7bb]: https://github.com/zync-sh/zync/commit/feee7bb
 [6e8dd42]: https://github.com/zync-sh/zync/commit/6e8dd42
 [d9d3663]: https://github.com/zync-sh/zync/commit/d9d3663
