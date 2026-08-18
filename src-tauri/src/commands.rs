@@ -79,6 +79,17 @@ struct ZyncConnectionsExport {
     exported_at_ms: u64,
     connections: Vec<SavedConnection>,
     folders: Vec<Folder>,
+    #[serde(default)]
+    tunnels: Vec<SavedTunnel>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionImportResult {
+    pub connections: Vec<SavedConnection>,
+    pub folders: Vec<Folder>,
+    #[serde(default)]
+    pub tunnels: Vec<SavedTunnel>,
 }
 
 #[derive(Debug, Serialize)]
@@ -280,6 +291,35 @@ fn validate_settings_schema(settings: &Value) -> Result<(), String> {
     if let Some(editor) = obj.get("editor") {
         if !editor.is_object() {
             return Err("Invalid \"editor\": expected object.".to_string());
+        }
+    }
+    if let Some(notifications) = obj.get("notifications") {
+        let notifications_obj = notifications
+            .as_object()
+            .ok_or_else(|| "Invalid \"notifications\": expected object.".to_string())?;
+        if let Some(position) = notifications_obj.get("position") {
+            let position = position
+                .as_str()
+                .ok_or_else(|| "Invalid \"notifications.position\": expected string.".to_string())?;
+            if !matches!(
+                position,
+                "bottom-right" | "bottom-left" | "top-right" | "top-left"
+            ) {
+                return Err(
+                    "Invalid \"notifications.position\": expected bottom-right, bottom-left, top-right, or top-left."
+                        .to_string(),
+                );
+            }
+        }
+        if let Some(do_not_disturb) = notifications_obj.get("doNotDisturb") {
+            if !do_not_disturb.is_boolean() {
+                return Err("Invalid \"notifications.doNotDisturb\": expected boolean.".to_string());
+            }
+        }
+        if let Some(play_sound) = notifications_obj.get("playSound") {
+            if !play_sound.is_boolean() {
+                return Err("Invalid \"notifications.playSound\": expected boolean.".to_string());
+            }
         }
     }
     Ok(())
@@ -2183,6 +2223,7 @@ pub async fn connections_export_to_file(
         return Err("Export path is required.".to_string());
     }
 
+    let tunnels_path = get_data_dir(&app).join("tunnels.json");
     let data = connections_get(app, vault).await?;
     let SavedData {
         connections: all_connections,
@@ -2214,6 +2255,39 @@ pub async fn connections_export_to_file(
             } else {
                 all_folders
             };
+            let all_tunnels = match std::fs::read_to_string(&tunnels_path) {
+                Ok(raw) => serde_json::from_str::<SavedTunnelsData>(&raw)
+                    .map(|data| data.tunnels)
+                    .map_err(|error| format!("Failed to parse tunnels.json: {error}"))?,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+                Err(error) => {
+                    return Err(format!("Failed to read tunnels.json: {error}"));
+                }
+            };
+            // Full export keeps every tunnel (including orphans). Scoped export keeps only
+            // tunnels whose host is in the selected connection set.
+            let scoped_tunnels = if is_scoped_export {
+                let selected_connection_ids: std::collections::HashSet<&str> = selected_connections
+                    .iter()
+                    .map(|connection| connection.id.as_str())
+                    .collect();
+                all_tunnels
+                    .into_iter()
+                    .filter(|tunnel| {
+                        selected_connection_ids.contains(tunnel.connection_id.as_str())
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                all_tunnels
+            };
+            let tunnels = scoped_tunnels
+                .into_iter()
+                .map(|mut tunnel| {
+                    // Export configs only — never mark tunnels as active on the other device.
+                    tunnel.status = Some("stopped".to_string());
+                    tunnel
+                })
+                .collect::<Vec<_>>();
             serde_json::to_string_pretty(&ZyncConnectionsExport {
                 format: "zync-connections".to_string(),
                 version: 1,
@@ -2223,6 +2297,7 @@ pub async fn connections_export_to_file(
                     .unwrap_or(0),
                 connections: selected_connections,
                 folders,
+                tunnels,
             })
             .map_err(|error| error.to_string())?
         }
@@ -2247,7 +2322,7 @@ pub async fn connections_export_to_file(
 #[tauri::command]
 pub async fn connections_import_from_file(
     request: ConnectionImportRequest,
-) -> Result<SavedData, String> {
+) -> Result<ConnectionImportResult, String> {
     let path = request.path.trim();
     if path.is_empty() {
         return Err("Import path is required.".to_string());
@@ -2290,24 +2365,31 @@ pub async fn connections_import_from_file(
     };
 
     match effective_format.as_str() {
-        "csv" => Ok(SavedData {
+        "csv" => Ok(ConnectionImportResult {
             connections: parse_csv_connections(&content)?,
             folders: vec![],
+            tunnels: vec![],
         }),
         "json" | "zync" => {
             if let Ok(zync_data) = serde_json::from_str::<ZyncConnectionsExport>(&content) {
-                return Ok(SavedData {
+                return Ok(ConnectionImportResult {
                     connections: zync_data.connections,
                     folders: zync_data.folders,
+                    tunnels: zync_data.tunnels,
                 });
             }
             if let Ok(saved_data) = serde_json::from_str::<SavedData>(&content) {
-                return Ok(saved_data);
+                return Ok(ConnectionImportResult {
+                    connections: saved_data.connections,
+                    folders: saved_data.folders,
+                    tunnels: vec![],
+                });
             }
             if let Ok(connections) = serde_json::from_str::<Vec<SavedConnection>>(&content) {
-                return Ok(SavedData {
+                return Ok(ConnectionImportResult {
                     connections,
                     folders: vec![],
+                    tunnels: vec![],
                 });
             }
             Err("Unsupported JSON import shape. Expected zync/json connection export.".to_string())

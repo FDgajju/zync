@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react';
 import { useAppStore, Connection } from '../../store/useAppStore';
 import { useVaultStore } from '../../vault/useVaultStore';
 import { vaultIpc } from '../../vault/ipc';
-import { buildConnectionSavePayload, buildDefaultKeyVaultLabel } from '../../features/connections/domain';
+import {
+    buildConnectionSavePayload,
+    buildDefaultKeyVaultLabel,
+    buildDefaultPasswordVaultLabel,
+} from '../../features/connections/domain';
 import {
     readLocalKeyFileIpc,
     writeManagedKeyIpc,
@@ -18,6 +22,7 @@ interface UseAutoVaultOptions {
     activeEditingConnectionId: string | null;
     validationOk: boolean;
     materializeLocalKeyToVault?: boolean;
+    materializePasswordToVault?: boolean;
     showToast: (type: ToastType, message: string) => void;
 }
 
@@ -47,6 +52,7 @@ export function useAutoVault({
     activeEditingConnectionId,
     validationOk,
     materializeLocalKeyToVault = false,
+    materializePasswordToVault = false,
     showToast,
 }: UseAutoVaultOptions) {
     const { status: vaultStatus, items: vaultItems, refreshItems } = useVaultStore();
@@ -71,13 +77,20 @@ export function useAutoVault({
         host: formData.host,
         username: formData.username,
     });
-    const effectiveKeyVaultLabel = keyVaultLabel.trim() || defaultKeyVaultLabel;
+    const defaultPasswordVaultLabel = buildDefaultPasswordVaultLabel({
+        name: formData.name,
+        host: formData.host,
+        username: formData.username,
+    });
+    const effectiveKeyVaultLabel = keyVaultLabel.trim()
+        || (materializePasswordToVault ? defaultPasswordVaultLabel : defaultKeyVaultLabel);
     const keyVaultLabelConflict = vaultStatus?.status === 'unlocked'
         && (
             (authMethod === 'vault'
                 && (vaultInputMode === 'paste' || vaultInputMode === 'import')
                 && !!pastedKeyText.trim())
             || materializeLocalKeyToVault
+            || materializePasswordToVault
         )
         && vaultItems.some(i => i.label === effectiveKeyVaultLabel);
 
@@ -235,6 +248,62 @@ export function useAutoVault({
         }
     };
 
+    const savePasswordToVault = async (): Promise<{ formPatch: Partial<Connection>; createdItemId: string } | null> => {
+        const password = formData.password ?? '';
+        if (!password) {
+            showToast('error', 'Password is required to store in Vault.');
+            return null;
+        }
+
+        const vaultId = await resolveVaultId();
+        const currentItems = await vaultIpc.itemList();
+        if (currentItems.some(item => item.label === effectiveKeyVaultLabel)) {
+            throw new Error(`A Vault item named "${effectiveKeyVaultLabel}" already exists.`);
+        }
+        const item = await vaultIpc.itemCreate(effectiveKeyVaultLabel, 'ssh-password', {
+            password,
+        });
+        return {
+            createdItemId: item.id,
+            formPatch: {
+                ...formData,
+                password: undefined,
+                privateKeyPath: undefined,
+                authRef: {
+                    vaultId,
+                    credentialId: item.logicalId,
+                    itemId: item.id,
+                    itemKind: 'ssh-password',
+                    purpose: 'ssh-auth',
+                },
+            },
+        };
+    };
+
+    const buildVaultPasswordConnection = async (): Promise<VaultKeyConnectionResult | null> => {
+        if (!validationOk) return null;
+        let createdItemId: string | null = null;
+        try {
+            const saved = await savePasswordToVault();
+            if (!saved) return null;
+            createdItemId = saved.createdItemId;
+            const { connections } = useAppStore.getState();
+            const connection = buildConnectionSavePayload({
+                formData: saved.formPatch,
+                authMethod: 'vault',
+                editingConnectionId: activeEditingConnectionId,
+                connections,
+            });
+            return { connection, createdItemId: saved.createdItemId };
+        } catch (e: unknown) {
+            if (createdItemId) {
+                await deleteCreatedVaultItemBestEffort(createdItemId, e);
+            }
+            showToast('error', `Failed to store password: ${e instanceof Error ? e.message : String(e)}`);
+            return null;
+        }
+    };
+
     /** Non-vault paste: write PEM to managed keys dir and return path. */
     const writePastedKeyAsManagedFile = async (): Promise<string | null> => {
         const keyText = validateKeyText();
@@ -281,8 +350,11 @@ export function useAutoVault({
         pastedKeyError, setPastedKeyError,
         localKeyVaultError,
         keyVaultLabel, setKeyVaultLabel,
-        defaultKeyVaultLabel, keyVaultLabelConflict,
+        defaultKeyVaultLabel,
+        defaultPasswordVaultLabel,
+        keyVaultLabelConflict,
         buildVaultKeyConnection,
+        buildVaultPasswordConnection,
         deleteCreatedVaultItemBestEffort,
         writePastedKeyAsManagedFile,
         loadKeyFileForVaultImport,

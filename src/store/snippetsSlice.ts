@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand';
 import type { AppStore } from './useAppStore';
+import { notify } from '../features/notifications';
 
 export interface Snippet {
     id: string;
@@ -60,7 +61,7 @@ export const createSnippetsSlice: StateCreator<AppStore, [], [], SnippetsSlice> 
             console.error('Failed to save snippet:', error);
             // Revert on error 
             set({ snippets: oldSnippets });
-            get().showToast('error', 'Failed to save snippet');
+            notify.error('Failed to save snippet', { source: 'snippets' });
         }
     },
 
@@ -74,7 +75,7 @@ export const createSnippetsSlice: StateCreator<AppStore, [], [], SnippetsSlice> 
         } catch (error) {
             console.error('Failed to delete snippet:', error);
             set({ snippets: oldSnippets }); // Revert
-            get().showToast('error', 'Failed to delete snippet');
+            notify.error('Failed to delete snippet', { source: 'snippets' });
         }
     }
 });

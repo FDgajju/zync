@@ -5,6 +5,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { cn } from '../../lib/utils';
 import { Tooltip } from '../ui/Tooltip';
 import { StatusBarTransferIndicator } from '../file-manager/StatusBarTransferIndicator';
+import { NotificationBell, useNotificationBellPlacement } from '../notifications/NotificationBell';
 
 const statusToggleBtnClass =
   'h-6 w-6 shrink-0 rounded-md text-app-muted hover:text-app-text hover:bg-app-surface border border-transparent hover:border-app-border/40 transition-colors flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 focus-visible:ring-offset-0';
@@ -37,9 +38,10 @@ export function StatusBar() {
 
   const isLiveConnected = activeConnection?.status === 'connected';
   const isConnecting = activeConnection?.status === 'connecting';
+  const { showInStatusLeft, showInStatusRight } = useNotificationBellPlacement();
 
   return (
-    <div className="h-8 bg-app-panel border-t border-app-border flex items-center px-2 text-[11px] select-none text-app-text/80 justify-between shrink-0 gap-2">
+    <div className="h-9 bg-app-panel border-t border-app-border flex items-center px-2.5 text-[11px] select-none text-app-text/80 justify-between shrink-0 gap-2">
       {/* Bottom-left: sidebar toggle + connection status */}
       <div className="flex items-center gap-2 min-w-0">
         <Tooltip
@@ -60,6 +62,13 @@ export function StatusBar() {
         </Tooltip>
 
         <div className="h-4 w-px shrink-0 bg-app-border/50" aria-hidden />
+
+        {showInStatusLeft && (
+          <>
+            <NotificationBell tooltipPosition="top" size="status" />
+            <div className="h-4 w-px shrink-0 bg-app-border/50" aria-hidden />
+          </>
+        )}
 
         <div className="flex items-center gap-1.5 hover:text-white transition-colors min-w-0">
           {isLiveConnected && activeConnection ? (
@@ -119,6 +128,7 @@ export function StatusBar() {
         <StatusBarTransferIndicator />
         <StatusMessage />
         <span>Ready</span>
+        {showInStatusRight && <NotificationBell tooltipPosition="top" size="status" />}
 
         <div className="h-4 w-px shrink-0 bg-app-border/50" aria-hidden />
 

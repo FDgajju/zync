@@ -17,6 +17,11 @@ import {
 import { resolveTerminalFontWeightBold } from '../lib/terminal/terminalTypography.js';
 import { DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS } from '../features/connections/domain/connectionDisplay.js';
 import { refreshConnectionTabTitles } from '../features/connections/application/tabService.js';
+import {
+    DEFAULT_NOTIFICATION_SETTINGS,
+    normalizeNotificationSettings,
+    type NotificationSettings,
+} from '../features/notifications';
 
 export interface AppSettings {
     theme: string;
@@ -131,6 +136,7 @@ export interface AppSettings {
         /** When true, browse lists show username@host. When false, show labels/tags (safer for screen share). */
         showHostAddressesInLists: boolean;
     };
+    notifications: NotificationSettings;
 }
 
 export const defaultSettings: AppSettings = {
@@ -160,6 +166,7 @@ export const defaultSettings: AppSettings = {
     privacy: {
         showHostAddressesInLists: DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS,
     },
+    notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
     terminal: {
         ...(() => {
             const typography = resolveDefaultTerminalTypography();
@@ -422,6 +429,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
                 keybindings: { ...defaultSettings.keybindings, ...(loaded?.keybindings || {}) },
                 ai: { ...defaultSettings.ai, ...(loaded?.ai || {}) },
                 privacy: { ...defaultSettings.privacy, ...(loaded?.privacy || {}) },
+                notifications: normalizeNotificationSettings(loaded?.notifications),
                 expandedFolders: loaded?.expandedFolders || []
             };
             set({ settings: merged, isLoadingSettings: false });

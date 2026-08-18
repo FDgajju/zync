@@ -30,6 +30,7 @@ Zync hosts are lightweight records. **Secrets should not live on the host** when
 | Auth path | Status | Where secret lives |
 |-----------|--------|--------------------|
 | Password on host | Shipped | Optional plaintext on host; secure-to-vault migrates |
+| Password → vault on save | Shipped | `ssh-password` vault item + host `authRef` |
 | Private key **file path** | Shipped | Path on host; passphrase is per-connection memory, OS credential store, or Vault |
 | Private key **paste → managed file** | Shipped | PEM written to `{dataDir}/keys/`; path on host |
 | Paste / import key → vault | Shipped | Encrypted in `vault.redb` (+ optional key passphrase) |
@@ -60,13 +61,15 @@ Primary surface: `AddConnectionModal` (+ `useConnectionForm`, `useAutoVault`).
 Auth method tabs:
 
 1. **Password** — password field on the form/host.
+   - **On this host** (default) — plaintext on the host record; can migrate later via Secure to vault.
+   - **Save to Vault** (when a vault exists) — on Create/Save creates an `ssh-password` vault item and stores only `authRef` on the host (no plaintext password on the host).
 2. **Private Key (local / non-vault)**
    - **File** — browse for a key path; path stored on host; read at connect time.
    - **Paste** — paste PEM; on save Zync writes a managed file under `{dataDir}/keys/` and stores only `privateKeyPath`.
    - Zync inspects the key locally. The passphrase field appears only for encrypted keys. It may be left blank when saving a host; Zync asks on the first connection. Test requires a valid passphrase.
    - Retention is explicit: ask on each new connection, remember in the OS credential store, or move the key and passphrase into Vault. Choosing Vault only selects the destination; the Vault item and host are written together when the user presses Create/Save.
 3. **Vault** (shown when vault exists — locked or unlocked)
-   - **Existing** — pick a vault credential (`authRef`).
+   - **Existing** — pick a vault credential (`authRef`) — password or private-key kinds.
    - **Paste** — paste PEM (+ optional passphrase) into vault; set `authRef`.
    - **Import file** — read a local key file into vault; set `authRef`.
 
@@ -114,8 +117,9 @@ Tracked as GitHub issue **#90** (`Prompt for passphrase`).
 
 ### Current product model
 
-**Password**
-- Password auth (unchanged).
+**Password** — shipped
+- Password auth on the host (local), or **Save to Vault** on create/edit to write an `ssh-password` item + `authRef`.
+- Vault-first still works: add SSH password in Vault, then attach via **Vault → Existing**.
 
 **Private key (local / non-vault)** — shipped
 - Key **file** path (Browse).

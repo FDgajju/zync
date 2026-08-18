@@ -4,6 +4,28 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-08-18
+
+### Added
+- **Import tunnels with connection files**: Zync JSON/`.zync` imports can include a `tunnels` array; import applies those forwards with the host so dummy and full workspace files work in one step. ([cb1cdc6], [af92092])
+- **Export tunnels in `.zync` files**: Full connection export writes saved tunnels (stopped) into the `tunnels` array; scoped export includes only tunnels for the selected hosts. ([af92092])
+- **Password → Vault on host create**: Password auth offers **On this host** or **Save to Vault**; vault path creates an `ssh-password` credential and links the host via `authRef` (no plaintext password on the host). ([060f1c2])
+- **Notification center**: Modular notification package with public `notify.*` API for features/plugins. Toasts and the bell follow the chosen corner. Short-lived success/info stay on-screen only; errors/warnings and sticky/actionable items go to the inbox (localStorage, max 50, auto-prune after 7 days). Inbox: Clear all, hover/focus pause, gear prefs (position, DND, sound), in-session actions. ([fa72d25], [af92092])
+- **Plugin notify bridge**: Plugins can emit `api:ui:notify` and receive action click results over the existing worker RPC (namespaced action ids, concurrent in-flight lock). ([cc51d57])
+- **Notifications architecture docs**: Canonical `docs/NOTIFICATIONS.md` for the module layout, history policy, and plugin bridge. ([fa72d25])
+
+### Changed
+- **Connection form password storage**: Segmented **On this host** / **Save to Vault** choice when creating a password-auth host (vault must be unlocked for the vault path). ([060f1c2])
+- **Status bar height**: Bottom bar is slightly taller again (36px, was 32px) for a bit more breathing room. Toast stack and notification center bottom offsets updated to match.
+- **Toast enter animation**: Corner-aware fade/slide uses project CSS (`animate-fade-in-from-left` / `from-right`) instead of missing tailwindcss-animate utilities. ([af92092])
+
+### Fixed
+- **Full export keeps orphan tunnels**: Unscoped `.zync` export no longer drops tunnels whose host is missing from the connection list; filtering applies only to scoped export. ([af92092])
+- **tunnels.json load errors on export**: Missing file still exports empty tunnels; read/parse failures surface instead of silently exporting no tunnels. ([af92092])
+- **Partial tunnel import**: A single tunnel save failure no longer aborts the whole import; connections stay saved and a warning toast reports how many tunnels failed. ([af92092])
+- **Notification duration guards**: `NaN`, negative, and non-finite custom durations fall back to type defaults so auto-hide timers stay valid. ([af92092])
+- **Notification center a11y**: Backdrop under the modal, position control as a radiogroup with roving tabindex and arrow/Home/End keys, and focus trap that respects non-tab stops. ([af92092])
+
 ## [2.23.1] - 2026-08-16
 
 ### Added
@@ -1001,7 +1023,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 - Auto-updates
 - Multiple themes (Dark, Light, Dracula)
 
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.23.1...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.24.0...HEAD
+[2.24.0]: https://github.com/zync-sh/zync/compare/v2.23.1...v2.24.0
 [2.23.1]: https://github.com/zync-sh/zync/compare/v2.23.0...v2.23.1
 [2.23.0]: https://github.com/zync-sh/zync/compare/v2.22.5...v2.23.0
 [2.22.5]: https://github.com/zync-sh/zync/compare/v2.22.4...v2.22.5
@@ -1016,6 +1039,11 @@ All notable changes to Zync are documented in this file. The format is based on 
 [2.18.0]: https://github.com/zync-sh/zync/compare/v2.17.0...v2.18.0
 [#92]: https://github.com/zync-sh/zync/issues/92
 [#93]: https://github.com/zync-sh/zync/issues/93
+[af92092]: https://github.com/zync-sh/zync/commit/af92092
+[cc51d57]: https://github.com/zync-sh/zync/commit/cc51d57
+[fa72d25]: https://github.com/zync-sh/zync/commit/fa72d25
+[060f1c2]: https://github.com/zync-sh/zync/commit/060f1c2
+[cb1cdc6]: https://github.com/zync-sh/zync/commit/cb1cdc6
 [402ec67]: https://github.com/zync-sh/zync/commit/402ec67
 [010a742]: https://github.com/zync-sh/zync/commit/010a742
 [caa6e37]: https://github.com/zync-sh/zync/commit/caa6e37

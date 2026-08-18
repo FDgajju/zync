@@ -93,6 +93,38 @@
     animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes fade-in-from-right {
+    from {
+        opacity: 0;
+        transform: translateX(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes fade-in-from-left {
+    from {
+        opacity: 0;
+        transform: translateX(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.animate-fade-in-from-right {
+    animation: fade-in-from-right 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in-from-left {
+    animation: fade-in-from-left 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 /* React fallback splash — aesthetics + GPU-only motion, matches index.html boot */
 @keyframes zync-splash-mark-in {
     from {

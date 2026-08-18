@@ -1,6 +1,7 @@
 import { MainLayout } from './components/layout/MainLayout';
 import { UpdateNotification } from './components/UpdateNotification';
 import { ToastContainer } from './components/ui/Toast';
+import { NotificationCenter } from './components/notifications/NotificationCenter';
 import { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
 import { useVaultStore } from './vault/useVaultStore';
@@ -16,6 +17,7 @@ import * as RadixTooltip from '@radix-ui/react-tooltip';
 function AppContent() {
     const loadConnections = useAppStore((state) => state.loadConnections);
     const loadSettings = useAppStore((state) => state.loadSettings);
+    const loadNotificationHistory = useAppStore((state) => state.loadNotificationHistory);
     const loadSession = useAppStore((state) => state.loadSession);
     const fetchSystemInfo = useAppStore((state) => state.fetchSystemInfo);
     const refreshVault = useVaultStore((state) => state.refresh);
@@ -28,6 +30,7 @@ function AppContent() {
         const init = async () => {
             try {
                 await Promise.all([loadConnections(), loadSettings()]);
+                loadNotificationHistory();
             } finally {
                 // loadSession must always run — it sets sessionLoaded which gates the UI.
                 await loadSession();
@@ -51,6 +54,7 @@ function AppContent() {
             <UpdateNotification />
 
             <ToastContainer />
+            <NotificationCenter />
         </>
     );
 }

@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand';
 import type { AppStore } from './useAppStore';
+import { notify } from '../features/notifications';
 import type { FileEntry } from '../components/file-manager/types';
 
 // @ts-ignore
@@ -212,7 +213,7 @@ export const createFileSystemSlice: StateCreator<AppStore, [], [], FileSystemSli
                 set(state => ({ isLoading: { ...state.isLoading, [connectionId]: false } }));
                 return;
             } else {
-                get().showToast('error', `Failed to create folder: ${msg}`);
+                notify.error(`Failed to create folder: ${msg}`, { source: 'files' });
             }
             set(state => ({ isLoading: { ...state.isLoading, [connectionId]: false } }));
         }
@@ -233,7 +234,7 @@ export const createFileSystemSlice: StateCreator<AppStore, [], [], FileSystemSli
                 set(state => ({ error: { ...state.error, [connectionId]: 'DISCONNECTED' } }));
                 return;
             } else {
-                get().showToast('error', `Failed to rename: ${msg}`);
+                notify.error(`Failed to rename: ${msg}`, { source: 'files' });
             }
         }
     },
@@ -272,7 +273,7 @@ export const createFileSystemSlice: StateCreator<AppStore, [], [], FileSystemSli
                 set(state => ({ error: { ...state.error, [connectionId]: 'DISCONNECTED' } }));
                 return;
             } else {
-                get().showToast('error', `Delete failed: ${msg}`);
+                notify.error(`Delete failed: ${msg}`, { source: 'files' });
             }
             // Final safety refresh
             await get().refreshFiles(connectionId);
@@ -314,11 +315,11 @@ export const createFileSystemSlice: StateCreator<AppStore, [], [], FileSystemSli
                 }).catch((err: any) => {
                     console.error('Upload start failed:', err);
                     get().failTransfer(transferId, err.message || String(err));
-                    get().showToast('error', `Failed to start upload: ${err.message || err}`);
+                    notify.error(`Failed to start upload: ${err.message || err}`, { source: 'files' });
                 });
             }
         } catch (error: any) {
-            get().showToast('error', `Upload initialization failed: ${error.message || error}`);
+            notify.error(`Upload initialization failed: ${error.message || error}`, { source: 'files' });
         }
     },
 
@@ -476,7 +477,7 @@ export const createFileSystemSlice: StateCreator<AppStore, [], [], FileSystemSli
                 set(state => ({ isLoading: { ...state.isLoading, [connectionId]: false } }));
                 return;
             } else {
-                get().showToast('error', `Paste failed: ${msg}`);
+                notify.error(`Paste failed: ${msg}`, { source: 'files' });
             }
             set(state => ({ isLoading: { ...state.isLoading, [connectionId]: false } }));
         }
