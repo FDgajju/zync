@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { UpdateInfo, UpdateStatus } from '../../../store/updateSlice';
-
-interface UpdateCheckResult {
-    updateInfo?: UpdateInfo;
-}
+import { useAppStore } from '../../../store/useAppStore';
+import {
+    checkForUpdates as serviceCheckForUpdates,
+    startDownload as serviceStartDownload,
+    installAndRestart as serviceInstallAndRestart,
+    openReleasePage,
+} from '../../../features/updater/updaterService';
 
 interface UseSettingsUpdateFlowOptions {
     isOpen: boolean;
@@ -32,6 +35,8 @@ export function useSettingsUpdateFlow({
     const [appVersion, setAppVersion] = useState('');
     const [isAppImage, setIsAppImage] = useState(false);
     const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+    const downloadProgress = useAppStore(state => state.downloadProgress);
+    const setDownloadProgress = useAppStore(state => state.setDownloadProgress);
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -70,12 +75,11 @@ export function useSettingsUpdateFlow({
         let nextInfo: UpdateInfo | null = null;
         let nextStatus: UpdateStatus = 'not-available';
         try {
-            const result = await window.ipcRenderer.invoke('update:check') as UpdateCheckResult | null;
-            nextInfo = result?.updateInfo ?? null;
-            if (nextInfo) {
+            nextInfo = await serviceCheckForUpdates();
+            if (nextInfo && nextInfo.version) {
                 nextStatus = 'available';
                 if (isMountedRef.current && isOpenRef.current) {
-                    showToast('info', nextInfo.version ? `Update v${nextInfo.version} available!` : 'An update is available!');
+                    showToast('info', `Update v${nextInfo.version} available!`);
                 }
             } else {
                 nextStatus = 'not-available';
@@ -105,7 +109,9 @@ export function useSettingsUpdateFlow({
             : resolvedPlatform === 'win32'
                 ? 'Windows'
                 : 'Linux';
-    const canAutoUpdate = resolvedPlatform !== 'darwin';
+
+    // In-app updates supported across Windows, macOS, and Linux
+    const canAutoUpdate = true;
 
     const handleUpdateAction = async () => {
         if (isUpdateActionInFlightRef.current) return;
@@ -113,26 +119,26 @@ export function useSettingsUpdateFlow({
         isUpdateActionInFlightRef.current = true;
         try {
             if (updateStatus === 'available') {
-                if (canAutoUpdate) {
-                    setUpdateStatus('downloading');
-                    try {
-                        await window.ipcRenderer.invoke('update:download');
-                    } catch (error: unknown) {
-                        console.error('Update download failed', error);
-                        setUpdateStatus('available');
-                        if (isMountedRef.current && isOpenRef.current) {
-                            showToast('error', 'Update download failed. Please try again.');
+                setUpdateStatus('downloading');
+                setDownloadProgress(0);
+                try {
+                    await serviceStartDownload();
+                } catch (error: unknown) {
+                    if (import.meta.env.DEV) {
+                        console.warn('Real package download not available (running simulated download in dev mode)', error);
+                        try {
+                            const { mockUpdater } = await import('../../../features/updater/mockUpdater');
+                            await mockUpdater.startSimulatedDownload(updateInfo?.version || '2.25.0', 2000);
+                            return;
+                        } catch (simErr) {
+                            console.error('Simulated download failed:', simErr);
                         }
                     }
-                } else {
-                    try {
-                        await window.ipcRenderer.invoke('shell:open', 'https://github.com/zync-sh/zync/releases/latest');
-                    } catch (error) {
-                        const message = error instanceof Error ? error.message : String(error);
-                        console.error('Failed to open release page', error);
-                        if (isMountedRef.current && isOpenRef.current) {
-                            showToast('error', `Failed to open release page: ${message}`);
-                        }
+                    console.error('Update download failed', error);
+                    setUpdateStatus('error');
+                    if (isMountedRef.current && isOpenRef.current) {
+                        const message = error instanceof Error ? error.message : 'Update download failed. Please try again or download manually.';
+                        showToast('error', message);
                     }
                 }
             } else if (updateStatus === 'ready') {
@@ -149,11 +155,11 @@ export function useSettingsUpdateFlow({
         if (isInstallingRef.current) return;
         isInstallingRef.current = true;
         try {
-            await window.ipcRenderer.invoke('update:install');
+            await serviceInstallAndRestart();
             if (!isMountedRef.current) return;
             setShowRestartConfirm(false);
             if (isOpenRef.current) {
-                showToast('success', 'Restart initiated.');
+                showToast('success', 'Restarting Zync to apply update...');
             }
         } catch (error) {
             if (!isMountedRef.current) return;
@@ -174,9 +180,11 @@ export function useSettingsUpdateFlow({
         setShowRestartConfirm,
         platformLabel,
         canAutoUpdate,
+        downloadProgress,
         handleUpdateAction,
         handleConfirmRestart,
         checkForUpdates,
         updateInfo,
+        openReleasePage,
     };
 }

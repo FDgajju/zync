@@ -21,12 +21,6 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return prototype === Object.prototype || prototype === null;
 };
 
-// Progress tracking state
-let downloadState = {
-  downloaded: 0,
-  total: 0
-};
-
 // Tauri IPC wrapper to replace Electron's ipcRenderer
 const ipcRenderer = {
   send(channel: string, ...args: any[]): void {
@@ -209,6 +203,8 @@ const ipcRenderer = {
       'plugins:load': 'plugins_load',
       'plugins:install_local': 'plugins_install_local',
       'app:getExeDir': 'app_get_exe_dir',
+      'app:relaunch': 'app_relaunch',
+      'app:exit': 'app_exit',
       'ai:translate': 'ai_translate',
       'ai:checkOllama': 'ai_check_ollama',
     };
@@ -305,6 +301,7 @@ const ipcRenderer = {
               }
             };
           }
+          currentUpdate = null;
           return null;
         } catch (e) {
           console.error('Update check error:', e);
@@ -313,27 +310,35 @@ const ipcRenderer = {
       }
 
       if (channel === 'update:download') {
-        if (currentUpdate) {
-          // Reset state
-          downloadState = { downloaded: 0, total: 0 };
+        if (!currentUpdate) {
+          const update = await check();
+          if (update?.available) {
+            currentUpdate = update;
+          }
+        }
 
-          // We use downloadAndInstall because it handles the specific flow better
-          // But 'download' gives us more granular control if we want subsequent install
-          await currentUpdate.downloadAndInstall((event: any) => {
+        if (!currentUpdate) {
+          throw new Error('No update available to download');
+        }
+
+        // Locally scoped progress tracking state
+        const downloadState = { downloaded: 0, total: 0 };
+
+        try {
+          // Use download() so Tauri stores downloadedBytes resource handle
+          await currentUpdate.download((event: any) => {
             try {
               if (event.event === 'Started') {
-                downloadState.total = event.data.contentLength || 0;
+                downloadState.total = event.data?.contentLength || 0;
                 downloadState.downloaded = 0;
-                // Emit started event
                 window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 0, status: 'started' } }));
               } else if (event.event === 'Progress') {
-                downloadState.downloaded += event.data.chunkLength;
+                downloadState.downloaded += event.data?.chunkLength || 0;
                 let percent = 0;
                 if (downloadState.total > 0) {
                   percent = (downloadState.downloaded / downloadState.total) * 100;
                 }
-                // Cap at 100
-                percent = Math.min(100, percent);
+                percent = Math.min(100, Math.max(0, percent));
                 window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent, status: 'progress' } }));
               } else if (event.event === 'Finished') {
                 window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 100, status: 'finished' } }));
@@ -343,18 +348,30 @@ const ipcRenderer = {
               window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 0, status: 'error' } }));
             }
           });
+          return { success: true };
+        } catch (error) {
+          console.error('Update download error:', error);
+          window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 0, status: 'error' } }));
+          throw error;
         }
-        return;
       }
 
       if (channel === 'update:install') {
-        if (currentUpdate && typeof currentUpdate.install === 'function') {
-          await currentUpdate.install();
-        } else {
-          const { relaunch } = await import('@tauri-apps/plugin-process');
-          await relaunch();
+        try {
+          if (currentUpdate && typeof currentUpdate.install === 'function') {
+            await currentUpdate.install();
+          }
+          // Relaunch the application cleanly using native Rust command
+          await invoke('app_relaunch');
+          return { success: true };
+        } catch (error) {
+          console.error('Failed to install and relaunch update:', error);
+          throw error;
         }
-        return;
+      }
+
+      if (channel === 'app:relaunch') {
+        return await invoke('app_relaunch');
       }
 
       // Tauri invoke expects a single object as the argument with named keys

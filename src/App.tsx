@@ -1,5 +1,4 @@
 import { MainLayout } from './components/layout/MainLayout';
-import { UpdateNotification } from './components/UpdateNotification';
 import { ToastContainer } from './components/ui/Toast';
 import { NotificationCenter } from './components/notifications/NotificationCenter';
 import { useEffect } from 'react';
@@ -7,6 +6,7 @@ import { useAppStore } from './store/useAppStore';
 import { useVaultStore } from './vault/useVaultStore';
 import { WelcomeScreen } from './components/dashboard/WelcomeScreen';
 import { useTransferEvents } from './hooks/useTransferEvents';
+import { useAutoUpdater } from './features/updater';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PluginProvider } from './context/PluginContext';
 import { GlobalConfirmDialog } from './components/ui/GlobalConfirmDialog';
@@ -24,6 +24,7 @@ function AppContent() {
     const refreshVault = useVaultStore((state) => state.refresh);
 
     useTransferEvents();
+    useAutoUpdater();
 
     useEffect(() => {
         // Initialize State — order matters: connections must load before session
@@ -52,7 +53,6 @@ function AppContent() {
             <MainLayout>
                 <WelcomeScreen />
             </MainLayout>
-            <UpdateNotification />
 
             <ToastContainer />
             <NotificationCenter />

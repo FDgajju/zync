@@ -46,6 +46,7 @@
     "test:terminal-renderer-policy": "npm run compile:agent-tests && node tests/terminalRendererPolicy.test.mjs",
     "test:terminal-renderer": "npm run compile:agent-tests && node tests/runTerminalRendererTests.mjs",
     "test:update-notification": "node tests/updateNotificationAutoUpdateFlow.test.mjs",
+    "test:updater-flow": "node tests/updaterFlow.test.mjs",
     "test:all-agent": "npm run compile:agent-tests && node tests/runAllAgentTests.mjs",
     "test": "npm run test:all-agent"
   },

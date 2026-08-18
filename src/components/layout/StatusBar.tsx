@@ -5,6 +5,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { cn } from '../../lib/utils';
 import { Tooltip } from '../ui/Tooltip';
 import { StatusBarTransferIndicator } from '../file-manager/StatusBarTransferIndicator';
+import { StatusBarUpdateIndicator } from '../../features/updater/StatusBarUpdateIndicator';
 import { NotificationBell, useNotificationBellPlacement } from '../notifications/NotificationBell';
 
 const statusToggleBtnClass =
@@ -126,8 +127,8 @@ export function StatusBar() {
         )}
 
         <StatusBarTransferIndicator />
+        <StatusBarUpdateIndicator />
         <StatusMessage />
-        <span>Ready</span>
         {showInStatusRight && <NotificationBell tooltipPosition="top" size="status" />}
 
         <div className="h-4 w-px shrink-0 bg-app-border/50" aria-hidden />
