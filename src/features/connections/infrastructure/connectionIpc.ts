@@ -24,7 +24,17 @@ export interface ConnectionConfigPayload {
     port: number;
     username: string;
     auth_method: AuthMethodPayload;
+    agent_forwarding?: {
+        source_connection_id: string;
+        auth_method: AuthMethodPrivateKey | AuthMethodVaultRef;
+    };
     jump_host: ConnectionConfigPayload | null;
+    host_key_approval?: HostKeyApprovalPayload;
+}
+
+export interface HostKeyApprovalPayload {
+    fingerprint: string;
+    replace: boolean;
 }
 
 export interface ConnectResponsePayload {
@@ -68,6 +78,21 @@ export type SshImportSourceRequest =
     | { sourceType: 'default_ssh' }
     | { sourceType: 'file'; path: string }
     | { sourceType: 'text'; content: string };
+
+export type AgentSignatureDecision = 'deny' | 'allowOnce' | 'allowSession';
+
+export interface AgentSignatureRequestPayload {
+    requestId: string;
+    connectionId: string;
+    host: string;
+    requestedUsername: string;
+    keyFingerprint: string;
+}
+
+export const respondAgentSignatureIpc = async (
+    requestId: string,
+    decision: AgentSignatureDecision,
+): Promise<void> => window.ipcRenderer.invoke('ssh:agentSignatureRespond', { requestId, decision });
 
 export const testConnectionIpc = async (config: ConnectionConfigPayload): Promise<string> =>
     window.ipcRenderer.invoke('ssh:test', config);

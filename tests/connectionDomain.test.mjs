@@ -451,6 +451,44 @@ runTest('buildConnectConfig includes stable credential id for vault auth', () =>
   assert.equal(config?.auth_method.credential_id, 'cred-1');
 });
 
+runTest('buildConnectConfig scopes agent forwarding to one selected vault key', () => {
+  const connections = [
+    {
+      id: 'target',
+      name: 'Target',
+      host: 'target',
+      port: 22,
+      username: 'root',
+      password: 'target-password',
+      status: 'disconnected',
+      agentForwardingKeyConnectionId: 'key-source',
+    },
+    {
+      id: 'key-source',
+      name: 'Key source',
+      host: 'source',
+      port: 22,
+      username: 'ubuntu',
+      status: 'disconnected',
+      authRef: {
+        vaultId: 'vault-1',
+        credentialId: 'cred-key',
+        itemId: 'item-key',
+        itemKind: 'ssh-private-key',
+        purpose: 'ssh-auth',
+      },
+    },
+  ];
+
+  const config = buildConnectConfig(connections, 'target');
+  assert.equal(config?.agent_forwarding?.source_connection_id, 'key-source');
+  assert.equal(config?.agent_forwarding?.auth_method.type, 'VaultRef');
+  assert.equal(config?.agent_forwarding?.auth_method.item_id, 'item-key');
+
+  const missingSource = buildConnectConfig([connections[0]], 'target');
+  assert.equal(missingSource, null);
+});
+
 runTest('buildConnectConfig rejects missing auth instead of sending empty password', () => {
   const connections = [{
     id: 'empty-auth',

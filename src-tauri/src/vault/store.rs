@@ -67,6 +67,19 @@ impl VaultService {
         self.data_dir.join("vault.redb")
     }
 
+    #[cfg(unix)]
+    fn restrict_vault_permissions(path: &Path) -> Result<(), VaultError> {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(|error| {
+            VaultError::InvalidData(format!("failed to restrict vault permissions: {error}"))
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn restrict_vault_permissions(_path: &Path) -> Result<(), VaultError> {
+        Ok(())
+    }
+
     fn map_database_open_error(err: DatabaseError) -> VaultError {
         match err {
             DatabaseError::DatabaseAlreadyOpen => VaultError::InUseByAnotherInstance,
@@ -83,6 +96,7 @@ impl VaultService {
         }
         let path = self.vault_path();
         if path.exists() {
+            Self::restrict_vault_permissions(&path)?;
             let db = Database::open(&path).map_err(Self::map_database_open_error)?;
             // Ensure tables introduced after the initial schema exist.
             // This is a no-op for new databases (initialize() already creates them)
@@ -353,6 +367,7 @@ impl VaultService {
         };
 
         let db = Database::create(&path)?;
+        Self::restrict_vault_permissions(&path)?;
         let write_txn = db.begin_write()?;
         {
             let mut vm = write_txn.open_table(VAULT_META)?;

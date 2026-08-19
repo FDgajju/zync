@@ -40,8 +40,10 @@ export function PluginPanel({ html, panelId, pluginId, connectionId }: PluginPan
 
     // Listen for messages FROM the iframe (plugin panel calling zync.*)
     useEffect(() => {
-        const handler = (e: MessageEvent) => {
-            if (!iframeRef.current || e.source !== iframeRef.current.contentWindow) return;
+        let active = true;
+        const handler = async (e: MessageEvent) => {
+            const sourceWindow = iframeRef.current?.contentWindow;
+            if (!sourceWindow || e.source !== sourceWindow) return;
             const { type, payload } = e.data || {};
             if (!type) return;
 
@@ -76,26 +78,58 @@ export function PluginPanel({ html, panelId, pluginId, connectionId }: PluginPan
                     }, '*');
                     return;
                 }
-                import('../../lib/tauri-ipc').then(({ ipcRenderer }) => {
-                    ipcRenderer.invoke('ssh_exec', { connectionId, command: payload.command })
-                        .then(result => {
-                            iframeRef.current?.contentWindow?.postMessage({
-                                type: 'zync:ssh:exec:response',
-                                payload: { requestId: payload.requestId, result }
-                            }, '*');
-                        })
-                        .catch(error => {
-                            iframeRef.current?.contentWindow?.postMessage({
-                                type: 'zync:ssh:exec:response',
-                                payload: { requestId: payload.requestId, error: String(error) }
-                            }, '*');
-                        });
+                if (typeof payload?.command !== 'string') {
+                    iframeRef.current?.contentWindow?.postMessage({
+                        type: 'zync:ssh:exec:response',
+                        payload: {
+                            requestId: payload?.requestId,
+                            error: { code: 'SSH_EXEC_INVALID_COMMAND', message: 'SSH command must be a string.' }
+                        }
+                    }, '*');
+                    return;
+                }
+
+                const confirmed = await useAppStore.getState().showConfirmDialog({
+                    title: 'Run SSH command?',
+                    message: `Plugin "${pluginId}" wants to run on connection "${connectionId}": ${payload.command}`,
+                    confirmText: 'Run command',
+                    cancelText: 'Cancel',
+                    variant: 'danger'
                 });
+                if (!active || iframeRef.current?.contentWindow !== sourceWindow) return;
+                if (!confirmed) {
+                    iframeRef.current?.contentWindow?.postMessage({
+                        type: 'zync:ssh:exec:response',
+                        payload: {
+                            requestId: payload.requestId,
+                            error: { code: 'SSH_EXEC_DENIED', message: 'SSH command was not approved by the user.' }
+                        }
+                    }, '*');
+                    return;
+                }
+
+                try {
+                    const { ipcRenderer } = await import('../../lib/tauri-ipc');
+                    if (!active || iframeRef.current?.contentWindow !== sourceWindow) return;
+                    const result = await ipcRenderer.invoke('ssh_exec', { connectionId, command: payload.command });
+                    iframeRef.current?.contentWindow?.postMessage({
+                        type: 'zync:ssh:exec:response',
+                        payload: { requestId: payload.requestId, result }
+                    }, '*');
+                } catch (error) {
+                    iframeRef.current?.contentWindow?.postMessage({
+                        type: 'zync:ssh:exec:response',
+                        payload: { requestId: payload.requestId, error: String(error) }
+                    }, '*');
+                }
             }
         };
 
         window.addEventListener('message', handler);
-        return () => window.removeEventListener('message', handler);
+        return () => {
+            active = false;
+            window.removeEventListener('message', handler);
+        };
     }, [panelId, pluginId, connectionId]);
 
     // Inject the zync shim into the panel HTML
@@ -148,7 +182,11 @@ window.zync = {
                     const { type, payload } = event.data || {};
                     if (type === 'zync:ssh:exec:response' && payload.requestId === reqId) {
                         window.removeEventListener('message', listener);
-                        if (payload.error) reject(new Error(payload.error));
+                        if (payload.error) {
+                            const error = new Error(typeof payload.error === 'string' ? payload.error : payload.error.message);
+                            if (typeof payload.error === 'object') Object.assign(error, payload.error);
+                            reject(error);
+                        }
                         else resolve(payload.result);
                     }
                 };
@@ -173,7 +211,7 @@ window.zync = {
                 ref={iframeRef}
                 srcDoc={fullHtml}
                 onLoad={sendTheme}
-                sandbox="allow-scripts allow-same-origin allow-modals"
+                sandbox="allow-scripts allow-modals"
                 className="flex-1 w-full border-0 bg-transparent"
                 title={`Plugin Panel: ${panelId}`}
             />

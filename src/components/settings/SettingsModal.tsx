@@ -28,6 +28,7 @@ import { PluginTabContentSwitch } from './tabs/plugins/PluginTabContentSwitch';
 import { PluginsInstalledTab } from './tabs/plugins/PluginsInstalledTab';
 import { PluginsMarketplaceTab } from './tabs/plugins/PluginsMarketplaceTab';
 import { PluginsDeveloperTab, type LocalInstallAction } from './tabs/plugins/PluginsDeveloperTab';
+import { useVaultStore } from '../../vault/useVaultStore';
 
 
 interface SettingsModalProps {
@@ -39,6 +40,7 @@ type Tab = 'general' | 'terminal' | 'appearance' | 'fileManager' | 'shortcuts' |
 const BUILTIN_ICON_THEME_COUNT = 2; // VSCode Icons + Lucide
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+    const requestVaultUnlock = useVaultStore(state => state.requestUnlock);
     const settings = useAppStore(state => state.settings);
     const settingsFocusTab = useAppStore(state => state.settingsFocusTab);
     const clearSettingsFocusTab = useAppStore(state => state.clearSettingsFocusTab);
@@ -147,6 +149,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         
         try {
             setApiKeyError(null);
+            if (!(await requestVaultUnlock())) {
+                throw new Error('Vault must be unlocked to save API keys.');
+            }
             await invoke('save_secret', { key: provider, value: key });
             setApiKeyPersistedValue(key.trim());
             setApiKeySaved(true);
@@ -258,15 +263,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             return;
         }
 
-        invoke<string | null>('get_secret', { key: currentProvider })
-            .then(key => {
-                const loadedKey = key || '';
-                setApiKeyDraft(loadedKey);
-                setApiKeyPersistedValue(loadedKey.trim());
-                setApiKeySaved(false);
-            })
-            .catch(err => console.error('Failed to load secret:', err));
-    }, [currentProvider, activeTab]);
+        void (async () => {
+            if (!(await requestVaultUnlock())) return;
+            const key = await invoke<string | null>('get_secret', { key: currentProvider });
+            const loadedKey = key || '';
+            setApiKeyDraft(loadedKey);
+            setApiKeyPersistedValue(loadedKey.trim());
+            setApiKeySaved(false);
+        })().catch(err => console.error('Failed to load secret:', err));
+    }, [currentProvider, activeTab, requestVaultUnlock]);
 
     useEffect(() => {
         setTerminalFontDraft(settings.terminal.fontFamily || '');

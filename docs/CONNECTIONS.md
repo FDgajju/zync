@@ -35,7 +35,7 @@ Zync hosts are lightweight records. **Secrets should not live on the host** when
 | Private key **paste → managed file** | Shipped | PEM written to `{dataDir}/keys/`; path on host |
 | Paste / import key → vault | Shipped | Encrypted in `vault.redb` (+ optional key passphrase) |
 | Existing vault credential | Shipped | Vault item via `authRef` |
-| System SSH agent | Not shipped | — (virtual agent exists only for jump forwarding) |
+| SSH agent forwarding | Shipped | Off by default; one explicitly selected key per connection; every signature requires consent |
 
 ---
 
@@ -91,7 +91,7 @@ For **Remember this key on this device**, the renderer never reads the remembere
 
 The add/edit form and connect-time prompt share the same retention control. Passphrase fields include show/hide and Caps Lock feedback. Connect-time Vault selection verifies the passphrase, unlocks Vault if needed, creates a uniquely named credential, updates the affected host (including a jump host), and resumes the original connection. Failed host persistence rolls back the newly created Vault item when possible.
 
-Zync’s “agent” in `ssh.rs` is a **virtual agent for ProxyJump key forwarding** after Zync has loaded a key — not “use keys already in the OS ssh-agent.”
+SSH agent forwarding is configured per saved connection under **Advanced**. The user selects one private-key connection; Zync exposes only that public key to the remote host. Every valid SSH user-auth signature request prompts for **Allow once**, **Allow for connection**, or **Deny**. Consent expires when the SSH connection closes, unanswered prompts fail after 30 seconds, and arbitrary signing payloads are rejected. Zync cannot verify the final destination behind the connected host, so the prompt states that limitation. ProxyJump still authenticates each hop directly from that hop's configured credential.
 
 ---
 

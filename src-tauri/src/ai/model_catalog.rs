@@ -1,9 +1,6 @@
-use tauri::AppHandle;
+use super::{providers, AiConfig};
 
-use super::{providers, read_ai_config, AiConfig};
-
-pub async fn get_provider_models(app: &AppHandle) -> Result<Vec<String>, String> {
-    let config = read_ai_config(app);
+pub async fn get_provider_models(config: &AiConfig) -> Result<Vec<String>, String> {
     match config.provider.as_str() {
         "ollama" => get_ollama_models_internal(&config).await,
         "gemini" => get_gemini_models(&config).await,
@@ -78,7 +75,6 @@ async fn get_claude_models(config: &AiConfig) -> Result<Vec<String>, String> {
     providers::claude::get_models(config).await
 }
 
-pub async fn get_ollama_models(app: &AppHandle) -> Result<Vec<String>, String> {
-    let config = read_ai_config(app);
-    get_ollama_models_internal(&config).await
+pub async fn get_ollama_models(config: &AiConfig) -> Result<Vec<String>, String> {
+    get_ollama_models_internal(config).await
 }

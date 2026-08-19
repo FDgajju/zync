@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
@@ -7,7 +7,7 @@ import { OSIcon } from '../icons/OSIcon';
 import { useAppStore, Connection } from '../../store/useAppStore';
 import { open } from '@tauri-apps/plugin-dialog';
 import { cn } from '../../lib/utils';
-import { ShieldCheck, CheckCircle2, AlertCircle, Loader2, FileText, Laptop, Files, ChevronDown, ChevronRight, Shield, KeyRound } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, AlertCircle, Loader2, FileText, Laptop, Files, ChevronDown, ChevronRight, Shield, KeyRound, Forward } from 'lucide-react';
 import {
     deleteEphemeralKeyIpc,
     forgetKeyPassphraseIpc,
@@ -21,8 +21,11 @@ import {
     buildConnectionSavePayload,
     buildConnectionTestPayload,
     canSaveInspectedPrivateKey,
+    connectionHasForwardableKey,
+    SELF_AGENT_FORWARDING_KEY,
     shouldAutoConnectOnOpenTab,
 } from '../../features/connections/domain';
+import { Toggle } from '../settings/common/Toggle';
 import {
     importConnectionsFromFileIpc,
     type ConnectionExchangeImportFormat,
@@ -44,6 +47,7 @@ import {
 } from '../connections/KeyPassphraseRetentionOptions';
 import { KeyPassphraseInput } from '../connections/KeyPassphraseInput';
 import type { KeyPassphraseRetention } from '../../features/connections/application/keyPassphrasePrompt';
+import { connectWithHostKeyVerification } from '../../features/connections/application/hostKeyVerification';
 
 const ImportSshModal = lazy(async () => {
     const module = await import('./ImportSshModal');
@@ -70,6 +74,8 @@ const THEMES = [
     { id: 'orange', label: 'Stg', color: 'bg-orange-500/20 border-orange-500' },
     { id: 'purple', label: 'App', color: 'bg-purple-500/20 border-purple-500' },
 ];
+
+const PICK_AGENT_FORWARDING_KEY = '$pick-agent-forwarding-key';
 
 function PastedKeyTextarea({
     value,
@@ -149,6 +155,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
     const importConnections = useAppStore(state => state.importConnections);
     const saveTunnel = useAppStore(state => state.saveTunnel);
     const showToast = useAppStore(state => state.showToast);
+    const showConfirmDialog = useAppStore(state => state.showConfirmDialog);
     const openTab = useAppStore(state => state.openTab);
     const requestVaultUnlock = useVaultStore(state => state.requestUnlock);
     const [keyPassphraseRetention, setKeyPassphraseRetention] = useState<KeyPassphraseRetention>('once');
@@ -215,6 +222,21 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
     const lastImportPlaintextCountRef = useRef(0);
     const vaultNeedsMaterialize = authMethod === 'vault'
         && (vaultInputMode === 'paste' || vaultInputMode === 'import');
+    const selfCanForwardKey = authMethod === 'key'
+        || (authMethod === 'vault'
+            && (vaultNeedsMaterialize || formData.authRef?.itemKind === 'ssh-private-key'));
+    const forwardableConnections = useMemo(
+        () => connections.filter(connection => (
+            connection.id !== activeEditingConnectionId && connectionHasForwardableKey(connection)
+        )),
+        [activeEditingConnectionId, connections],
+    );
+    const needsForwardingKeyPick = formData.agentForwardingKeyConnectionId === PICK_AGENT_FORWARDING_KEY;
+    const selectedForwardingKeyAvailable = !formData.agentForwardingKeyConnectionId
+        || needsForwardingKeyPick
+        || (formData.agentForwardingKeyConnectionId === SELF_AGENT_FORWARDING_KEY
+            ? selfCanForwardKey
+            : forwardableConnections.some(connection => connection.id === formData.agentForwardingKeyConnectionId));
 
     const localKeySource = authMethod === 'key'
         ? keyInputMode === 'file'
@@ -267,6 +289,21 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
     const vaultAvailable = vaultStatus?.status === 'unlocked' || vaultStatus?.status === 'locked';
 
     useEffect(() => {
+        const selected = formData.agentForwardingKeyConnectionId;
+        if (!selected || needsForwardingKeyPick || selectedForwardingKeyAvailable) return;
+        setFormData(previous => ({
+            ...previous,
+            agentForwardingKeyConnectionId: undefined,
+        }));
+    }, [
+        formData.agentForwardingKeyConnectionId,
+        forwardableConnections,
+        needsForwardingKeyPick,
+        selectedForwardingKeyAvailable,
+        setFormData,
+    ]);
+
+    useEffect(() => {
         if (authMethod !== 'key' || localKeyInspection.status !== 'valid' || localKeyInspection.encrypted) return;
         if (!formData.password) return;
         setFormData(previous => ({ ...previous, password: undefined }));
@@ -307,13 +344,17 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
         && !(authMethod === 'vault' && vaultNeedsMaterialize && !pastedKeyText.trim())
         && !(authMethod === 'key' && keyInputMode === 'paste' && !pastedKeyText.trim())
         && keyInspectionSaveReady
-        && localVaultPassphraseReady;
+        && localVaultPassphraseReady
+        && selectedForwardingKeyAvailable
+        && !needsForwardingKeyPick;
     const canTest = validation.ok
         && testStatus !== 'testing'
         && !(authMethod === 'key' && keyInputMode === 'paste' && !pastedKeyText.trim())
         && !(authMethod === 'vault' && vaultNeedsMaterialize && !pastedKeyText.trim())
         && !(authMethod === 'vault' && vaultInputMode === 'existing' && !formData.authRef?.itemId)
-        && keyInspectionReady;
+        && keyInspectionReady
+        && selectedForwardingKeyAvailable
+        && !needsForwardingKeyPick;
     const selectedIcon = formData.icon || 'Server';
     const compactIcons = ICONS.slice(0, 12);
     const visibleIcons = showAllIcons
@@ -523,6 +564,8 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
 
     const testDisabledReason = !keyInspectionReady
         ? 'Select a valid private key and verify its passphrase before testing.'
+        : needsForwardingKeyPick
+            ? 'Select the one private key this connection may forward.'
         : '';
 
     const handleTestConnection = async () => {
@@ -591,7 +634,11 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                 authMethod: testAuthMethod,
                 connections,
             });
-            await testConnectionIpc(config as ConnectionConfigPayload);
+            await connectWithHostKeyVerification(
+                config as ConnectionConfigPayload,
+                testConnectionIpc,
+                showConfirmDialog,
+            );
             setTestStatus('success');
             setTestMessage('Connection successful!');
         } catch (error: unknown) {
@@ -1343,13 +1390,14 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                 >
                                     <div>
                                         <h4 className="text-xs font-semibold uppercase tracking-wider text-app-muted">Advanced (Optional)</h4>
-                                        <p className="mt-1 text-[11px] text-app-muted">Jump host and power-user options.</p>
+                                        <p className="mt-1 text-[11px] text-app-muted">Jump host and agent forwarding.</p>
                                     </div>
                                     {isAdvancedOpen ? <ChevronDown size={14} className="text-app-muted" /> : <ChevronRight size={14} className="text-app-muted" />}
                                 </button>
                                 {isAdvancedOpen && (
-                                    <div className="px-4 pb-4">
-                                        <Select
+                                    <div className="space-y-4 px-4 pb-4">
+                                        <div>
+                                            <Select
                                             label="Jump Server (Bastion)"
                                             value={formData.jumpServerId || ''}
                                             onChange={(val) => setFormData({ ...formData, jumpServerId: val === '' ? undefined : val })}
@@ -1376,13 +1424,76 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                                 }))
                                             ]}
                                             placeholder="Select a Jump Server..."
-                                        />
-                                        <p className="text-[10px] text-app-muted/70 mt-1 pl-1">Route this connection through another SSH server.</p>
-                                        {jumpCycleWarning && (
-                                            <p className="text-[10px] text-amber-400/90 flex items-center gap-1 mt-1 pl-1">
-                                                <AlertCircle size={10} /> Jump chain creates a loop — this connection will not be reachable.
-                                            </p>
-                                        )}
+                                            />
+                                            <p className="text-[10px] text-app-muted/70 mt-1 pl-1">Route this connection through another SSH server.</p>
+                                            {jumpCycleWarning && (
+                                                <p className="text-[10px] text-amber-400/90 flex items-center gap-1 mt-1 pl-1">
+                                                    <AlertCircle size={10} /> Jump chain creates a loop — this connection will not be reachable.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="border-t border-app-border/70 pt-2">
+                                            <Toggle
+                                                label="Forward an SSH key"
+                                                description="Let this host request authentication with one selected key. Every signature asks first."
+                                                checked={Boolean(formData.agentForwardingKeyConnectionId)}
+                                                disabled={!selfCanForwardKey && forwardableConnections.length === 0}
+                                                onChange={enabled => setFormData(previous => ({
+                                                    ...previous,
+                                                    agentForwardingKeyConnectionId: enabled
+                                                        ? (selfCanForwardKey
+                                                            ? SELF_AGENT_FORWARDING_KEY
+                                                            : PICK_AGENT_FORWARDING_KEY)
+                                                        : undefined,
+                                                }))}
+                                            />
+                                            {formData.agentForwardingKeyConnectionId && (
+                                                <div className="mt-2 space-y-2 px-1">
+                                                    <Select
+                                                        label="Key to Forward"
+                                                        value={needsForwardingKeyPick ? '' : formData.agentForwardingKeyConnectionId}
+                                                        onChange={value => setFormData(previous => ({
+                                                            ...previous,
+                                                            agentForwardingKeyConnectionId: value,
+                                                        }))}
+                                                        portal
+                                                        options={[
+                                                            ...(selfCanForwardKey ? [{
+                                                                value: SELF_AGENT_FORWARDING_KEY,
+                                                                label: "This connection's authentication key",
+                                                                description: 'Use the private key selected above.',
+                                                                icon: (
+                                                                    <div className="flex h-6 w-6 items-center justify-center rounded-md border border-app-border bg-app-surface">
+                                                                        <KeyRound className="h-3.5 w-3.5" />
+                                                                    </div>
+                                                                ),
+                                                            }] : []),
+                                                            ...forwardableConnections.map(connection => ({
+                                                                value: connection.id,
+                                                                label: connection.name || connection.host,
+                                                                description: `${connection.username}@${connection.host}`,
+                                                                icon: (
+                                                                    <div className="flex h-6 w-6 items-center justify-center rounded-md border border-app-border bg-app-surface">
+                                                                        <Forward className="h-3.5 w-3.5" />
+                                                                    </div>
+                                                                ),
+                                                            })),
+                                                        ]}
+                                                        placeholder="Select one private key..."
+                                                    />
+                                                    <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-amber-400/90">
+                                                        <Shield size={11} className="mt-0.5 shrink-0" />
+                                                        The remote host can see this public key. Signing still requires your approval.
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {!selfCanForwardKey && forwardableConnections.length === 0 && (
+                                                <p className="px-4 pb-2 text-[10px] leading-relaxed text-app-muted">
+                                                    Save a private-key connection first, or choose private-key authentication above.
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </section>

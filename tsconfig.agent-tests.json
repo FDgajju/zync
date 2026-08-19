@@ -46,6 +46,7 @@
         "src/features/connections/application/connectionLifecycleService.ts",
         "src/features/connections/application/keyPassphraseRuntime.ts",
         "src/features/connections/application/keyPassphrasePrompt.ts",
+        "src/features/connections/application/hostKeyVerification.ts",
         "src/features/connections/application/connectionService.ts",
         "src/features/connections/application/tabService.ts",
         "src/features/connections/application/tunnelAutoStartService.ts",

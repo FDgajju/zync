@@ -21,13 +21,14 @@ mod types;
 pub(crate) mod util;
 
 pub use crate::utils::toon::{AiTranslateResponse, ChatMessage};
+pub(crate) use config::{delete_api_key, get_api_key, migrate_legacy_api_keys, save_api_key};
 pub use model_catalog::{get_ollama_models, get_provider_models};
 pub use translate::{check_ollama, translate, translate_stream};
 pub use types::{AgentRunRequest, AiConfig, AiStreamChunk, AiStreamDone, TerminalContext};
 
 /// Read AI config from settings.json.
-pub fn read_ai_config(app: &AppHandle) -> AiConfig {
-    config::read_ai_config(app)
+pub fn read_ai_config(app: &AppHandle, vault: &crate::vault::store::VaultService) -> AiConfig {
+    config::read_ai_config(app, vault)
 }
 
 pub(crate) use prompts::SYSTEM_PROMPT;

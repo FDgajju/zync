@@ -12,6 +12,7 @@ import { PluginProvider } from './context/PluginContext';
 import { GlobalConfirmDialog } from './components/ui/GlobalConfirmDialog';
 import { GlobalVaultUnlockModal } from './components/vault/GlobalVaultUnlockModal';
 import { GlobalKeyPassphraseModal } from './components/connections/GlobalKeyPassphraseModal';
+import { GlobalAgentSignatureDialog } from './components/connections/GlobalAgentSignatureDialog';
 import * as RadixTooltip from '@radix-ui/react-tooltip';
 
 function AppContent() {
@@ -70,6 +71,7 @@ function App() {
                     <GlobalConfirmDialog />
                     <GlobalVaultUnlockModal />
                     <GlobalKeyPassphraseModal />
+                    <GlobalAgentSignatureDialog />
                 </RadixTooltip.Provider>
             </PluginProvider>
         </ErrorBoundary>

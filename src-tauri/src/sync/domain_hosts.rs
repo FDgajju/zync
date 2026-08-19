@@ -167,6 +167,7 @@ pub fn apply_hosts_restore_records(
             is_favorite: Some(record.is_favorite),
             pinned_features: None,
             auth_ref: record.auth_ref.clone(),
+            agent_forwarding_key_connection_id: None,
         });
         restored = restored.saturating_add(1);
     }
@@ -278,6 +279,7 @@ mod tests {
             is_favorite: None,
             pinned_features: None,
             auth_ref: None,
+            agent_forwarding_key_connection_id: None,
         }
     }
 

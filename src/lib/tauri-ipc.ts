@@ -138,6 +138,7 @@ const ipcRenderer = {
       'ssh:connect': 'ssh_connect',
       'ssh:disconnect': 'ssh_disconnect',
       'ssh:transportLost': 'ssh_transport_lost',
+      'ssh:agentSignatureRespond': 'ssh_agent_signature_respond',
       'terminal:write': 'terminal_write',
       'terminal:resize': 'terminal_resize',
       'terminal:create': 'terminal_create',

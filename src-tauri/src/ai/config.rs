@@ -1,23 +1,116 @@
+use std::collections::BTreeMap;
+
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 use crate::ai::AiConfig;
 use crate::commands::read_effective_settings;
+use crate::vault::credential::primary_secret_value;
+use crate::vault::error::VaultError;
+use crate::vault::store::VaultService;
 
-const PROVIDERS: [&str; 5] = ["gemini", "openai", "claude", "groq", "mistral"];
+pub(crate) const PROVIDERS: [&str; 5] = ["gemini", "openai", "claude", "groq", "mistral"];
 
-fn merge_secret_keys(app: &AppHandle, mut config: AiConfig) -> AiConfig {
-    let mut merged_keys = config.keys.take().unwrap_or_default();
-    if let Ok(store) = app.store("secrets.json") {
-        for provider in PROVIDERS {
-            if let Some(value) = store
-                .get(provider)
-                .and_then(|v| v.as_str().map(|s| s.to_string()))
-            {
-                if !value.is_empty() {
-                    merged_keys.insert(provider.to_string(), value);
-                }
-            }
+pub(crate) fn api_key_logical_id(provider: &str) -> String {
+    format!("zync.ai.api-key.{provider}")
+}
+
+fn api_key_label(provider: &str) -> String {
+    if PROVIDERS.contains(&provider) {
+        format!("{} API key", provider.to_ascii_uppercase())
+    } else {
+        format!("{provider} secret")
+    }
+}
+
+pub(crate) fn get_api_key(
+    vault: &VaultService,
+    provider: &str,
+) -> Result<Option<String>, VaultError> {
+    match vault.item_get_by_logical_id(&api_key_logical_id(provider)) {
+        Ok(record) => Ok(primary_secret_value(&record).map(str::to_string)),
+        Err(VaultError::RecordNotFound(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+pub(crate) fn save_api_key(
+    vault: &VaultService,
+    provider: &str,
+    value: &str,
+) -> Result<(), VaultError> {
+    let values = BTreeMap::from([("token".to_string(), value.to_string())]);
+    match vault.item_get_by_logical_id(&api_key_logical_id(provider)) {
+        Ok(record) => {
+            vault.item_update_with_secret_values(
+                &record.id,
+                &api_key_label(provider),
+                "api-token",
+                &values,
+                None,
+                None,
+            )?;
+        }
+        Err(VaultError::RecordNotFound(_)) => {
+            vault.item_create_with_secret_values(
+                &api_key_label(provider),
+                "api-token",
+                &values,
+                None,
+                Some(&api_key_logical_id(provider)),
+            )?;
+        }
+        Err(error) => return Err(error),
+    }
+    Ok(())
+}
+
+pub(crate) fn delete_api_key(vault: &VaultService, provider: &str) -> Result<(), VaultError> {
+    match vault.item_get_by_logical_id(&api_key_logical_id(provider)) {
+        Ok(record) => vault.item_delete(&record.id),
+        Err(VaultError::RecordNotFound(_)) => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+pub(crate) fn migrate_legacy_api_keys(app: &AppHandle, vault: &VaultService) -> Result<(), String> {
+    let store = app
+        .store("secrets.json")
+        .map_err(|error| error.to_string())?;
+    let mut changed = false;
+    let legacy = store
+        .entries()
+        .into_iter()
+        .filter_map(|(key, value)| {
+            value
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .map(|value| (key.clone(), value.to_string()))
+        })
+        .collect::<Vec<_>>();
+    for (key, value) in legacy {
+        if get_api_key(vault, &key)
+            .map_err(|error| error.to_string())?
+            .is_none()
+        {
+            save_api_key(vault, &key, &value).map_err(|error| error.to_string())?;
+        }
+        store.delete(&key);
+        changed = true;
+    }
+    if changed {
+        store.save().map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn merge_secret_keys(vault: &VaultService, mut config: AiConfig) -> AiConfig {
+    // Never trust settings.json as a secret source; keys only come from the vault.
+    let mut merged_keys = std::collections::HashMap::new();
+    config.keys = None;
+    for provider in PROVIDERS {
+        if let Ok(Some(value)) = get_api_key(vault, provider) {
+            merged_keys.insert(provider.to_string(), value);
         }
     }
     config.keys = if merged_keys.is_empty() {
@@ -32,12 +125,12 @@ fn default_ai_config() -> AiConfig {
     AiConfig::default()
 }
 
-pub fn read_ai_config(app: &AppHandle) -> AiConfig {
+pub fn read_ai_config(app: &AppHandle, vault: &VaultService) -> AiConfig {
     match read_effective_settings(app) {
         Ok(settings) => {
             if let Some(ai) = settings.get("ai") {
                 match serde_json::from_value::<AiConfig>(ai.clone()) {
-                    Ok(config) => return merge_secret_keys(app, config),
+                    Ok(config) => return merge_secret_keys(vault, config),
                     Err(e) => {
                         // Soft-parse: fill missing fields from defaults instead of
                         // throwing away a valid provider selection (e.g. mistral without `enabled`).
@@ -64,7 +157,7 @@ pub fn read_ai_config(app: &AppHandle) -> AiConfig {
                             (_, overlay) => overlay,
                         };
                         if let Ok(config) = serde_json::from_value::<AiConfig>(merged) {
-                            return merge_secret_keys(app, config);
+                            return merge_secret_keys(vault, config);
                         }
                         #[cfg(debug_assertions)]
                         eprintln!(
@@ -83,5 +176,33 @@ pub fn read_ai_config(app: &AppHandle) -> AiConfig {
         Err(_) => {}
     }
 
-    merge_secret_keys(app, default_ai_config())
+    merge_secret_keys(vault, default_ai_config())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_keys_are_encrypted_in_the_vault_file() {
+        let dir = std::env::temp_dir().join(format!("zync-ai-key-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test directory");
+        let mut vault = VaultService::new(dir.clone());
+        vault
+            .initialize("test-passphrase", false)
+            .expect("initialize vault");
+
+        let secret = "sk-plaintext-must-not-appear";
+        save_api_key(&vault, "openai", secret).expect("save api key");
+        assert_eq!(
+            get_api_key(&vault, "openai").unwrap().as_deref(),
+            Some(secret)
+        );
+        drop(vault);
+        let bytes = std::fs::read(dir.join("vault.redb")).expect("read vault file");
+        assert!(!bytes
+            .windows(secret.len())
+            .any(|window| window == secret.as_bytes()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

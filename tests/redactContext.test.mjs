@@ -56,6 +56,43 @@ MIIEowIBAAKCAQEA2a2rwplBQLF29amygykEMmYz0+Kcj3bKBp29bNM
   assert.ok(result.includes('[REDACTED_PRIVATE_KEY]'));
 });
 
+runTest('redacts realistic terminal secrets', () => {
+  const cases = [
+    ['sshpass password', 'sshpass -p hunter2 ssh root@prod', 'hunter2'],
+    ['mysql attached password', 'mysql -uroot -pS3cr3tP@ss', 'S3cr3tP@ss'],
+    ['PGPASSWORD', 'export PGPASSWORD=SuperSecret123', 'SuperSecret123'],
+    ['MYSQL_PWD', 'MYSQL_PWD=abc123', 'abc123'],
+    ['passwd label', 'passwd: MyPlainTextPass', 'MyPlainTextPass'],
+    ['Google API key', 'AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'AIzaSy'],
+    ['Basic authorization', 'Authorization: Basic YWRtaW46aHVudGVyMg==', 'YWRtaW46'],
+    ['bare JWT', 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk', 'eyJhbGci'],
+    ['fine-grained GitHub PAT', 'github_pat_11ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 'github_pat_'],
+    ['AWS secret access key', 'aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'wJalrXUt'],
+    ['URL password', 'https://admin:hunter2@git.example.com/repo.git', 'hunter2'],
+    ['shadow hash', 'root:$6$salt$abcdefghijklmnopqrstuvwxyz0123456789:19793:0:99999:7:::', '$6$salt$'],
+    ['quoted DB password', 'DB_PASSWORD="p@ss word"', 'p@ss word'],
+    ['value after label', 'client_secret:\nnext-line-secret', 'next-line-secret'],
+  ];
+
+  for (const [name, input, leakedValue] of cases) {
+    const result = redactSensitiveOutput(input);
+    assert.ok(!result.includes(leakedValue), `${name} leaked`);
+  }
+});
+
+runTest('redacts a PEM key after its BEGIN line scrolls out of the 20-line window', () => {
+  const body = Array.from({ length: 24 }, (_, index) =>
+    `MIIEowIBAAKCAQEA${String(index).padStart(2, '0')}abcdefghijklmnopqrstuvwxyz0123456789AB`
+  );
+  const pem = ['-----BEGIN RSA PRIVATE KEY-----', ...body, '-----END RSA PRIVATE KEY-----'];
+  const capturedWindow = pem.slice(-20).join('\n');
+  assert.ok(!capturedWindow.includes('BEGIN RSA PRIVATE KEY'));
+
+  const result = redactSensitiveOutput(capturedWindow);
+  assert.ok(!result.includes('MIIEowIBAAKCAQEA'), 'windowed PEM key content leaked');
+  assert.ok(result.includes('[REDACTED_PRIVATE_KEY]'));
+});
+
 runTest('redacts internal IPv4 addresses', () => {
   const result = redactSensitiveOutput('Connect to 192.168.1.100 on port 22');
   assert.ok(!result.includes('192.168.1.100'), 'internal IP leaked');
