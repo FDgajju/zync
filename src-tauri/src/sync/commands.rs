@@ -1249,6 +1249,12 @@ fn parse_remote_sync_record(
     if logical_id.is_empty() {
         return Err("[sync_logical_id_missing] Provider record missing logical id".to_string());
     }
+    if crate::ai::is_local_only_credential_logical_id(&logical_id) {
+        return Err(
+            "[sync_local_only_credential] AI provider credentials are local-only and cannot be restored from sync."
+                .to_string(),
+        );
+    }
 
     let envelope = decode_sync_envelope(&encrypted)?;
     let expected_aad = credential_aad(expected_collection_id, &logical_id, encrypted.revision);
@@ -1275,6 +1281,12 @@ fn build_credential_provider_record(
     record: &PlaintextRecord,
 ) -> Result<(String, ProviderUploadRecord), String> {
     let logical_id = VaultService::record_logical_id(record);
+    if crate::ai::is_local_only_credential_logical_id(&logical_id) {
+        return Err(
+            "[sync_local_only_credential] AI provider credentials are local-only and cannot be synced."
+                .to_string(),
+        );
+    }
     let plaintext = SyncCredentialPlaintextV1 {
         logical_id: logical_id.clone(),
         kind: record.kind.clone(),
@@ -1318,6 +1330,10 @@ fn build_credential_provider_record(
             payload,
         },
     ))
+}
+
+fn credential_is_syncable(record: &PlaintextRecord) -> bool {
+    !crate::ai::is_local_only_credential_logical_id(&VaultService::record_logical_id(record))
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -3526,7 +3542,7 @@ pub async fn sync_upload_credentials(
     let collection_key = load_collection_key(&manifest).map_err(|e| sync_error_to_string(&e))?;
     let secret_key = SecretKey::from_bytes(collection_key);
 
-    let records = {
+    let records: Vec<PlaintextRecord> = {
         let mut svc = vault.lock().await;
         match svc
             .status()
@@ -3547,6 +3563,9 @@ pub async fn sync_upload_credentials(
         }
         svc.item_list()
             .map_err(|e| format!("[vault_list_failed] {e}"))?
+            .into_iter()
+            .filter(credential_is_syncable)
+            .collect()
     };
 
     let mut upload_records = Vec::with_capacity(records.len());
@@ -4258,6 +4277,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_remote_sync_record_rejects_local_only_ai_credentials() {
+        let secret_key = SecretKey::from_bytes([7u8; 32]);
+        let logical_id = "zync.ai.api-key.openai";
+        let plaintext = remote_record(logical_id, 1, 10, "sk-malicious", false);
+        let plaintext_bytes = serde_json::to_vec(&plaintext).expect("serialize plaintext");
+        let aad = credential_aad("collection-1", logical_id, 1);
+        let envelope = encrypt_record(&secret_key, &plaintext_bytes, aad.as_bytes())
+            .expect("encrypt remote record");
+        let encrypted = SyncCredentialEncryptedV1 {
+            version: 1,
+            provider: "google".to_string(),
+            sync_collection_id: "collection-1".to_string(),
+            logical_id: logical_id.to_string(),
+            revision: 1,
+            updated_at: 10,
+            aad,
+            nonce: base64::engine::general_purpose::STANDARD.encode(envelope.nonce),
+            ciphertext: base64::engine::general_purpose::STANDARD.encode(envelope.ciphertext),
+        };
+        let payload = serde_json::to_vec(&encrypted).expect("serialize encrypted record");
+
+        let error = parse_remote_sync_record(&payload, "collection-1", &secret_key)
+            .expect_err("local-only AI credentials must not restore");
+        assert!(error.contains("sync_local_only_credential"));
+    }
+
+    #[test]
     fn decide_restore_action_prefers_remote_newer_revision() {
         let local = local_record("cred-1", 2, 200, "local");
         let remote = remote_record("cred-1", 3, 100, "remote", false);
@@ -4452,6 +4498,55 @@ mod tests {
         );
         assert_eq!(parsed.revision, 7);
         assert_eq!(parsed.updated_at, 11);
+    }
+
+    #[test]
+    fn build_credential_provider_record_rejects_local_only_ai_keys() {
+        let manifest = SyncCollectionManifest {
+            version: 1,
+            provider: "google".to_string(),
+            sync_collection_id: "collection-1".to_string(),
+            key_policy_mode: SyncKeyPolicyMode::CustomPassphrase,
+            key_wrap_salt: None,
+            key_wrap_nonce: None,
+            key_wrap_ciphertext: None,
+            recovery_key_wrap_salt: None,
+            recovery_key_wrap_nonce: None,
+            recovery_key_wrap_ciphertext: None,
+            key_cache_unlocked_at: None,
+            key_cache_ttl_secs: None,
+            has_recovery_key: false,
+            created_at: 1,
+            updated_at: 1,
+        };
+        let secret_key = SecretKey::from_bytes([9u8; 32]);
+        let record = local_record("zync.ai.api-key.openai", 1, 1, "sk-local-only");
+
+        let error = build_credential_provider_record(
+            SyncProviderKind::Google,
+            &manifest,
+            &secret_key,
+            &record,
+        )
+        .expect_err("AI provider keys must remain local-only");
+
+        assert!(error.contains("sync_local_only_credential"));
+    }
+
+    #[test]
+    fn bulk_credential_filter_excludes_local_only_ai_keys() {
+        let records = vec![
+            local_record("zync.ai.api-key.openai", 1, 1, "sk-local-only"),
+            local_record("credential-exportable", 1, 1, "private-key"),
+        ];
+
+        let syncable = records
+            .iter()
+            .filter(|record| credential_is_syncable(record))
+            .map(VaultService::record_logical_id)
+            .collect::<Vec<_>>();
+
+        assert_eq!(syncable, vec!["credential-exportable"]);
     }
 
     #[test]

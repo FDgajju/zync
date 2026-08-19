@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 
 export interface ConfirmDialogOpts {
+    id: number;
     title: string;
     message: string;
     confirmText?: string;
@@ -12,9 +13,9 @@ export interface ConfirmDialogOpts {
 
 export interface UiSlice {
     confirmDialog: ConfirmDialogOpts | null;
-    showConfirmDialog: (opts: Omit<ConfirmDialogOpts, 'onConfirm' | 'onCancel'>) => Promise<boolean>;
+    confirmDialogQueue: ConfirmDialogOpts[];
+    showConfirmDialog: (opts: Omit<ConfirmDialogOpts, 'id' | 'onConfirm' | 'onCancel'>) => Promise<boolean>;
     closeConfirmDialog: () => void;
-    _resolveConfirm: ((value: boolean) => void) | null;
     editorDiagnosticsVisible: boolean;
     editorDiagnosticsCount: number;
     editorDiagnosticsSeverity: 'warning' | 'error' | null;
@@ -23,38 +24,42 @@ export interface UiSlice {
     clearEditorDiagnosticsSummary: () => void;
 }
 
+let nextConfirmDialogId = 0;
+
 export const createUiSlice: StateCreator<UiSlice, [], [], UiSlice> = (set, get) => ({
     confirmDialog: null,
-    _resolveConfirm: null,
+    confirmDialogQueue: [],
     editorDiagnosticsVisible: false,
     editorDiagnosticsCount: 0,
     editorDiagnosticsSeverity: null,
     showConfirmDialog: (opts) => {
         return new Promise((resolve) => {
-            // Unmount any previous if there was one
-            const { _resolveConfirm } = get();
-            if (_resolveConfirm) {
-                _resolveConfirm(false);
-            }
+            const id = ++nextConfirmDialogId;
+            const settle = (value: boolean) => {
+                if (get().confirmDialog?.id !== id) return;
+                const [nextDialog, ...remaining] = get().confirmDialogQueue;
+                set({
+                    confirmDialog: nextDialog ?? null,
+                    confirmDialogQueue: remaining,
+                });
+                resolve(value);
+            };
+            const dialog: ConfirmDialogOpts = {
+                ...opts,
+                id,
+                onConfirm: () => settle(true),
+                onCancel: () => settle(false),
+            };
 
-            set({
-                confirmDialog: {
-                    ...opts,
-                    onConfirm: () => {
-                        get()._resolveConfirm?.(true);
-                        get().closeConfirmDialog();
-                    },
-                    onCancel: () => {
-                        get()._resolveConfirm?.(false);
-                        get().closeConfirmDialog();
-                    }
-                },
-                _resolveConfirm: resolve,
+            set(state => state.confirmDialog ? {
+                confirmDialogQueue: [...state.confirmDialogQueue, dialog],
+            } : {
+                confirmDialog: dialog,
             });
         });
     },
     closeConfirmDialog: () => {
-        set({ confirmDialog: null, _resolveConfirm: null });
+        get().confirmDialog?.onCancel();
     },
     setEditorDiagnosticsVisible: (visible) => {
         set({ editorDiagnosticsVisible: visible });

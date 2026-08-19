@@ -160,7 +160,7 @@ export function ExportConnectionsModal({
                     </div>
                     <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2">
                         <p className="text-[11px] font-medium text-amber-300">
-                            Exported files can contain credentials. Keep them secure.
+                            Exports never include vault contents.
                         </p>
                         <label className="mt-1.5 flex items-center gap-2 text-[11px] text-amber-200">
                             <input

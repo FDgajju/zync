@@ -8,7 +8,24 @@ pub struct ConnectionConfig {
     pub port: u16,
     pub username: String,
     pub auth_method: AuthMethod,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_forwarding: Option<AgentForwardingConfig>,
     pub jump_host: Option<Box<ConnectionConfig>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_key_approval: Option<HostKeyApproval>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentForwardingConfig {
+    pub source_connection_id: String,
+    pub auth_method: AuthMethod,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostKeyApproval {
+    pub fingerprint: String,
+    pub replace: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +122,8 @@ pub struct SavedConnection {
     pub pinned_features: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_ref: Option<CredentialRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_forwarding_key_connection_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

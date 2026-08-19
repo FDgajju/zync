@@ -45,6 +45,7 @@ import {
     type ImportPlanItem,
 } from '../features/connections/domain';
 import { connectionErrorMessage } from '../features/connections/domain/errorSanitization';
+import { connectWithHostKeyVerification } from '../features/connections/application/hostKeyVerification';
 import { useVaultStore } from '../vault/useVaultStore';
 import { isVaultInUseError, VAULT_IN_USE_USER_MESSAGE } from '../vault/vaultLoading';
 import { isVaultLockedError } from '../vault/vaultUnlockPrompt';
@@ -442,6 +443,8 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             if (configResult.status === 'error') {
                 const message = configResult.reason === 'missing-auth'
                     ? `Connection "${conn.name}" has no authentication configured. Add a password, private key, or vault credential.`
+                    : configResult.reason === 'missing-agent-key'
+                        ? `Connection "${conn.name}" cannot forward its selected key because that key connection is missing or no longer uses a private key.`
                     : configResult.reason === 'jump-host-failure'
                         ? `Couldn't build connection config for "${conn.name}". Its jump host is missing on this device — keep the jump host from your sync provider (or restore the connection chain), then try again.`
                         : `Couldn't build connection config for "${conn.name}".`;
@@ -469,6 +472,14 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 ) {
                     legacyLocalKeyPassphraseIds.add(source.id);
                 }
+                if (config.agent_forwarding?.auth_method.type === 'PrivateKey') {
+                    const forwardedSource = connections.find(
+                        connection => connection.id === config.agent_forwarding?.source_connection_id,
+                    );
+                    if (forwardedSource?.privateKeyPath && forwardedSource.password && !forwardedSource.authRef) {
+                        legacyLocalKeyPassphraseIds.add(forwardedSource.id);
+                    }
+                }
                 if (config.jump_host) collectLegacyKeyPassphrases(config.jump_host, visited, depth + 1);
             };
             collectLegacyKeyPassphrases(fullConfig);
@@ -488,7 +499,11 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
 
             await prepareConnectKeyPassphrases(fullConfig);
 
-            const response = await connectIpc(fullConfig);
+            const response = await connectWithHostKeyVerification(
+                fullConfig,
+                connectIpc,
+                get().showConfirmDialog,
+            );
             markConnectionBackendLive(id);
 
             // Fetch home path after connection

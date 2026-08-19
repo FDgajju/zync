@@ -58,13 +58,13 @@ export function RotateCredentialModal({
           disabled={isLoading}
         />
 
-        {item?.kind === 'ssh-password' ? (
+        {item?.kind === 'ssh-password' || item?.kind === 'api-token' ? (
           <Input
-            label="New Password"
+            label={item.kind === 'api-token' ? 'New API Token' : 'New Password'}
             type="password"
             value={secret}
             onChange={(event) => onSecretChange(event.target.value)}
-            placeholder="Enter new password"
+            placeholder={item.kind === 'api-token' ? 'Enter new API token' : 'Enter new password'}
             disabled={isLoading}
           />
         ) : (

@@ -1,9 +1,15 @@
 import type { Connection } from './types.js';
+import {
+    buildAgentForwardingConfig,
+    buildForwardableAuthMethod,
+    type ConnectAgentForwardingConfig,
+} from './connectionConfig.js';
 import { normalizeFolderPath, normalizeTags, normalizeText, parsePort } from './normalization.js';
 
 export type ConnectionAuthMode = 'password' | 'key' | 'vault';
 
 export type ConnectionFormDraft = Partial<Connection>;
+export const SELF_AGENT_FORWARDING_KEY = '$self';
 
 export const canSaveInspectedPrivateKey = (
     status: 'idle' | 'checking' | 'valid' | 'passphraseRequired' | 'invalidPassphrase' | 'invalidKey' | 'unavailable',
@@ -20,7 +26,12 @@ interface ToBackendConfig {
         | { type: 'Password'; password: string }
         | { type: 'PrivateKey'; key_path: string; passphrase: string | null }
         | { type: 'VaultRef'; item_id: string; credential_id?: string };
+    agent_forwarding?: ConnectAgentForwardingConfig;
     jump_host: ToBackendConfig | null;
+    host_key_approval?: {
+        fingerprint: string;
+        replace: boolean;
+    };
 }
 
 type ConfigCandidate = Connection | ConnectionFormDraft;
@@ -128,11 +139,20 @@ const buildJumpChain = (
     const jumpConnection = connections.find((connection) => connection.id === jumpServerId);
     if (!jumpConnection) return null;
 
-    return {
+    const config: ToBackendConfig = {
         // Auth mode is ignored when `candidate` is an existing Connection (isForm=false).
         ...toBackendConfig(jumpConnection, {} as ConnectionFormDraft, 'password'),
         jump_host: buildJumpChain(connections, jumpConnection.jumpServerId, new Set(visited)),
     };
+    if (jumpConnection.agentForwardingKeyConnectionId) {
+        const forwarding = buildAgentForwardingConfig(
+            connections,
+            jumpConnection.agentForwardingKeyConnectionId,
+        );
+        if (!forwarding) throw new Error('The selected forwarded SSH key is unavailable.');
+        config.agent_forwarding = forwarding;
+    }
+    return config;
 };
 
 export const buildConnectionSavePayload = ({
@@ -155,8 +175,9 @@ export const buildConnectionSavePayload = ({
         throw new Error('No vault credential selected.');
     }
 
+    const id = editingConnectionId || crypto.randomUUID();
     return {
-        id: editingConnectionId || crypto.randomUUID(),
+        id,
         name,
         host,
         username,
@@ -167,6 +188,9 @@ export const buildConnectionSavePayload = ({
         authRef: authMethod === 'vault' ? formData.authRef : undefined,
         status: editingConnectionId ? (connections.find((c) => c.id === editingConnectionId)?.status || 'disconnected') : 'disconnected',
         jumpServerId: formData.jumpServerId,
+        agentForwardingKeyConnectionId: formData.agentForwardingKeyConnectionId === SELF_AGENT_FORWARDING_KEY
+            ? id
+            : formData.agentForwardingKeyConnectionId,
         icon: formData.icon,
         theme: formData.theme,
         folder: normalizeFolderPath(formData.folder || ''),
@@ -189,8 +213,24 @@ export const buildConnectionTestPayload = ({
         name: formData.name || formData.host,
     };
 
-    return {
+    const config: ToBackendConfig = {
         ...toBackendConfig(preparedForm, preparedForm, authMethod, formData.password, formData.privateKeyPath),
         jump_host: buildJumpChain(connections, formData.jumpServerId),
     };
+    const forwardingSource = formData.agentForwardingKeyConnectionId;
+    if (forwardingSource) {
+        if (forwardingSource === SELF_AGENT_FORWARDING_KEY) {
+            const forwardingAuth = buildForwardableAuthMethod(preparedForm as Connection);
+            if (!forwardingAuth) throw new Error('This connection does not have a private key to forward.');
+            config.agent_forwarding = {
+                source_connection_id: preparedForm.id || 'test-temp',
+                auth_method: forwardingAuth,
+            };
+        } else {
+            const forwarding = buildAgentForwardingConfig(connections, forwardingSource);
+            if (!forwarding) throw new Error('The selected forwarded SSH key is unavailable.');
+            config.agent_forwarding = forwarding;
+        }
+    }
+    return config;
 };

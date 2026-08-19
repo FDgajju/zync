@@ -68,7 +68,7 @@ When you add SSH hosts later, local and remote sessions share the same workspace
 | Where it lives | What that means |
 |----------------|-----------------|
 | **Your machine** | Hosts, tunnels, snippets, and settings are saved locally in your Zync data folder |
-| **Encrypted Vault** | Passwords and keys can stay in an on-device vault; only you hold the passphrase and recovery key |
+| **Encrypted Vault** | Passwords and keys can stay in an on-device vault; AI API keys are always stored there; only you hold the passphrase and recovery key |
 | **Your cloud account** | Optional sync backs up to **your** Google Drive (`drive.appdata`). Collections are encrypted before upload. Zync never keeps a copy in our infrastructure |
 
 No Zync account is required to use the app. Install it, work offline, unlock the vault when you need secrets, and turn on sync only if you want encrypted backup across your own devices.

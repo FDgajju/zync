@@ -5,7 +5,6 @@ import { AlertCircle, HelpCircle } from 'lucide-react';
 
 export function GlobalConfirmDialog() {
     const dialog = useAppStore(state => state.confirmDialog);
-    const closeDialog = useAppStore(state => state.closeConfirmDialog);
 
     if (!dialog) return null;
 
@@ -16,7 +15,6 @@ export function GlobalConfirmDialog() {
         if (!open) {
             // If closed via ESC or outside click, treat as cancel
             dialog.onCancel();
-            closeDialog();
         }
     };
 
@@ -32,19 +30,19 @@ export function GlobalConfirmDialog() {
                         "animate-in fade-in zoom-in-95 duration-200"
                     )}
                 >
-                    <div className="p-6">
-                        <div className="flex gap-4">
+                    <div className="p-6 flex">
+                        <div className="flex max-w-full gap-4">
                             <div className={cn(
                                 "shrink-0 w-10 h-10 rounded-full flex items-center justify-center",
-                                isDanger ? "bg-red-500/10 text-red-500" : "bg-[var(--color-app-accent)]/10 text-[var(--color-app-accent)]"
+                                isDanger ? "bg-red-500/10 text-red-500" : "bg-app-accent/10 text-app-accent"
                             )}>
                                 <Icon className="w-5 h-5" />
                             </div>
-                            <div className="flex-1 space-y-2 pt-1">
-                                <Dialog.Title className="text-lg font-semibold text-[var(--color-app-text)]">
+                            <div className="min-w-0 flex-1 space-y-2 pt-1">
+                                <Dialog.Title className="text-lg font-semibold text-app-text">
                                     {dialog.title}
                                 </Dialog.Title>
-                                <Dialog.Description className="text-sm text-[var(--color-app-muted)] leading-relaxed">
+                                <Dialog.Description className="wrap-break-word text-sm leading-relaxed text-app-muted">
                                     {dialog.message}
                                 </Dialog.Description>
                             </div>

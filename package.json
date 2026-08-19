@@ -31,6 +31,7 @@
     "test:connection-tab-service": "npm run compile:agent-tests && node tests/connectionTabService.test.mjs",
     "test:connection-lifecycle-service": "npm run compile:agent-tests && node tests/connectionLifecycleService.test.mjs",
     "test:key-passphrase-prompt": "npm run compile:agent-tests && node tests/keyPassphrasePrompt.test.mjs",
+    "test:host-key-verification": "npm run compile:agent-tests && node tests/hostKeyVerification.test.mjs",
     "test:tunnel-autostart-service": "npm run compile:agent-tests && node tests/tunnelAutoStartService.test.mjs",
     "test:tunnel-reconnect-service": "npm run compile:agent-tests && node tests/tunnelReconnectService.test.mjs",
     "test:vault-nav-state": "npm run compile:agent-tests && node tests/vaultNavState.test.mjs",

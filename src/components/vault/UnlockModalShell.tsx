@@ -21,6 +21,7 @@ interface UnlockModalShellProps<T extends string> {
   submitLabel: string;
   onSubmit: (event: React.FormEvent) => void;
   contentClassName?: string;
+  zIndexClassName?: string;
 }
 
 export function UnlockModalShell<T extends string>({
@@ -40,6 +41,7 @@ export function UnlockModalShell<T extends string>({
   submitLabel,
   onSubmit,
   contentClassName,
+  zIndexClassName = 'z-[15000]',
 }: UnlockModalShellProps<T>) {
   return (
     <Modal
@@ -49,6 +51,7 @@ export function UnlockModalShell<T extends string>({
       subtitle={subtitle}
       width="max-w-sm"
       contentClassName={contentClassName ?? 'min-h-[360px]'}
+      zIndexClassName={zIndexClassName}
     >
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="flex justify-center mb-2">

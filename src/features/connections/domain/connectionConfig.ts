@@ -23,6 +23,13 @@ export type ConnectAuthMethod =
     | ConnectAuthMethodPrivateKey
     | ConnectAuthMethodVaultRef;
 
+export type ForwardableConnectAuthMethod = ConnectAuthMethodPrivateKey | ConnectAuthMethodVaultRef;
+
+export interface ConnectAgentForwardingConfig {
+    source_connection_id: string;
+    auth_method: ForwardableConnectAuthMethod;
+}
+
 export interface ConnectConfig {
     id: string;
     name: string;
@@ -30,7 +37,12 @@ export interface ConnectConfig {
     port: number;
     username: string;
     auth_method: ConnectAuthMethod;
+    agent_forwarding?: ConnectAgentForwardingConfig;
     jump_host: ConnectConfig | null;
+    host_key_approval?: {
+        fingerprint: string;
+        replace: boolean;
+    };
 }
 
 type ConnectionWithLegacyAuthFields = Connection & {
@@ -58,6 +70,7 @@ const getConnectionPassword = (connection: ConnectionWithLegacyAuthFields): stri
 export type BuildConnectConfigErrorReason =
     | 'connection-not-found'
     | 'missing-auth'
+    | 'missing-agent-key'
     | 'jump-host-failure'
     | 'cycle'
     | 'depth-exceeded';
@@ -101,6 +114,45 @@ const buildAuthMethod = (connection: ConnectionWithLegacyAuthFields): BuildAuthM
         : { status: 'missing-auth' };
 };
 
+export const connectionHasForwardableKey = (connection: ConnectionWithLegacyAuthFields): boolean => {
+    const authRef = getConnectionAuthRef(connection);
+    return authRef?.itemKind === 'ssh-private-key' || Boolean(getConnectionPrivateKeyPath(connection));
+};
+
+export const buildForwardableAuthMethod = (
+    connection: ConnectionWithLegacyAuthFields,
+): ForwardableConnectAuthMethod | null => {
+    const authRef = getConnectionAuthRef(connection);
+    if (authRef?.itemKind === 'ssh-private-key' && authRef.itemId) {
+        return {
+            type: 'VaultRef',
+            item_id: authRef.itemId,
+            credential_id: authRef.credentialId,
+        };
+    }
+    const keyPath = getConnectionPrivateKeyPath(connection);
+    return keyPath
+        ? {
+            type: 'PrivateKey',
+            key_path: keyPath,
+            passphrase: getConnectionPassword(connection) ?? null,
+        }
+        : null;
+};
+
+export const buildAgentForwardingConfig = (
+    connections: Connection[],
+    sourceConnectionId: string | undefined,
+): ConnectAgentForwardingConfig | null => {
+    if (!sourceConnectionId) return null;
+    const source = connections.find(connection => connection.id === sourceConnectionId);
+    if (!source) return null;
+    const authMethod = buildForwardableAuthMethod(source);
+    return authMethod
+        ? { source_connection_id: source.id, auth_method: authMethod }
+        : null;
+};
+
 export const buildConnectConfigResult = (
     connections: Connection[],
     connectionId: string,
@@ -135,6 +187,17 @@ export const buildConnectConfigResult = (
         jump_host: null,
     };
 
+    if (connection.agentForwardingKeyConnectionId) {
+        const agentForwarding = buildAgentForwardingConfig(
+            connections,
+            connection.agentForwardingKeyConnectionId,
+        );
+        if (!agentForwarding) {
+            return { status: 'error', reason: 'missing-agent-key' };
+        }
+        config.agent_forwarding = agentForwarding;
+    }
+
     if (connection.jumpServerId) {
         const jumpResult = buildConnectConfigResult(
             connections,
@@ -161,6 +224,7 @@ export const buildConnectConfig = (
 
 export const connectConfigUsesVaultAuth = (config: ConnectConfig): boolean => {
     if (config.auth_method.type === 'VaultRef') return true;
+    if (config.agent_forwarding?.auth_method.type === 'VaultRef') return true;
     if (config.jump_host) return connectConfigUsesVaultAuth(config.jump_host);
     return false;
 };

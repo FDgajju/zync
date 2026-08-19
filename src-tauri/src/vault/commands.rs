@@ -51,6 +51,13 @@ pub async fn vault_status(vault: State<'_, Mutex<VaultService>>) -> VaultResult<
     vault.lock().await.status().map_err(Into::into)
 }
 
+fn migrate_legacy_api_keys(app: &tauri::AppHandle, vault: &VaultService) -> VaultResult<()> {
+    crate::ai::migrate_legacy_api_keys(app, vault).map_err(|message| VaultCommandError {
+        code: "migration_failed".into(),
+        message,
+    })
+}
+
 #[derive(Deserialize)]
 pub struct InitializeArgs {
     pub passphrase: SecretString,
@@ -60,14 +67,16 @@ pub struct InitializeArgs {
 
 #[tauri::command]
 pub async fn vault_initialize(
+    app: tauri::AppHandle,
     vault: State<'_, Mutex<VaultService>>,
     args: InitializeArgs,
 ) -> VaultResult<VaultStatus> {
-    vault
-        .lock()
-        .await
+    let mut vault = vault.lock().await;
+    let status = vault
         .initialize(args.passphrase.expose_secret(), args.remember_on_device)
-        .map_err(Into::into)
+        .map_err(VaultCommandError::from)?;
+    migrate_legacy_api_keys(&app, &vault)?;
+    Ok(status)
 }
 
 #[derive(Deserialize)]
@@ -79,14 +88,16 @@ pub struct UnlockArgs {
 
 #[tauri::command]
 pub async fn vault_unlock(
+    app: tauri::AppHandle,
     vault: State<'_, Mutex<VaultService>>,
     args: UnlockArgs,
 ) -> VaultResult<VaultStatus> {
-    vault
-        .lock()
-        .await
+    let mut vault = vault.lock().await;
+    let status = vault
         .unlock(args.passphrase.expose_secret(), args.remember_on_device)
-        .map_err(Into::into)
+        .map_err(VaultCommandError::from)?;
+    migrate_legacy_api_keys(&app, &vault)?;
+    Ok(status)
 }
 
 #[tauri::command]
@@ -371,14 +382,16 @@ pub struct UnlockWithRecoveryKeyArgs {
 
 #[tauri::command]
 pub async fn vault_unlock_with_recovery_key(
+    app: tauri::AppHandle,
     vault: State<'_, Mutex<VaultService>>,
     args: UnlockWithRecoveryKeyArgs,
 ) -> VaultResult<VaultStatus> {
-    vault
-        .lock()
-        .await
+    let mut vault = vault.lock().await;
+    let status = vault
         .unlock_with_recovery_key(args.recovery_key.expose_secret(), args.remember_on_device)
-        .map_err(Into::into)
+        .map_err(VaultCommandError::from)?;
+    migrate_legacy_api_keys(&app, &vault)?;
+    Ok(status)
 }
 
 // ── Export / Import commands ──────────────────────────────────────────────────

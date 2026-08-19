@@ -42,7 +42,6 @@ fn warn_data_dir_fallback(custom_dir: &Path, error: &std::io::Error, default_dir
         custom_dir, error, default_dir
     );
 }
-
 fn is_transient_data_dir_error(error: &std::io::Error) -> bool {
     matches!(
         error.kind(),
@@ -169,6 +168,12 @@ fn write_atomic_file(path: &std::path::Path, content: &str) -> Result<(), String
         .write(true)
         .open(&tmp_path)
         .map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    std::fs::set_permissions(
+        &tmp_path,
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .map_err(|e| e.to_string())?;
     use std::io::Write;
     tmp_file
         .write_all(content.as_bytes())
@@ -219,7 +224,6 @@ fn write_atomic_file(path: &std::path::Path, content: &str) -> Result<(), String
 
     Ok(())
 }
-
 /// Encode settings command errors in a stable, machine-readable shape.
 fn settings_command_error(code: &str, message: &str) -> String {
     serde_json::json!({
@@ -298,9 +302,9 @@ fn validate_settings_schema(settings: &Value) -> Result<(), String> {
             .as_object()
             .ok_or_else(|| "Invalid \"notifications\": expected object.".to_string())?;
         if let Some(position) = notifications_obj.get("position") {
-            let position = position
-                .as_str()
-                .ok_or_else(|| "Invalid \"notifications.position\": expected string.".to_string())?;
+            let position = position.as_str().ok_or_else(|| {
+                "Invalid \"notifications.position\": expected string.".to_string()
+            })?;
             if !matches!(
                 position,
                 "bottom-right" | "bottom-left" | "top-right" | "top-left"
@@ -406,6 +410,82 @@ fn persist_settings_json(app: &AppHandle, settings: &Value) -> Result<(), String
 
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
     write_atomic_file(&settings_path, &json)
+}
+
+pub(crate) fn persist_settings_after_secret_migration(
+    app: &AppHandle,
+    settings: &Value,
+) -> Result<(), String> {
+    ensure_object_settings(settings.clone())?;
+    validate_settings_schema(settings)?;
+    let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
+    let settings_path = get_native_settings_path(app)?;
+    if settings_path.exists() {
+        write_atomic_file(&get_last_known_good_settings_path(app)?, &json)?;
+    }
+    write_atomic_file(&settings_path, &json)
+}
+
+pub(crate) fn scrub_settings_backup_after_secret_migration(
+    app: &AppHandle,
+    providers: &[&str],
+) -> Result<(), String> {
+    scrub_settings_file_api_keys(&get_last_known_good_settings_path(app)?, providers)
+}
+
+fn scrub_settings_file_api_keys(path: &std::path::Path, providers: &[&str]) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut settings = read_settings_from_path(path)?;
+    let Some(keys) = settings
+        .get_mut("ai")
+        .and_then(|ai| ai.get_mut("keys"))
+        .and_then(Value::as_object_mut)
+    else {
+        return Ok(());
+    };
+    let mut changed = false;
+    for provider in providers {
+        changed |= keys.remove(*provider).is_some();
+    }
+    if changed {
+        let json = serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?;
+        write_atomic_file(path, &json)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod ai_settings_migration_tests {
+    use super::scrub_settings_file_api_keys;
+
+    #[test]
+    fn scrubs_known_ai_keys_from_backup_while_preserving_unknown_settings() {
+        let dir =
+            std::env::temp_dir().join(format!("zync-ai-settings-backup-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test directory");
+        let path = dir.join("settings.last-known-good.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "theme": "dark",
+                "ai": { "keys": { "openai": "plaintext", "custom": "preserve" } }
+            }))
+            .expect("serialize settings"),
+        )
+        .expect("write backup settings");
+
+        scrub_settings_file_api_keys(&path, &["openai", "claude"]).expect("scrub backup settings");
+        let scrubbed: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).expect("read scrubbed settings"))
+                .expect("parse scrubbed settings");
+        assert_eq!(scrubbed["theme"], "dark");
+        assert!(scrubbed["ai"]["keys"].get("openai").is_none());
+        assert_eq!(scrubbed["ai"]["keys"]["custom"], "preserve");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
 
 pub fn get_data_dir(app: &AppHandle) -> std::path::PathBuf {
@@ -522,11 +602,11 @@ impl AppState {
         spawn_session_failure_watcher(app_handle.clone(), failure_rx);
 
         Self {
-            app_handle,
+            app_handle: app_handle.clone(),
             connections: Arc::new(Mutex::new(HashMap::new())),
             pty_manager: Arc::new(PtyManager::new()),
             file_system: Arc::new(FileSystem::new()),
-            ssh_manager: Arc::new(SshManager::new()),
+            ssh_manager: Arc::new(SshManager::with_app(app_handle.clone())),
             tunnel_manager: Arc::new(TunnelManager::new(failure_tx)),
             snippets_manager: Arc::new(crate::snippets::SnippetsManager::new(data_dir.clone())),
             transfers: Arc::new(Mutex::new(HashMap::new())),
@@ -700,7 +780,12 @@ fn config_uses_vault_auth(config: &ConnectionConfig) -> bool {
     matches!(
         config.auth_method,
         crate::types::AuthMethod::VaultRef { .. }
-    ) || config
+    ) || config.agent_forwarding.as_ref().is_some_and(|forwarding| {
+        matches!(
+            forwarding.auth_method,
+            crate::types::AuthMethod::VaultRef { .. }
+        )
+    }) || config
         .jump_host
         .as_ref()
         .map(|jump| config_uses_vault_auth(jump.as_ref()))
@@ -722,60 +807,18 @@ fn resolve_vault_refs<'a>(
     Box<dyn std::future::Future<Output = Result<Vec<RelinkedVaultRefUpdate>, String>> + Send + 'a>,
 > {
     Box::pin(async move {
-        let mut relinked = Vec::new();
-        if let crate::types::AuthMethod::VaultRef {
-            item_id,
-            credential_id,
-        } = &config.auth_method
-        {
-            let item_id = item_id.clone();
-            let credential_id = credential_id.clone();
-            let svc = vault.lock().await;
-            let record = match svc.item_get(&item_id) {
-                Ok(record) => record,
-                Err(item_error) => {
-                    let Some(credential_id) = credential_id.as_deref() else {
-                        return Err(item_error.to_string());
-                    };
-                    let record = svc.item_get_by_logical_id(credential_id).map_err(|logical_error| {
-                            format!(
-                                "{item_error}; relink by credentialId '{credential_id}' failed: {logical_error}"
-                            )
-                        })?;
-                    relinked.push(RelinkedVaultRefUpdate {
-                        connection_id: config.id.clone(),
-                        credential_id: credential_id.to_string(),
-                        item_id: record.id.clone(),
-                        vault_id: svc.vault_id(),
-                    });
-                    record
-                }
-            };
-            drop(svc);
-            config.auth_method = match record.kind.as_str() {
-                "ssh-password" => crate::types::AuthMethod::Password {
-                    password: crate::vault::credential::primary_secret_value(&record)
-                        .ok_or_else(|| {
-                            "Vault password credential has no password value".to_string()
-                        })?
-                        .to_string(),
-                },
-                "ssh-private-key" => {
-                    let (key_data, passphrase) =
-                        crate::vault::credential::private_key_auth_values(&record).ok_or_else(
-                            || "Vault private-key credential has no private key value".to_string(),
-                        )?;
-                    crate::types::AuthMethod::PrivateKeyData {
-                        key_data: key_data.to_string(),
-                        passphrase: passphrase.map(str::to_string),
-                    }
-                }
-                k => {
-                    return Err(format!(
-                        "Vault item kind '{k}' is not supported for SSH auth"
-                    ))
-                }
-            };
+        let mut relinked =
+            resolve_auth_method(&config.id, &mut config.auth_method, vault, false).await?;
+        if let Some(forwarding) = config.agent_forwarding.as_mut() {
+            relinked.extend(
+                resolve_auth_method(
+                    &forwarding.source_connection_id,
+                    &mut forwarding.auth_method,
+                    vault,
+                    true,
+                )
+                .await?,
+            );
         }
         if let Some(jump) = config.jump_host.as_mut() {
             relinked.extend(resolve_vault_refs(jump.as_mut(), vault).await?);
@@ -840,11 +883,14 @@ fn persist_relinked_vault_refs(
 }
 
 fn inject_remembered_key_passphrases(config: &mut ConnectionConfig) -> Result<(), String> {
-    if let crate::types::AuthMethod::PrivateKey {
-        key_path,
-        passphrase,
-    } = &mut config.auth_method
-    {
+    fn inject_auth(auth_method: &mut crate::types::AuthMethod) {
+        let crate::types::AuthMethod::PrivateKey {
+            key_path,
+            passphrase,
+        } = auth_method
+        else {
+            return;
+        };
         if passphrase.is_none() {
             match crate::ssh_key_passphrase_cache::load(key_path) {
                 Ok(Some(remembered)) => {
@@ -858,6 +904,11 @@ fn inject_remembered_key_passphrases(config: &mut ConnectionConfig) -> Result<()
                 }
             }
         }
+    }
+
+    inject_auth(&mut config.auth_method);
+    if let Some(forwarding) = config.agent_forwarding.as_mut() {
+        inject_auth(&mut forwarding.auth_method);
     }
     if let Some(jump) = config.jump_host.as_mut() {
         inject_remembered_key_passphrases(jump)?;
@@ -937,6 +988,93 @@ pub async fn ssh_connect(
     }
 }
 
+async fn resolve_auth_method(
+    connection_id: &str,
+    auth_method: &mut crate::types::AuthMethod,
+    vault: &tokio::sync::Mutex<crate::vault::store::VaultService>,
+    require_private_key: bool,
+) -> Result<Vec<RelinkedVaultRefUpdate>, String> {
+    let crate::types::AuthMethod::VaultRef {
+        item_id,
+        credential_id,
+    } = auth_method
+    else {
+        return Ok(Vec::new());
+    };
+    let item_id = item_id.clone();
+    let credential_id = credential_id.clone();
+    let svc = vault.lock().await;
+    let mut relinked = Vec::new();
+    let record = match svc.item_get(&item_id) {
+        Ok(record) => record,
+        Err(item_error) => {
+            let Some(credential_id) = credential_id.as_deref() else {
+                return Err(item_error.to_string());
+            };
+            let record = svc
+                .item_get_by_logical_id(credential_id)
+                .map_err(|logical_error| {
+                    format!(
+                        "{item_error}; relink by credentialId '{credential_id}' failed: {logical_error}"
+                    )
+                })?;
+            relinked.push(RelinkedVaultRefUpdate {
+                connection_id: connection_id.to_string(),
+                credential_id: credential_id.to_string(),
+                item_id: record.id.clone(),
+                vault_id: svc.vault_id(),
+            });
+            record
+        }
+    };
+    drop(svc);
+    *auth_method = match record.kind.as_str() {
+        "ssh-password" if !require_private_key => crate::types::AuthMethod::Password {
+            password: crate::vault::credential::primary_secret_value(&record)
+                .ok_or_else(|| "Vault password credential has no password value".to_string())?
+                .to_string(),
+        },
+        "ssh-private-key" => {
+            let (key_data, passphrase) = crate::vault::credential::private_key_auth_values(&record)
+                .ok_or_else(|| {
+                    "Vault private-key credential has no private key value".to_string()
+                })?;
+            crate::types::AuthMethod::PrivateKeyData {
+                key_data: key_data.to_string(),
+                passphrase: passphrase.map(str::to_string),
+            }
+        }
+        kind if require_private_key => {
+            return Err(format!(
+                "Vault item kind '{kind}' cannot be used for SSH agent forwarding"
+            ))
+        }
+        kind => {
+            return Err(format!(
+                "Vault item kind '{kind}' is not supported for SSH auth"
+            ))
+        }
+    };
+    Ok(relinked)
+}
+
+#[tauri::command]
+pub async fn ssh_agent_signature_respond(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+    request_id: String,
+    decision: String,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("SSH agent consent is only accepted from the main window".to_string());
+    }
+    state
+        .ssh_manager
+        .respond_agent_signature(&request_id, &decision)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub async fn ssh_test_connection(
     mut config: ConnectionConfig,
@@ -1014,26 +1152,49 @@ pub async fn get_system_info(app: AppHandle) -> Result<SystemInfo, String> {
 }
 
 #[tauri::command]
-pub async fn save_secret(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
-    let store = app.store("secrets.json").map_err(|e| e.to_string())?;
-    store.set(key, serde_json::Value::String(value));
-    store.save().map_err(|e| e.to_string())?;
+pub async fn save_secret(
+    app: tauri::AppHandle,
+    vault: State<'_, Mutex<crate::vault::store::VaultService>>,
+    key: String,
+    value: SecretString,
+) -> Result<(), String> {
+    let vault = vault.lock().await;
+    if value.expose_secret().is_empty() {
+        crate::ai::delete_api_key(&vault, &key).map_err(|error| error.to_string())?;
+    } else {
+        crate::ai::save_api_key(&vault, &key, value.expose_secret())
+            .map_err(|error| error.to_string())?;
+    }
+    let store = app
+        .store("secrets.json")
+        .map_err(|error| error.to_string())?;
+    store.delete(&key);
+    store.save().map_err(|error| error.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_secret(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
-    let store = app.store("secrets.json").map_err(|e| e.to_string())?;
-    Ok(store
-        .get(key)
-        .and_then(|v| v.as_str().map(|s| s.to_string())))
+pub async fn get_secret(
+    vault: State<'_, Mutex<crate::vault::store::VaultService>>,
+    key: String,
+) -> Result<Option<String>, String> {
+    let vault = vault.lock().await;
+    crate::ai::get_api_key(&vault, &key).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_secret(app: tauri::AppHandle, key: String) -> Result<(), String> {
-    let store = app.store("secrets.json").map_err(|e| e.to_string())?;
-    store.delete(key);
-    store.save().map_err(|e| e.to_string())?;
+pub async fn delete_secret(
+    app: tauri::AppHandle,
+    vault: State<'_, Mutex<crate::vault::store::VaultService>>,
+    key: String,
+) -> Result<(), String> {
+    let vault = vault.lock().await;
+    crate::ai::delete_api_key(&vault, &key).map_err(|error| error.to_string())?;
+    let store = app
+        .store("secrets.json")
+        .map_err(|error| error.to_string())?;
+    store.delete(&key);
+    store.save().map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -2174,6 +2335,7 @@ fn parse_csv_connections(content: &str) -> Result<Vec<SavedConnection>, String> 
                 Some(pinned_features)
             },
             auth_ref: None,
+            agent_forwarding_key_connection_id: None,
         });
     }
 
@@ -2442,12 +2604,22 @@ pub async fn terminal_create(
         Ok(term_id)
     } else {
         let channel = open_ssh_channel_with_single_reconnect(&connection_id, &state).await?;
-        let remote_os = {
+        let (remote_os, forward_agent) = {
             let connections = state.connections.lock().await;
-            connections
-                .get(&connection_id)
-                .and_then(|c| c.detected_os.clone())
+            let connection = connections.get(&connection_id);
+            (
+                connection.and_then(|c| c.detected_os.clone()),
+                connection
+                    .and_then(|c| c.config.agent_forwarding.as_ref())
+                    .is_some(),
+            )
         };
+        if forward_agent {
+            channel
+                .agent_forward(true)
+                .await
+                .map_err(|error| format!("SSH agent forwarding request failed: {error}"))?;
+        }
 
         state
             .pty_manager
@@ -6731,23 +6903,25 @@ pub async fn sftp_download_as_zip(
 #[tauri::command]
 pub async fn ai_translate(
     app: AppHandle,
+    vault: State<'_, Mutex<crate::vault::store::VaultService>>,
     query: String,
     context: crate::ai::TerminalContext,
     request_id: String,
 ) -> Result<crate::ai::AiTranslateResponse, String> {
-    let config = require_enabled_ai(&app)?;
+    let config = require_enabled_ai(&app, &vault).await?;
     crate::ai::translate(&app, query, context, request_id, config).await
 }
 
 #[tauri::command]
 pub async fn ai_translate_stream(
     app: AppHandle,
+    vault: State<'_, Mutex<crate::vault::store::VaultService>>,
     query: String,
     context: crate::ai::TerminalContext,
     request_id: String,
     history: Vec<crate::ai::ChatMessage>,
 ) -> Result<(), String> {
-    let config = require_enabled_ai(&app)?;
+    let config = require_enabled_ai(&app, &vault).await?;
     tauri::async_runtime::spawn(crate::ai::translate_stream(
         app, query, context, request_id, config, history,
     ));
@@ -6755,8 +6929,11 @@ pub async fn ai_translate_stream(
 }
 
 #[tauri::command]
-pub async fn ai_check_ollama(app: AppHandle) -> Result<bool, String> {
-    let config = require_enabled_ai(&app)?;
+pub async fn ai_check_ollama(
+    app: AppHandle,
+    vault: State<'_, Mutex<crate::vault::store::VaultService>>,
+) -> Result<bool, String> {
+    let config = require_enabled_ai(&app, &vault).await?;
     let url = config
         .ollama_url
         .as_deref()
@@ -6765,15 +6942,21 @@ pub async fn ai_check_ollama(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn ai_get_ollama_models(app: AppHandle) -> Result<Vec<String>, String> {
-    let _ = require_enabled_ai(&app)?;
-    crate::ai::get_ollama_models(&app).await
+pub async fn ai_get_ollama_models(
+    app: AppHandle,
+    vault: State<'_, Mutex<crate::vault::store::VaultService>>,
+) -> Result<Vec<String>, String> {
+    let config = require_enabled_ai(&app, &vault).await?;
+    crate::ai::get_ollama_models(&config).await
 }
 
 #[tauri::command]
-pub async fn ai_get_provider_models(app: AppHandle) -> Result<Vec<String>, String> {
-    let _ = require_enabled_ai(&app)?;
-    crate::ai::get_provider_models(&app).await
+pub async fn ai_get_provider_models(
+    app: AppHandle,
+    vault: State<'_, Mutex<crate::vault::store::VaultService>>,
+) -> Result<Vec<String>, String> {
+    let config = require_enabled_ai(&app, &vault).await?;
+    crate::ai::get_provider_models(&config).await
 }
 
 // Agent v2 commands
@@ -6785,9 +6968,10 @@ pub async fn ai_get_provider_models(app: AppHandle) -> Result<Vec<String>, Strin
 pub async fn ai_agent_run(
     app: AppHandle,
     state: State<'_, AppState>,
+    vault: State<'_, Mutex<crate::vault::store::VaultService>>,
     request: crate::ai::AgentRunRequest,
 ) -> Result<(), String> {
-    let config = require_enabled_ai(&app)?;
+    let config = require_enabled_ai(&app, &vault).await?;
 
     let cancel = Arc::new(AtomicBool::new(false));
     let run_id = request.run_id.clone();
@@ -6812,8 +6996,12 @@ pub async fn ai_agent_run(
     Ok(())
 }
 
-fn require_enabled_ai(app: &AppHandle) -> Result<crate::ai::AiConfig, String> {
-    let config = crate::ai::read_ai_config(app);
+async fn require_enabled_ai(
+    app: &AppHandle,
+    vault: &State<'_, Mutex<crate::vault::store::VaultService>>,
+) -> Result<crate::ai::AiConfig, String> {
+    let vault = vault.lock().await;
+    let config = crate::ai::read_ai_config(app, &vault);
     if !config.enabled {
         return Err("AI is disabled in Settings -> AI.".to_string());
     }

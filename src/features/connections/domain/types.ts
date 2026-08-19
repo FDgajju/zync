@@ -30,6 +30,8 @@ export interface Connection {
     status: 'disconnected' | 'connecting' | 'connected' | 'error';
     lastError?: string;
     jumpServerId?: string;
+    /** Saved connection whose private key may be offered to this host's forwarded agent. */
+    agentForwardingKeyConnectionId?: string;
     lastConnected?: number;
     icon?: string;
     folder?: string;

@@ -417,7 +417,9 @@ export function EditorPluginFrame({
             onLoad={() => {
               postToFrame({ type: 'zync:editor:bootstrap', payload: {} });
             }}
-            sandbox="allow-scripts allow-same-origin"
+            // Keep plugin scripts running while giving srcDoc an opaque origin.
+            // In particular, this prevents untrusted editor code from reading parent.document.
+            sandbox="allow-scripts"
             className="h-full w-full border-0 bg-transparent"
             title={`Editor Provider: ${plugin.manifest.id}`}
           />

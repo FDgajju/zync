@@ -31,6 +31,7 @@ import {
     submitAskQuery,
 } from './sidebarSubmit';
 import { useAiSidebarResize } from './useAiSidebarResize';
+import { useVaultStore } from '../../vault/useVaultStore';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Types & Constants
@@ -116,6 +117,7 @@ interface AiSidebarProps {
 }
 
 export function AiSidebar({ connectionId, activeTermId: activeTermIdProp, onRunCommand }: AiSidebarProps) {
+    const requestVaultUnlock = useVaultStore(state => state.requestUnlock);
     const activeTermIdFromStore = useAppStore(
         state => (connectionId ? state.activeTerminalIds[connectionId] ?? null : null),
     );
@@ -354,6 +356,7 @@ export function AiSidebar({ connectionId, activeTermId: activeTermIdProp, onRunC
         // BYOK providers: fail fast in-chat with a Settings CTA instead of a raw network error.
         if (providerRequiresApiKey(activeProviderValue)) {
             try {
+                if (!(await requestVaultUnlock())) return;
                 const key = await getSavedProviderKey(activeProviderValue);
                 if (!key?.trim()) {
                     postSetupErrorInChat(trimmed, formatMissingApiKeyMessage(activeProviderValue));
@@ -386,6 +389,7 @@ export function AiSidebar({ connectionId, activeTermId: activeTermIdProp, onRunC
         postSetupErrorInChat,
         handleSubmitAgent,
         handleSubmitAsk,
+        requestVaultUnlock,
     ]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {

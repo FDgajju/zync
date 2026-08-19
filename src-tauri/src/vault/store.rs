@@ -67,6 +67,19 @@ impl VaultService {
         self.data_dir.join("vault.redb")
     }
 
+    #[cfg(unix)]
+    fn restrict_vault_permissions(path: &Path) -> Result<(), VaultError> {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(|error| {
+            VaultError::InvalidData(format!("failed to restrict vault permissions: {error}"))
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn restrict_vault_permissions(_path: &Path) -> Result<(), VaultError> {
+        Ok(())
+    }
+
     fn map_database_open_error(err: DatabaseError) -> VaultError {
         match err {
             DatabaseError::DatabaseAlreadyOpen => VaultError::InUseByAnotherInstance,
@@ -83,6 +96,7 @@ impl VaultService {
         }
         let path = self.vault_path();
         if path.exists() {
+            Self::restrict_vault_permissions(&path)?;
             let db = Database::open(&path).map_err(Self::map_database_open_error)?;
             // Ensure tables introduced after the initial schema exist.
             // This is a no-op for new databases (initialize() already creates them)
@@ -353,6 +367,7 @@ impl VaultService {
         };
 
         let db = Database::create(&path)?;
+        Self::restrict_vault_permissions(&path)?;
         let write_txn = db.begin_write()?;
         {
             let mut vm = write_txn.open_table(VAULT_META)?;
@@ -1402,16 +1417,88 @@ impl VaultService {
 
     // ── Export / Import ───────────────────────────────────────────────────────
 
-    /// Copies vault.redb to `dest_path` as an encrypted backup.
+    /// Copies vault.redb to `dest_path` as an encrypted backup, omitting local-only records.
     pub fn export_vault(&mut self, dest_path: &Path) -> Result<(), VaultError> {
+        self.try_open()?;
         let src = self.vault_path();
         if !src.exists() {
             return Err(VaultError::NotInitialized);
         }
+        if export_paths_equivalent(&src, dest_path)? {
+            return Err(VaultError::InvalidData(
+                "export destination resolves to the live vault".into(),
+            ));
+        }
+        let excluded = {
+            let vek = self.vek.as_ref().ok_or(VaultError::Locked)?;
+            let meta = self.meta.as_ref().ok_or(VaultError::Locked)?;
+            let db = self.db.as_ref().ok_or(VaultError::NotInitialized)?;
+            let read_txn = db.begin_read()?;
+            let records = read_txn.open_table(RECORDS)?;
+            let mut entries = Vec::new();
+            for entry in records.iter()? {
+                let (item_id, value): (redb::AccessGuard<&str>, redb::AccessGuard<&[u8]>) = entry?;
+                let stored: StoredEnvelope = serde_json::from_slice(value.value())?;
+                let authenticated = if stored.deleted {
+                    let mut last_live = stored.clone();
+                    last_live.revision = last_live.revision.checked_sub(1).ok_or_else(|| {
+                        VaultError::InvalidData("deleted record has invalid revision".into())
+                    })?;
+                    decrypt_stored(vek, &meta.vault_id, &last_live)?
+                } else {
+                    decrypt_stored(vek, &meta.vault_id, &stored)?
+                };
+                let logical_id = Self::record_logical_id(&authenticated);
+                if crate::ai::is_local_only_credential_logical_id(&logical_id) {
+                    entries.push((logical_id, item_id.value().to_string(), !stored.deleted));
+                }
+            }
+            entries
+        };
         // Temporarily drop the DB handle to release the redb exclusive file lock.
         let had_db = self.db.take().is_some();
-        let result = std::fs::copy(&src, dest_path)
-            .map_err(|e| VaultError::InvalidData(format!("export failed: {e}")));
+        let unique_suffix = Uuid::new_v4();
+        let tmp_path = dest_path.with_extension(format!("vault-export.tmp.{unique_suffix}"));
+        let result: Result<(), VaultError> = (|| {
+            std::fs::copy(&src, &tmp_path)
+                .map_err(|e| VaultError::InvalidData(format!("export failed: {e}")))?;
+            if !excluded.is_empty() {
+                let mut exported =
+                    Database::open(&tmp_path).map_err(Self::map_database_open_error)?;
+                let write_txn = exported.begin_write()?;
+                {
+                    let mut records = write_txn.open_table(RECORDS)?;
+                    let mut logical_ids = write_txn.open_table(LOGICAL_IDS)?;
+                    let mut history = write_txn.open_multimap_table(REVISION_HISTORY)?;
+                    for (logical_id, item_id, _) in &excluded {
+                        records.remove(item_id.as_str())?;
+                        logical_ids.remove(logical_id.as_str())?;
+                        drop(history.remove_all(item_id.as_str())?);
+                    }
+
+                    let mut meta_table = write_txn.open_table(VAULT_META)?;
+                    let meta_bytes = meta_table.get("meta")?.ok_or(VaultError::NotInitialized)?;
+                    let mut meta: VaultMeta = serde_json::from_slice(meta_bytes.value())?;
+                    let excluded_live = excluded.iter().filter(|(_, _, live)| *live).count() as u64;
+                    meta.live_records =
+                        Some(meta.live_records.unwrap_or(0).saturating_sub(excluded_live));
+                    meta.updated_at = Self::now_secs();
+                    drop(meta_bytes);
+                    meta_table.insert("meta", serde_json::to_vec(&meta)?.as_slice())?;
+                }
+                write_txn.commit()?;
+                while exported.compact().map_err(|error| {
+                    VaultError::InvalidData(format!("export compaction failed: {error}"))
+                })? {}
+                drop(exported);
+            }
+            Self::restrict_vault_permissions(&tmp_path)?;
+            replace_export_destination(&tmp_path, dest_path)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
+        }
         if had_db {
             let reopen_result = self.try_open();
             result?;
@@ -1696,6 +1783,78 @@ fn decrypt_stored(
     let mut record: PlaintextRecord = serde_json::from_slice(&plaintext)?;
     normalize_record_credential(&mut record);
     Ok(record)
+}
+
+fn replace_export_destination(tmp_path: &Path, dest_path: &Path) -> Result<(), VaultError> {
+    if !dest_path.exists() {
+        return std::fs::rename(tmp_path, dest_path)
+            .map_err(|error| VaultError::InvalidData(format!("export finalize failed: {error}")));
+    }
+    if !dest_path.is_file() {
+        return Err(VaultError::InvalidData(
+            "export destination is not a file".into(),
+        ));
+    }
+
+    let backup_path = dest_path.with_extension(format!("vault-export.bak.{}", Uuid::new_v4()));
+    std::fs::rename(dest_path, &backup_path)
+        .map_err(|error| VaultError::InvalidData(format!("export replace failed: {error}")))?;
+    match std::fs::rename(tmp_path, dest_path) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(backup_path);
+            Ok(())
+        }
+        Err(error) => {
+            let restore_error = std::fs::rename(&backup_path, dest_path).err();
+            Err(VaultError::InvalidData(format!(
+                "export finalize failed: {error}; destination restore: {}",
+                restore_error
+                    .map(|error| error.to_string())
+                    .unwrap_or_else(|| "succeeded".into())
+            )))
+        }
+    }
+}
+
+fn export_paths_equivalent(left: &Path, right: &Path) -> Result<bool, VaultError> {
+    #[cfg(unix)]
+    if right.exists() {
+        let left_meta = std::fs::metadata(left).map_err(|error| {
+            VaultError::InvalidData(format!("cannot inspect live vault path: {error}"))
+        })?;
+        let right_meta = std::fs::metadata(right).map_err(|error| {
+            VaultError::InvalidData(format!("cannot inspect export destination: {error}"))
+        })?;
+        use std::os::unix::fs::MetadataExt;
+        if left_meta.dev() == right_meta.dev() && left_meta.ino() == right_meta.ino() {
+            return Ok(true);
+        }
+    }
+
+    let canonical_left = std::fs::canonicalize(left).map_err(|error| {
+        VaultError::InvalidData(format!("cannot resolve live vault path: {error}"))
+    })?;
+    let canonical_right = if right.exists() {
+        std::fs::canonicalize(right)
+    } else {
+        let parent = right.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::canonicalize(parent).map(|parent| {
+            right
+                .file_name()
+                .map(|name| parent.join(name))
+                .unwrap_or(parent)
+        })
+    }
+    .map_err(|error| {
+        VaultError::InvalidData(format!("cannot resolve export destination: {error}"))
+    })?;
+
+    #[cfg(windows)]
+    return Ok(canonical_left
+        .to_string_lossy()
+        .eq_ignore_ascii_case(&canonical_right.to_string_lossy()));
+    #[cfg(not(windows))]
+    return Ok(canonical_left == canonical_right);
 }
 
 fn validate_vault_database(path: &Path) -> Result<(), VaultError> {
@@ -2342,5 +2501,170 @@ mod tests {
             status,
             VaultStatus::Unlocked { item_count: 1, .. }
         ));
+    }
+
+    #[test]
+    fn export_purges_rotated_deleted_and_recreated_local_only_records_and_history() {
+        let root = std::env::temp_dir().join(format!(
+            "zync-vault-local-only-export-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let source_dir = root.join("source");
+        let export_dir = root.join("export");
+        std::fs::create_dir_all(&source_dir).expect("create source directory");
+        std::fs::create_dir_all(&export_dir).expect("create export directory");
+        let passphrase = "correct horse battery staple";
+        let logical_id = "zync.ai.api-key.openai";
+        let token = |value: &str| BTreeMap::from([("token".into(), value.into())]);
+
+        let mut vault = VaultService::new(source_dir);
+        vault
+            .initialize(passphrase, false)
+            .expect("initialize vault");
+        let deleted = vault
+            .item_create_with_secret_values(
+                "OpenAI API key",
+                "api-token",
+                &token("first"),
+                None,
+                Some(logical_id),
+            )
+            .expect("create local-only record");
+        vault
+            .item_update_with_secret_values(
+                &deleted.id,
+                "OpenAI API key",
+                "api-token",
+                &token("rotated"),
+                None,
+                None,
+            )
+            .expect("rotate local-only record");
+        vault
+            .item_delete(&deleted.id)
+            .expect("delete local-only record");
+        let recreated = vault
+            .item_create_with_secret_values(
+                "OpenAI API key",
+                "api-token",
+                &token("recreated"),
+                None,
+                Some(logical_id),
+            )
+            .expect("recreate local-only record");
+        vault
+            .item_update_with_secret_values(
+                &recreated.id,
+                "OpenAI API key",
+                "api-token",
+                &token("recreated-rotated"),
+                None,
+                None,
+            )
+            .expect("rotate recreated record");
+        let retained = vault
+            .item_create("SSH password", "ssh-password", "keep-me", None)
+            .expect("create retained record");
+
+        vault
+            .export_vault(&export_dir.join("vault.redb"))
+            .expect("export vault");
+        let mut exported = VaultService::new(export_dir);
+        exported.unlock(passphrase, false).expect("unlock export");
+        assert_eq!(
+            exported
+                .item_list()
+                .expect("list exported records")
+                .into_iter()
+                .map(|record| record.id.clone())
+                .collect::<Vec<_>>(),
+            vec![retained.id.clone()]
+        );
+
+        let db = exported.db.as_ref().expect("export database");
+        let read_txn = db.begin_read().expect("read export database");
+        let records = read_txn.open_table(RECORDS).expect("records table");
+        let history = read_txn
+            .open_multimap_table(REVISION_HISTORY)
+            .expect("history table");
+        for item_id in [&deleted.id, &recreated.id] {
+            assert!(records
+                .get(item_id.as_str())
+                .expect("record lookup")
+                .is_none());
+            assert_eq!(
+                history
+                    .get(item_id.as_str())
+                    .expect("history lookup")
+                    .count(),
+                0
+            );
+        }
+
+        drop(history);
+        drop(records);
+        drop(read_txn);
+        drop(exported);
+        drop(vault);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_export_finalize_restores_preexisting_destination() {
+        let dir = std::env::temp_dir().join(format!(
+            "zync-vault-export-destination-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test directory");
+        let destination = dir.join("vault.redb");
+        let missing_tmp = dir.join("missing.tmp");
+        std::fs::write(&destination, b"existing backup").expect("write existing destination");
+
+        assert!(replace_export_destination(&missing_tmp, &destination).is_err());
+        assert_eq!(
+            std::fs::read(&destination).expect("read restored destination"),
+            b"existing backup"
+        );
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn export_rejects_live_vault_alias_without_damaging_database() {
+        let mut vault = initialized_test_vault();
+        let logical_id = "zync.ai.api-key.openai";
+        vault
+            .service
+            .item_create_with_secret_values(
+                "OpenAI API key",
+                "api-token",
+                &BTreeMap::from([("token".into(), "still-secret".into())]),
+                None,
+                Some(logical_id),
+            )
+            .expect("create local-only record");
+        let live_alias = vault.dir.join(".").join("vault.redb");
+
+        let error = vault
+            .service
+            .export_vault(&live_alias)
+            .expect_err("live vault alias must be rejected");
+        assert!(error.to_string().contains("live vault"));
+        assert_eq!(
+            primary_secret_value(
+                &vault
+                    .service
+                    .item_get_by_logical_id(logical_id)
+                    .expect("live record remains readable")
+            ),
+            Some("still-secret")
+        );
+
+        vault.service.lock();
+        vault
+            .service
+            .unlock("correct horse battery staple", false)
+            .expect("live vault remains unlockable");
+        assert!(vault.service.item_get_by_logical_id(logical_id).is_ok());
     }
 }

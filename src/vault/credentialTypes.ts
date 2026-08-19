@@ -1,6 +1,11 @@
 import type { VaultItem, VaultItemDetail } from './ipc';
 
 export const CURRENT_CREDENTIAL_SCHEMA_VERSION = 2;
+const AI_API_KEY_LOGICAL_ID_PREFIX = 'zync.ai.api-key.';
+
+export function isLocalOnlyCredential(item: Pick<VaultItem, 'logicalId'>): boolean {
+  return item.logicalId.startsWith(AI_API_KEY_LOGICAL_ID_PREFIX);
+}
 
 export const KNOWN_CREDENTIAL_KINDS = [
   'ssh-private-key',

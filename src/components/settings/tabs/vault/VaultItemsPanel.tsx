@@ -3,6 +3,7 @@ import type { VaultItem } from '../../../../vault/ipc';
 import {
   getCredentialKindLabel,
   isHostAssignableCredentialKind,
+  isLocalOnlyCredential,
 } from '../../../../vault/credentialTypes';
 import { formatPrivacyAwareLabel } from '../../../../features/connections/domain/connectionDisplay';
 import { useShowHostAddressesInLists } from '../../../../features/connections/presentation/useConnectionDisplayLabels';
@@ -144,6 +145,11 @@ export function VaultItemsPanel({
                           {item.secretFieldCount} secret fields
                         </span>
                       )}
+                      {isLocalOnlyCredential(item) && (
+                        <span className="rounded-full border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-300">
+                          Local only
+                        </span>
+                      )}
                       <span className="rounded-full border border-app-border/50 bg-app-surface/20 px-1.5 py-0.5 text-[10px] text-app-muted">
                         {assignedHostCounts[item.logicalId] ?? 0} host{(assignedHostCounts[item.logicalId] ?? 0) === 1 ? '' : 's'}
                       </span>
@@ -163,24 +169,26 @@ export function VaultItemsPanel({
                         Assign
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onSyncItem(item.id, item.label)}
-                      disabled={!canSyncItems || syncingItemId != null}
-                      className="h-7 gap-1 px-2 text-[11px]"
-                      title={
-                        syncingItemId === item.id
-                          ? 'Syncing to cloud provider'
-                          : canSyncItems
-                            ? 'Sync credential to cloud provider'
-                            : 'Connect provider + set up Google encryption first'
-                      }
-                      aria-label={syncingItemId === item.id ? `Syncing ${displayLabel}` : `Sync ${displayLabel}`}
-                    >
-                      <Upload size={12} />
-                      {syncingItemId === item.id ? 'Syncing…' : 'Sync'}
-                    </Button>
+                    {!isLocalOnlyCredential(item) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onSyncItem(item.id, item.label)}
+                        disabled={!canSyncItems || syncingItemId != null}
+                        className="h-7 gap-1 px-2 text-[11px]"
+                        title={
+                          syncingItemId === item.id
+                            ? 'Syncing to cloud provider'
+                            : canSyncItems
+                              ? 'Sync credential to cloud provider'
+                              : 'Connect provider + set up Google encryption first'
+                        }
+                        aria-label={syncingItemId === item.id ? `Syncing ${displayLabel}` : `Sync ${displayLabel}`}
+                      >
+                        <Upload size={12} />
+                        {syncingItemId === item.id ? 'Syncing…' : 'Sync'}
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"

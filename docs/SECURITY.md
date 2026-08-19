@@ -90,6 +90,12 @@ These are **product scope** limits today, not vulnerabilities:
 - **No live bi-directional sync scheduling** — Google sync is manual upload/restore; there is no background auto-sync scheduler yet.
 - **Plugins** — marketplace plugins do **not** receive raw vault secrets by design; only explicit future export/copy flows could change that.
 
+### AI credential policy
+
+AI provider API keys are encrypted in the Local Vault but remain **local only**. Zync excludes them from individual and bulk credential sync and from full Vault backup exports. This is a temporary product-policy boundary pending an owner decision about cross-device AI credential sync.
+
+Locking the Vault blocks future API-key resolution. AI work that already resolved a key continues until that request or agent run finishes; Vault lock does not cancel active AI tasks.
+
 Embedded desktop OAuth client credentials are **informational only** for the installed-app model — see Google OAuth guidance above.
 
 ---

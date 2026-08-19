@@ -4,6 +4,7 @@ import {
     validateConnectionDraft,
     getCredentialHealthChecks,
     buildConnectionSavePayload,
+    SELF_AGENT_FORWARDING_KEY,
     applyAuthMethodTransition,
     type ConnectionAuthMode,
 } from '../../features/connections/domain';
@@ -12,6 +13,7 @@ import { findBlockingDuplicateConnectionByEndpoint } from '../../features/connec
 const EMPTY_FORM: Partial<Connection> = {
     name: '', host: '', username: '', port: 22, password: '',
     privateKeyPath: '', jumpServerId: undefined, icon: 'Server',
+    agentForwardingKeyConnectionId: undefined,
     folder: '', theme: '', tags: [],
 };
 
@@ -71,6 +73,9 @@ export function useConnectionForm(isOpen: boolean, editingConnectionId: string |
                     password: conn.password || '',
                     privateKeyPath: conn.privateKeyPath || '',
                     jumpServerId: conn.jumpServerId,
+                    agentForwardingKeyConnectionId: conn.agentForwardingKeyConnectionId === conn.id
+                        ? SELF_AGENT_FORWARDING_KEY
+                        : conn.agentForwardingKeyConnectionId,
                     icon: conn.icon || 'Server',
                     tags: conn.tags || [],
                 });

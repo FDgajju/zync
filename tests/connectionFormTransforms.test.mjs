@@ -3,6 +3,7 @@ import {
   buildConnectionSavePayload,
   buildConnectionTestPayload,
   canSaveInspectedPrivateKey,
+  SELF_AGENT_FORWARDING_KEY,
 } from '../.tmp-agent-tests/src/features/connections/domain/formTransforms.js';
 
 function runTest(name, fn) {
@@ -82,6 +83,23 @@ runTest('buildConnectionSavePayload never persists key passphrase on the host', 
   assert.equal(payload.authRef, undefined);
 });
 
+runTest('buildConnectionSavePayload persists explicit self key selection as the connection id', () => {
+  const payload = buildConnectionSavePayload({
+    formData: {
+      host: '10.0.0.2',
+      username: 'ubuntu',
+      port: 22,
+      privateKeyPath: '/tmp/id_ed25519',
+      agentForwardingKeyConnectionId: SELF_AGENT_FORWARDING_KEY,
+    },
+    authMethod: 'key',
+    editingConnectionId: null,
+    connections: [],
+  });
+
+  assert.equal(payload.agentForwardingKeyConnectionId, payload.id);
+});
+
 runTest('encrypted keys can be saved without a passphrase for connect-time prompting', () => {
   assert.equal(canSaveInspectedPrivateKey('passphraseRequired', ''), true);
   assert.equal(canSaveInspectedPrivateKey('passphraseRequired', 'partial'), false);
@@ -149,6 +167,36 @@ runTest('buildConnectionTestPayload builds key auth config and jump host', () =>
   assert.equal(payload.jump_host?.auth_method.type, 'Password');
   assert.equal(payload.jump_host?.host, '192.168.0.1');
   assert.equal(payload.jump_host?.jump_host?.host, '192.168.0.2');
+});
+
+runTest('buildConnectionTestPayload forwards only the explicitly selected saved key', () => {
+  const connections = [{
+    id: 'key-source',
+    name: 'key source',
+    host: 'source.invalid',
+    username: 'ubuntu',
+    port: 22,
+    privateKeyPath: '/tmp/forward-only.pem',
+    status: 'disconnected',
+  }];
+  const payload = buildConnectionTestPayload({
+    formData: {
+      id: 'password-host',
+      name: 'password host',
+      host: '10.0.0.20',
+      username: 'root',
+      port: 22,
+      password: 'login-password',
+      agentForwardingKeyConnectionId: 'key-source',
+    },
+    authMethod: 'password',
+    connections,
+  });
+
+  assert.equal(payload.auth_method.type, 'Password');
+  assert.equal(payload.agent_forwarding?.source_connection_id, 'key-source');
+  assert.equal(payload.agent_forwarding?.auth_method.type, 'PrivateKey');
+  assert.equal(payload.agent_forwarding?.auth_method.key_path, '/tmp/forward-only.pem');
 });
 
 runTest('buildConnectionTestPayload includes stable credential id for vault auth', () => {

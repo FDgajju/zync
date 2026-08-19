@@ -113,10 +113,27 @@ async function prepareNode(
         await prepareNode(config.jump_host, attemptPassphrases, visited, depth + 1);
     }
 
+    if (config.agent_forwarding?.auth_method.type === 'PrivateKey') {
+        await preparePrivateKeyAuth(
+            config.agent_forwarding.auth_method,
+            config.agent_forwarding.source_connection_id,
+            `${config.name} forwarded key`,
+            attemptPassphrases,
+        );
+    }
+
     if (config.auth_method.type !== 'PrivateKey') return;
-    const auth = config.auth_method;
+    await preparePrivateKeyAuth(config.auth_method, config.id, config.name, attemptPassphrases);
+}
+
+async function preparePrivateKeyAuth(
+    auth: Extract<ConnectConfig['auth_method'], { type: 'PrivateKey' }>,
+    connectionId: string,
+    connectionName: string,
+    attemptPassphrases: Map<string, string>,
+): Promise<void> {
     if (!auth.key_path.trim()) {
-        throw privateKeyUnavailableError(config.name);
+        throw privateKeyUnavailableError(connectionName);
     }
     const cacheKey = normalizeKeyPathForRuntime(auth.key_path);
 
@@ -138,7 +155,7 @@ async function prepareNode(
         return;
     }
 
-    const staged = consumeStagedPassphrase(config.id, auth.key_path);
+    const staged = consumeStagedPassphrase(connectionId, auth.key_path);
     if (staged) {
         auth.passphrase = staged;
         attemptPassphrases.set(cacheKey, staged);
@@ -148,18 +165,18 @@ async function prepareNode(
     const readiness = await privateKeyReadinessIpc(auth.key_path);
     if (readiness.status === 'valid') return;
     if (readiness.status === 'invalidKey' || readiness.status === 'unavailable') {
-        throw privateKeyUnavailableError(config.name);
+        throw privateKeyUnavailableError(connectionName);
     }
 
     const result = await requestKeyPassphrase({
-        connectionId: config.id,
-        connectionName: config.name,
+        connectionId,
+        connectionName,
         keyPath: auth.key_path,
     });
     if (!result) throw new KeyPassphrasePromptCancelledError('Key passphrase entry was cancelled.');
     if (result.retention === 'vault') {
-        stageVaultRequestedPassphrase(config.id, auth.key_path, result.passphrase);
-        throw new KeyPassphraseVaultRequestedError(config.id, auth.key_path);
+        stageVaultRequestedPassphrase(connectionId, auth.key_path, result.passphrase);
+        throw new KeyPassphraseVaultRequestedError(connectionId, auth.key_path);
     }
     auth.passphrase = result.passphrase;
     attemptPassphrases.set(cacheKey, result.passphrase);

@@ -123,6 +123,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::ssh_connect,
             commands::ssh_test_connection,
+            commands::ssh_agent_signature_respond,
             commands::ssh_extract_pem,
             commands::ssh_write_managed_key,
             commands::ssh_read_local_key_file,
