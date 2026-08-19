@@ -4,7 +4,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
-<<<<<<< HEAD
+## [2.25.0] - 2026-08-20
+
 ### Security
 - **SSH host key verification (`known_hosts`)**: Prompts for confirmation when connecting to an unknown host for the first time, persists approved fingerprints to `~/.ssh/known_hosts`, and blocks connections with a warning if a host key has changed to protect against MITM attacks. ([9f61b28])
 - **Consent-based SSH agent forwarding**: Per-connection opt-in toggle under Advanced Settings to forward one explicitly chosen private key or Vault credential. Every cryptographic signature request from the remote server requires approval via an interactive dialog with a 30-second expiry timer. ([9f61b28], [7b45919])
@@ -13,18 +14,13 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Expanded AI secret redaction**: Masks command-line passwords (`sshpass`, `mysql -p`, `PGPASSWORD`), URL credentials, Basic/Bearer authorization headers, raw JWTs, cloud API keys, and truncated PEM private keys before sending terminal context to AI models. ([49e23f4], [c53f4f6])
 - **Restricted file permissions & atomic vault exports**: Sets POSIX file mode `0600` on Unix for vault databases and managed private keys, and makes vault exports atomic via temporary staging. ([c050715], [c53f4f6])
 
-=======
->>>>>>> b8e5e6528a7e7c2f267cc13367dfae2ab8c8a8d8
 ### Added
 - **Multi-platform auto-updater & background download**: Unified in-app updater across Windows, macOS, and Linux with silent background downloads, dedicated status bar progress indicator, and celebration toast upon launch. ([e2fa602])
 - **Status bar update indicator**: Translucent soft-highlight button in the bottom status bar displaying download progress (`Updating X%`), available update actions (`Download vX.X.X`), and one-click `Restart to update`. ([e2fa602])
 - **Updater dev simulation suite**: Built-in interactive test controls in Settings → About and `window.zyncUpdater` (development mode only) to test auto-download, manual flow, and post-update celebration. ([e2fa602])
 
 ### Fixed
-<<<<<<< HEAD
 - **Modal stacking over Settings**: Elevated z-index (`z-[15000]`) for global Vault unlock and SSH key passphrase prompts so they float cleanly on top of open Settings and Connection modals. ([dbf2cda])
-=======
->>>>>>> b8e5e6528a7e7c2f267cc13367dfae2ab8c8a8d8
 - **Native restart on all platforms**: Added native Rust `app_relaunch` command ensuring clean restarts without permission or process lifecycle issues across Windows, macOS, and Linux. ([e2fa602])
 - **Status bar placeholder cleanup**: Removed unused static "Ready" label from the bottom status bar. ([e2fa602])
 
@@ -1200,6 +1196,16 @@ All notable changes to Zync are documented in this file. The format is based on 
 [b915006]: https://github.com/zync-sh/zync/commit/b915006
 [e6e9e3f]: https://github.com/zync-sh/zync/commit/e6e9e3f
 [d15f536]: https://github.com/zync-sh/zync/commit/d15f536
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.0...HEAD
+[2.25.0]: https://github.com/zync-sh/zync/compare/v2.24.0...v2.25.0
+[2.24.0]: https://github.com/zync-sh/zync/compare/v2.23.1...v2.24.0
+[2.23.1]: https://github.com/zync-sh/zync/compare/v2.23.0...v2.23.1
+[2.23.0]: https://github.com/zync-sh/zync/compare/v2.22.0...v2.23.0
+[2.22.0]: https://github.com/zync-sh/zync/compare/v2.21.0...v2.22.0
+[2.21.0]: https://github.com/zync-sh/zync/compare/v2.20.0...v2.21.0
+[2.20.0]: https://github.com/zync-sh/zync/compare/v2.19.0...v2.20.0
+[2.19.0]: https://github.com/zync-sh/zync/compare/v2.18.0...v2.19.0
+[2.18.0]: https://github.com/zync-sh/zync/compare/v2.17.0...v2.18.0
 [2.17.0]: https://github.com/zync-sh/zync/compare/v2.16.1...v2.17.0
 [2.16.1]: https://github.com/zync-sh/zync/compare/v2.16.0...v2.16.1
 [2.16.0]: https://github.com/zync-sh/zync/compare/v2.15.1...v2.16.0
@@ -1236,8 +1242,6 @@ All notable changes to Zync are documented in this file. The format is based on 
 [2.3.0]: https://github.com/zync-sh/zync/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/zync-sh/zync/releases/tag/v2.2.1
 
-
-<<<<<<< HEAD
 [9f61b28]: https://github.com/zync-sh/zync/commit/9f61b28
 [7b45919]: https://github.com/zync-sh/zync/commit/7b45919
 [48645c8]: https://github.com/zync-sh/zync/commit/48645c8
@@ -1245,8 +1249,6 @@ All notable changes to Zync are documented in this file. The format is based on 
 [c050715]: https://github.com/zync-sh/zync/commit/c050715
 [49e23f4]: https://github.com/zync-sh/zync/commit/49e23f4
 [dbf2cda]: https://github.com/zync-sh/zync/commit/dbf2cda
-=======
->>>>>>> b8e5e6528a7e7c2f267cc13367dfae2ab8c8a8d8
 [e2fa602]: https://github.com/zync-sh/zync/commit/e2fa602
 [feee7bb]: https://github.com/zync-sh/zync/commit/feee7bb
 [6e8dd42]: https://github.com/zync-sh/zync/commit/6e8dd42
