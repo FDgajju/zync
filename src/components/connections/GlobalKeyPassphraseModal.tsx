@@ -102,6 +102,7 @@ export function GlobalKeyPassphraseModal() {
             subtitle={prompt ? `Enter the passphrase for ${prompt.connectionName}.` : undefined}
             width="max-w-sm"
             explicitDismissOnly={!canDismiss}
+            zIndexClassName="z-[15000]"
         >
             <form
                 className="space-y-4"

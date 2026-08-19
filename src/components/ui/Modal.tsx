@@ -21,6 +21,8 @@ interface ModalProps {
   showCloseButton?: boolean;
   /** When true, only in-content actions dismiss the modal (no Escape, overlay, or header X). */
   explicitDismissOnly?: boolean;
+  /** Optional custom z-index class for the modal wrapper and overlay (defaults to 'z-[9999]') */
+  zIndexClassName?: string;
 }
 
 /**
@@ -57,6 +59,7 @@ export function Modal({
   closeOnOverlayClick = true,
   showCloseButton = true,
   explicitDismissOnly = false,
+  zIndexClassName,
 }: ModalProps) {
   const effectiveCloseOnEsc = explicitDismissOnly ? false : closeOnEsc;
   const effectiveCloseOnOverlayClick = explicitDismissOnly ? false : closeOnOverlayClick;
@@ -93,7 +96,7 @@ export function Modal({
     <ZPortal>
       <AnimatePresence>
         {isOpen && (
-          <div className="absolute inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className={cn("absolute inset-0 flex items-center justify-center p-4", zIndexClassName ?? "z-[9999]")}>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}

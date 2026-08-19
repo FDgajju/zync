@@ -158,6 +158,7 @@ export function VaultUnlockModal({ isOpen, onClose }: Props) {
         subtitle="Another Zync window already has your vault open."
         width="max-w-sm"
         contentClassName="min-h-[280px]"
+        zIndexClassName="z-[15000]"
       >
         <div className="space-y-4">
           <div className="flex justify-center">
