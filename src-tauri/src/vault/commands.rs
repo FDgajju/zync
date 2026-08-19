@@ -47,16 +47,8 @@ type VaultResult<T> = Result<T, VaultCommandError>;
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn vault_status(
-    app: tauri::AppHandle,
-    vault: State<'_, Mutex<VaultService>>,
-) -> VaultResult<VaultStatus> {
-    let mut vault = vault.lock().await;
-    let status = vault.status().map_err(VaultCommandError::from)?;
-    if matches!(status, VaultStatus::Unlocked { .. }) {
-        migrate_legacy_api_keys(&app, &vault)?;
-    }
-    Ok(status)
+pub async fn vault_status(vault: State<'_, Mutex<VaultService>>) -> VaultResult<VaultStatus> {
+    vault.lock().await.status().map_err(Into::into)
 }
 
 fn migrate_legacy_api_keys(app: &tauri::AppHandle, vault: &VaultService) -> VaultResult<()> {

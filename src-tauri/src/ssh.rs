@@ -3,7 +3,7 @@ use log::error;
 use russh::*;
 use russh_keys::PublicKeyBase64;
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 #[cfg(all(test, target_os = "linux"))]
 use std::sync::atomic::AtomicUsize;
@@ -532,8 +532,7 @@ fn verify_server_key_at_path(
             Err(russh_keys::Error::KeyChanged { .. }) => Some(
                 russh_keys::known_hosts::known_host_keys_path(host, port, &path)?
                     .into_iter()
-                    .map(|(line, _)| line)
-                    .collect::<HashSet<_>>(),
+                    .collect::<HashMap<_, _>>(),
             ),
             Err(error) => return Err(error.into()),
         };
@@ -541,10 +540,11 @@ fn verify_server_key_at_path(
     let is_changed = changed_lines.is_some();
     if approval.is_some_and(|value| value.fingerprint == fingerprint && value.replace == is_changed)
     {
-        if let Some(lines) = changed_lines {
-            remove_known_host_lines(&path, &lines)?;
+        if let Some(keys) = changed_lines {
+            replace_known_host_keys(&path, &keys, host, port, server_public_key)?;
+        } else {
+            russh_keys::known_hosts::learn_known_hosts_path(host, port, server_public_key, &path)?;
         }
-        russh_keys::known_hosts::learn_known_hosts_path(host, port, server_public_key, &path)?;
         return Ok(true);
     }
 
@@ -563,18 +563,48 @@ fn verify_server_key_at_path(
     ))
 }
 
-fn remove_known_host_lines(path: &Path, lines: &HashSet<usize>) -> Result<()> {
+fn replace_known_host_keys(
+    path: &Path,
+    keys: &HashMap<usize, russh_keys::key::PublicKey>,
+    host: &str,
+    port: u16,
+    server_public_key: &russh_keys::key::PublicKey,
+) -> Result<()> {
     let content = std::fs::read_to_string(path)?;
+    let permissions = std::fs::metadata(path)?.permissions();
+    let mut logical_line = 1;
     let mut kept = content
         .lines()
-        .enumerate()
-        .filter_map(|(index, line)| (!lines.contains(&(index + 1))).then_some(line))
+        .filter_map(|line| {
+            if line.as_bytes().first() == Some(&b'#') {
+                return Some(line);
+            }
+            let remove = keys.get(&logical_line).is_some_and(|expected| {
+                let encoded_key = line.split(' ').nth(2);
+                encoded_key
+                    .and_then(|key| russh_keys::parse_public_key_base64(key).ok())
+                    .is_some_and(|key| key == *expected)
+            });
+            logical_line += 1;
+            (!remove).then_some(line)
+        })
         .collect::<Vec<_>>()
         .join("\n");
-    if content.ends_with('\n') && !kept.is_empty() {
+    if !kept.is_empty() {
         kept.push('\n');
     }
+    kept.push_str(&if port == 22 {
+        host.to_string()
+    } else {
+        format!("[{host}]:{port}")
+    });
+    kept.push(' ');
+    kept.push_str(server_public_key.name());
+    kept.push(' ');
+    kept.push_str(&server_public_key.public_key_base64());
+    kept.push('\n');
     crate::atomic_io::durable_replace(path, kept.as_bytes())?;
+    std::fs::set_permissions(path, permissions)?;
     Ok(())
 }
 
@@ -1114,14 +1144,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("zync-known-hosts-{suffix}"));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let path = dir.join("known_hosts");
-        let first = russh_keys::parse_public_key_base64(
-            "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ",
-        )
-        .expect("first public key");
-        let second = russh_keys::parse_public_key_base64(
-            "AAAAC3NzaC1lZDI1NTE5AAAAILIG2T/B0l0gaqj3puu510tu9N1OkQ4znY3LYuEm5zCF",
-        )
-        .expect("second public key");
+        let first_encoded = "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ";
+        let second_encoded = "AAAAC3NzaC1lZDI1NTE5AAAAILIG2T/B0l0gaqj3puu510tu9N1OkQ4znY3LYuEm5zCF";
+        let first = russh_keys::parse_public_key_base64(first_encoded).expect("first public key");
+        let second =
+            russh_keys::parse_public_key_base64(second_encoded).expect("second public key");
 
         let unknown = verify_server_key_at_path("server", "example.com", 22, &first, None, &path)
             .expect_err("unknown host must be rejected")
@@ -1155,14 +1182,16 @@ mod tests {
         )
         .expect("approve unknown host"));
 
-        std::fs::OpenOptions::new()
-            .append(true)
-            .open(&path)
-            .and_then(|mut file| {
-                use std::io::Write;
-                writeln!(file, "unrelated.example ssh-ed25519 unrelated-key")
-            })
-            .expect("append unrelated entry");
+        let fixture = format!(
+            "# managed known hosts\nbefore.example ssh-ed25519 {second_encoded}\n# stale target follows\nexample.com ssh-ed25519 {first_encoded}\n# unrelated entry reuses the stale key\nafter.example ssh-ed25519 {first_encoded}\n"
+        );
+        std::fs::write(&path, &fixture).expect("write replacement fixture");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .expect("restrict known_hosts permissions");
+        }
 
         let changed = verify_server_key_at_path("server", "example.com", 22, &second, None, &path)
             .expect_err("changed host must be rejected")
@@ -1196,7 +1225,32 @@ mod tests {
         .expect("replace changed host key"));
 
         let updated = std::fs::read_to_string(&path).expect("read known_hosts");
-        assert!(updated.contains("unrelated.example ssh-ed25519 unrelated-key"));
+        assert!(updated.contains("# managed known hosts"));
+        assert!(updated.contains(&format!("before.example ssh-ed25519 {second_encoded}")));
+        assert!(updated.contains("# stale target follows"));
+        assert!(updated.contains("# unrelated entry reuses the stale key"));
+        assert!(updated.contains(&format!("after.example ssh-ed25519 {first_encoded}")));
+        assert!(!updated.contains(&format!("example.com ssh-ed25519 {first_encoded}")));
+        assert!(updated.contains(&format!("example.com ssh-ed25519 {second_encoded}")));
+        assert_eq!(
+            updated
+                .lines()
+                .filter(|line| line.starts_with("example.com "))
+                .count(),
+            1
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path)
+                    .expect("known_hosts metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
         assert!(
             russh_keys::known_hosts::check_known_hosts_path("example.com", 22, &second, &path)
                 .expect("check replacement")

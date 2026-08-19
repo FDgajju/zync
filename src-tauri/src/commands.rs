@@ -412,6 +412,82 @@ fn persist_settings_json(app: &AppHandle, settings: &Value) -> Result<(), String
     write_atomic_file(&settings_path, &json)
 }
 
+pub(crate) fn persist_settings_after_secret_migration(
+    app: &AppHandle,
+    settings: &Value,
+) -> Result<(), String> {
+    ensure_object_settings(settings.clone())?;
+    validate_settings_schema(settings)?;
+    let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
+    let settings_path = get_native_settings_path(app)?;
+    if settings_path.exists() {
+        write_atomic_file(&get_last_known_good_settings_path(app)?, &json)?;
+    }
+    write_atomic_file(&settings_path, &json)
+}
+
+pub(crate) fn scrub_settings_backup_after_secret_migration(
+    app: &AppHandle,
+    providers: &[&str],
+) -> Result<(), String> {
+    scrub_settings_file_api_keys(&get_last_known_good_settings_path(app)?, providers)
+}
+
+fn scrub_settings_file_api_keys(path: &std::path::Path, providers: &[&str]) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut settings = read_settings_from_path(path)?;
+    let Some(keys) = settings
+        .get_mut("ai")
+        .and_then(|ai| ai.get_mut("keys"))
+        .and_then(Value::as_object_mut)
+    else {
+        return Ok(());
+    };
+    let mut changed = false;
+    for provider in providers {
+        changed |= keys.remove(*provider).is_some();
+    }
+    if changed {
+        let json = serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?;
+        write_atomic_file(path, &json)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod ai_settings_migration_tests {
+    use super::scrub_settings_file_api_keys;
+
+    #[test]
+    fn scrubs_known_ai_keys_from_backup_while_preserving_unknown_settings() {
+        let dir =
+            std::env::temp_dir().join(format!("zync-ai-settings-backup-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test directory");
+        let path = dir.join("settings.last-known-good.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "theme": "dark",
+                "ai": { "keys": { "openai": "plaintext", "custom": "preserve" } }
+            }))
+            .expect("serialize settings"),
+        )
+        .expect("write backup settings");
+
+        scrub_settings_file_api_keys(&path, &["openai", "claude"]).expect("scrub backup settings");
+        let scrubbed: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).expect("read scrubbed settings"))
+                .expect("parse scrubbed settings");
+        assert_eq!(scrubbed["theme"], "dark");
+        assert!(scrubbed["ai"]["keys"].get("openai").is_none());
+        assert_eq!(scrubbed["ai"]["keys"]["custom"], "preserve");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
 pub fn get_data_dir(app: &AppHandle) -> std::path::PathBuf {
     if let Ok(cache) = DATA_DIR_CACHE.lock() {
         if let Some(cached) = cache.clone() {

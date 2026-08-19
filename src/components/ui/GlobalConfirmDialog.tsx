@@ -5,7 +5,6 @@ import { AlertCircle, HelpCircle } from 'lucide-react';
 
 export function GlobalConfirmDialog() {
     const dialog = useAppStore(state => state.confirmDialog);
-    const closeDialog = useAppStore(state => state.closeConfirmDialog);
 
     if (!dialog) return null;
 
@@ -16,7 +15,6 @@ export function GlobalConfirmDialog() {
         if (!open) {
             // If closed via ESC or outside click, treat as cancel
             dialog.onCancel();
-            closeDialog();
         }
     };
 

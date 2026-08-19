@@ -70,6 +70,8 @@
         "src/features/notifications/notificationHistory.ts",
         "src/features/notifications/pluginNotify.ts",
         "src/features/notifications/pluginNotifyAction.ts",
+        "src/features/plugins/pluginCommandBridge.ts",
+        "src/store/uiSlice.ts",
         "src/vault/syncIpc.ts",
         "src/lib/ghostSuggestions/activeSegment.ts",
         "src/lib/ghostSuggestions/recentCommands.ts",

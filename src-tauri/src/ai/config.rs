@@ -4,7 +4,10 @@ use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 use crate::ai::AiConfig;
-use crate::commands::read_effective_settings;
+use crate::commands::{
+    persist_settings_after_secret_migration, read_effective_settings,
+    scrub_settings_backup_after_secret_migration,
+};
 use crate::vault::credential::primary_secret_value;
 use crate::vault::error::VaultError;
 use crate::vault::store::VaultService;
@@ -82,29 +85,83 @@ pub(crate) fn migrate_legacy_api_keys(app: &AppHandle, vault: &VaultService) -> 
     let store = app
         .store("secrets.json")
         .map_err(|error| error.to_string())?;
-    let mut changed = false;
-    let legacy = store
-        .entries()
+    let store_keys = known_api_key_values(store.entries());
+    let mut settings = read_effective_settings(app)?;
+    let settings_keys = settings_api_key_values(&settings);
+
+    migrate_legacy_api_key_values(vault, &store_keys, &settings_keys)
+        .map_err(|error| error.to_string())?;
+
+    let mut store_changed = false;
+    for provider in PROVIDERS {
+        if store.get(provider).is_some() {
+            store.delete(provider);
+            store_changed = true;
+        }
+    }
+    if store_changed {
+        store.save().map_err(|error| error.to_string())?;
+    }
+    if scrub_settings_api_keys(&mut settings) {
+        persist_settings_after_secret_migration(app, &settings)?;
+    }
+    scrub_settings_backup_after_secret_migration(app, &PROVIDERS)?;
+    Ok(())
+}
+
+fn known_api_key_values(
+    entries: impl IntoIterator<Item = (String, serde_json::Value)>,
+) -> BTreeMap<String, String> {
+    entries
         .into_iter()
+        .filter(|(key, _)| PROVIDERS.contains(&key.as_str()))
         .filter_map(|(key, value)| {
             value
                 .as_str()
                 .filter(|value| !value.is_empty())
-                .map(|value| (key.clone(), value.to_string()))
+                .map(|value| (key, value.to_string()))
         })
-        .collect::<Vec<_>>();
-    for (key, value) in legacy {
-        if get_api_key(vault, &key)
-            .map_err(|error| error.to_string())?
-            .is_none()
-        {
-            save_api_key(vault, &key, &value).map_err(|error| error.to_string())?;
-        }
-        store.delete(&key);
-        changed = true;
+        .collect()
+}
+
+fn settings_api_key_values(settings: &serde_json::Value) -> BTreeMap<String, String> {
+    settings
+        .get("ai")
+        .and_then(|ai| ai.get("keys"))
+        .and_then(serde_json::Value::as_object)
+        .map(|keys| known_api_key_values(keys.clone()))
+        .unwrap_or_default()
+}
+
+fn scrub_settings_api_keys(settings: &mut serde_json::Value) -> bool {
+    let Some(keys) = settings
+        .get_mut("ai")
+        .and_then(|ai| ai.get_mut("keys"))
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return false;
+    };
+    let mut changed = false;
+    for provider in PROVIDERS {
+        changed |= keys.remove(provider).is_some();
     }
-    if changed {
-        store.save().map_err(|error| error.to_string())?;
+    changed
+}
+
+fn migrate_legacy_api_key_values(
+    vault: &VaultService,
+    store_keys: &BTreeMap<String, String>,
+    settings_keys: &BTreeMap<String, String>,
+) -> Result<(), VaultError> {
+    for provider in PROVIDERS {
+        if get_api_key(vault, provider)?.is_none() {
+            if let Some(value) = store_keys
+                .get(provider)
+                .or_else(|| settings_keys.get(provider))
+            {
+                save_api_key(vault, provider, value)?;
+            }
+        }
     }
     Ok(())
 }
@@ -208,6 +265,133 @@ mod tests {
         assert!(!bytes
             .windows(secret.len())
             .any(|window| window == secret.as_bytes()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn api_token_create_rotate_reopen_and_delete_preserves_identity_without_plaintext() {
+        let dir =
+            std::env::temp_dir().join(format!("zync-ai-key-lifecycle-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test directory");
+        let passphrase = "test-passphrase";
+        let first = "sk-first-plaintext-must-not-appear";
+        let second = "sk-second-plaintext-must-not-appear";
+        let logical_id = api_key_logical_id("openai");
+
+        let mut vault = VaultService::new(dir.clone());
+        vault
+            .initialize(passphrase, false)
+            .expect("initialize vault");
+        save_api_key(&vault, "openai", first).expect("create API token");
+        let original = vault
+            .item_get_by_logical_id(&logical_id)
+            .expect("load original token");
+
+        save_api_key(&vault, "openai", second).expect("rotate API token");
+        let rotated = vault
+            .item_get_by_logical_id(&logical_id)
+            .expect("load rotated token");
+        assert_eq!(rotated.id, original.id);
+        assert_eq!(rotated.logical_id.as_deref(), Some(logical_id.as_str()));
+        assert_eq!(rotated.kind, "api-token");
+        assert_eq!(
+            rotated.secret_values.get("token").map(String::as_str),
+            Some(second)
+        );
+        assert_eq!(rotated.revision, 2);
+        assert_eq!(
+            vault
+                .item_revision_history(&rotated.id)
+                .expect("load rotation history")
+                .len(),
+            1
+        );
+        drop(vault);
+
+        let bytes = std::fs::read(dir.join("vault.redb")).expect("read vault file");
+        for secret in [first, second] {
+            assert!(!bytes
+                .windows(secret.len())
+                .any(|window| window == secret.as_bytes()));
+        }
+
+        let mut reopened = VaultService::new(dir.clone());
+        reopened
+            .unlock(passphrase, false)
+            .expect("reopen and unlock vault");
+        assert_eq!(
+            get_api_key(&reopened, "openai").unwrap().as_deref(),
+            Some(second)
+        );
+        delete_api_key(&reopened, "openai").expect("delete API token");
+        assert_eq!(get_api_key(&reopened, "openai").unwrap(), None);
+        drop(reopened);
+
+        let mut after_delete = VaultService::new(dir.clone());
+        after_delete
+            .unlock(passphrase, false)
+            .expect("reopen vault after deletion");
+        assert_eq!(get_api_key(&after_delete, "openai").unwrap(), None);
+        drop(after_delete);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn legacy_api_key_migration_uses_vault_then_store_then_settings_and_scopes_providers() {
+        let dir =
+            std::env::temp_dir().join(format!("zync-ai-key-migration-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test directory");
+        let mut vault = VaultService::new(dir.clone());
+        vault
+            .initialize("test-passphrase", false)
+            .expect("initialize vault");
+        save_api_key(&vault, "openai", "vault-wins").expect("save existing token");
+
+        let store_keys = known_api_key_values([
+            ("openai".to_string(), serde_json::json!("legacy-openai")),
+            ("claude".to_string(), serde_json::json!("store-claude")),
+            ("gemini".to_string(), serde_json::json!("")),
+            ("groq".to_string(), serde_json::json!(42)),
+            ("unknown".to_string(), serde_json::json!("do-not-migrate")),
+        ]);
+        let mut settings = serde_json::json!({
+            "theme": "dark",
+            "ai": {
+                "keys": {
+                    "claude": "settings-claude",
+                    "gemini": "settings-gemini",
+                    "unknown": "keep-unknown"
+                }
+            }
+        });
+        let settings_keys = settings_api_key_values(&settings);
+
+        migrate_legacy_api_key_values(&vault, &store_keys, &settings_keys)
+            .expect("migrate legacy entries");
+
+        assert_eq!(
+            get_api_key(&vault, "openai").unwrap().as_deref(),
+            Some("vault-wins")
+        );
+        assert_eq!(
+            get_api_key(&vault, "claude").unwrap().as_deref(),
+            Some("store-claude")
+        );
+        assert_eq!(
+            get_api_key(&vault, "gemini").unwrap().as_deref(),
+            Some("settings-gemini")
+        );
+        assert_eq!(get_api_key(&vault, "groq").unwrap(), None);
+        assert_eq!(get_api_key(&vault, "unknown").unwrap(), None);
+
+        assert!(scrub_settings_api_keys(&mut settings));
+        assert_eq!(settings["theme"], "dark");
+        assert_eq!(settings["ai"]["keys"]["unknown"], "keep-unknown");
+        for provider in PROVIDERS {
+            assert!(settings["ai"]["keys"].get(provider).is_none());
+        }
+
+        drop(vault);
         let _ = std::fs::remove_dir_all(dir);
     }
 

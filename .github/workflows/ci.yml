@@ -13,8 +13,30 @@ on:
   workflow_dispatch:
 
 jobs:
+  frontend-security:
+    name: Frontend security tests
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Node setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Type-check and test
+        run: |
+          npm run type-check
+          npm test
+
   vault-crypto-known-answer:
-    name: Vault crypto known-answer (${{ matrix.platform }})
+    name: Focused Rust security (${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix:
@@ -39,7 +61,7 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Run vault crypto known-answer tests
+      - name: Run focused Rust security tests
         working-directory: src-tauri
         env:
           # Required only because sync commands compile with env!("GOOGLE_CLIENT_ID").
@@ -48,3 +70,14 @@ jobs:
         run: |
           cargo test vault::crypto::tests::known_answer_kdf_is_reproducible -- --exact
           cargo test vault::crypto::tests::known_answer_aead_is_reproducible -- --exact
+          cargo test ai::config::tests
+          cargo test local_only
+          cargo test commands::private_key_inspection_tests
+          cargo test ssh::tests -- --test-threads=1
+
+      - name: Run ignored SSH security tests on Linux
+        if: matrix.platform == 'ubuntu-22.04'
+        working-directory: src-tauri
+        env:
+          GOOGLE_CLIENT_ID: ci-known-answer-test-client-id
+        run: cargo test ssh::tests -- --ignored --test-threads=1

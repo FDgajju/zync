@@ -17,7 +17,7 @@ export function redactSensitiveOutput(text: string | null): string | null {
         // Authorization headers
         .replace(/\b(authorization[ \t]*:[ \t]*(?:bearer|basic))[ \t]+[^\s"']+/gi, '$1 [REDACTED]')
         // Common token formats
-        .replace(/(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,})/g, '[REDACTED_KEY]')
+        .replace(/(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{20,}|ya29\.[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,})/g, '[REDACTED_KEY]')
         // Bare JSON web tokens
         .replace(/eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED_KEY]')
         // Password hashes copied from /etc/shadow

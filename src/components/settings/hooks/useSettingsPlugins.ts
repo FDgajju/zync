@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { filterUnsupportedHostThemes } from '../../../features/plugins/pluginCommandBridge';
 
 export interface RegistryPlugin {
     id: string;
@@ -292,7 +293,11 @@ export function useSettingsPlugins({
     };
 
     return {
-        plugins,
+        // Host-global manifest.style support was removed for sandbox safety. Keep these
+        // packages manageable on the Plugins tab, but do not advertise them as usable themes.
+        plugins: activeTab === 'appearance'
+            ? filterUnsupportedHostThemes(plugins).filter(plugin => plugin.enabled)
+            : plugins,
         isLoadingPlugins,
         registry,
         isLoadingRegistry,

@@ -3,6 +3,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { getZyncThemePayload } from '../../lib/themePayload';
 import { isDebugThemePayloadEnabled } from '../../lib/debugFlags';
 import { confirmPluginTerminalAction } from '../../features/plugins/confirmPluginTerminalAction';
+import { handlePanelPluginCommand } from '../../features/plugins/pluginCommandBridge';
 
 interface PluginPanelProps {
     html: string;
@@ -17,6 +18,7 @@ interface PluginPanelProps {
  */
 export function PluginPanel({ html, panelId, pluginId, connectionId }: PluginPanelProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    const frameGenerationRef = useRef(0);
     const theme = useAppStore(s => s.settings.theme);
     const accentColor = useAppStore(s => s.settings.accentColor);
 
@@ -45,89 +47,39 @@ export function PluginPanel({ html, panelId, pluginId, connectionId }: PluginPan
         const handler = async (e: MessageEvent) => {
             const sourceWindow = iframeRef.current?.contentWindow;
             if (!sourceWindow || e.source !== sourceWindow) return;
+            const generation = frameGenerationRef.current;
+            const isCurrent = (requester: unknown) => (
+                active
+                && iframeRef.current?.contentWindow === requester
+                && frameGenerationRef.current === generation
+            );
+            const handled = await handlePanelPluginCommand({
+                event: e,
+                pluginId,
+                connectionId,
+                getRequester: () => sourceWindow,
+                isCurrent,
+                confirm: confirmPluginTerminalAction,
+                confirmUi: options => useAppStore.getState().showConfirmDialog(options),
+                dispatch: (type, detail) => window.dispatchEvent(new CustomEvent(type, { detail })),
+                post: (requester, message) => (requester as Window).postMessage(message, '*'),
+                loadSshInvoker: async () => {
+                    const { ipcRenderer } = await import('../../lib/tauri-ipc');
+                    return (targetConnectionId, command) => ipcRenderer.invoke(
+                        'ssh_exec',
+                        { connectionId: targetConnectionId, command },
+                    );
+                },
+            });
+            if (handled || !isCurrent(sourceWindow)) return;
+
             const { type, payload } = e.data || {};
             if (!type) return;
 
-            if (type === 'zync:terminal:send') {
-                if (typeof payload?.text !== 'string' || !payload.text) return;
-                const confirmed = await confirmPluginTerminalAction(pluginId, 'send terminal input', payload.text);
-                if (!active || iframeRef.current?.contentWindow !== sourceWindow || !confirmed) return;
-                window.dispatchEvent(new CustomEvent('zync:terminal:send', { detail: { text: payload.text, connectionId } }));
-            } else if (type === 'zync:terminal:opentab') {
-                if (typeof payload?.command === 'string' && payload.command) {
-                    const confirmed = await confirmPluginTerminalAction(pluginId, 'open a terminal and run', payload.command);
-                    if (!active || iframeRef.current?.contentWindow !== sourceWindow || !confirmed) return;
-                }
-                window.dispatchEvent(new CustomEvent('ssh-ui:new-terminal-tab', { detail: { connectionId, command: payload.command } }));
-            } else if (type === 'zync:statusbar:set') {
+            if (type === 'zync:statusbar:set') {
                 window.dispatchEvent(new CustomEvent('zync:statusbar:set', { detail: payload }));
             } else if (type === 'zync:ui:notify') {
                 window.dispatchEvent(new CustomEvent('zync:ui:notify', { detail: payload }));
-            } else if (type === 'zync:ui:confirm') {
-                import('../../store/useAppStore').then(({ useAppStore }) => {
-                    useAppStore.getState().showConfirmDialog({
-                        title: payload.title || 'Confirm',
-                        message: payload.message || 'Are you sure?',
-                        confirmText: payload.confirmText,
-                        cancelText: payload.cancelText,
-                        variant: payload.variant
-                    }).then((confirmed) => {
-                        iframeRef.current?.contentWindow?.postMessage({
-                            type: 'zync:ui:confirm:response',
-                            payload: { requestId: payload.requestId, confirmed }
-                        }, '*');
-                    });
-                });
-            } else if (type === 'zync:ssh:exec') {
-                if (!connectionId) {
-                    iframeRef.current?.contentWindow?.postMessage({
-                        type: 'zync:ssh:exec:response',
-                        payload: { requestId: payload.requestId, error: 'No active connection' }
-                    }, '*');
-                    return;
-                }
-                if (typeof payload?.command !== 'string') {
-                    iframeRef.current?.contentWindow?.postMessage({
-                        type: 'zync:ssh:exec:response',
-                        payload: {
-                            requestId: payload?.requestId,
-                            error: { code: 'SSH_EXEC_INVALID_COMMAND', message: 'SSH command must be a string.' }
-                        }
-                    }, '*');
-                    return;
-                }
-
-                const confirmed = await confirmPluginTerminalAction(
-                    pluginId,
-                    `run an SSH command on connection "${connectionId}"`,
-                    payload.command,
-                );
-                if (!active || iframeRef.current?.contentWindow !== sourceWindow) return;
-                if (!confirmed) {
-                    iframeRef.current?.contentWindow?.postMessage({
-                        type: 'zync:ssh:exec:response',
-                        payload: {
-                            requestId: payload.requestId,
-                            error: { code: 'SSH_EXEC_DENIED', message: 'SSH command was not approved by the user.' }
-                        }
-                    }, '*');
-                    return;
-                }
-
-                try {
-                    const { ipcRenderer } = await import('../../lib/tauri-ipc');
-                    if (!active || iframeRef.current?.contentWindow !== sourceWindow) return;
-                    const result = await ipcRenderer.invoke('ssh_exec', { connectionId, command: payload.command });
-                    iframeRef.current?.contentWindow?.postMessage({
-                        type: 'zync:ssh:exec:response',
-                        payload: { requestId: payload.requestId, result }
-                    }, '*');
-                } catch (error) {
-                    iframeRef.current?.contentWindow?.postMessage({
-                        type: 'zync:ssh:exec:response',
-                        payload: { requestId: payload.requestId, error: String(error) }
-                    }, '*');
-                }
             }
         };
 
@@ -216,7 +168,10 @@ window.zync = {
             <iframe
                 ref={iframeRef}
                 srcDoc={fullHtml}
-                onLoad={sendTheme}
+                onLoad={() => {
+                    frameGenerationRef.current += 1;
+                    sendTheme();
+                }}
                 sandbox="allow-scripts allow-modals"
                 className="flex-1 w-full border-0 bg-transparent"
                 title={`Plugin Panel: ${panelId}`}

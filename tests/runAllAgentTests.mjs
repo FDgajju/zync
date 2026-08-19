@@ -1,4 +1,34 @@
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+// Node ESM requires exact extensions. Normalize the relative imports emitted from
+// production files that still use bundler-style extensionless module specifiers.
+function normalizeEmittedImports(directory) {
+  if (!fs.existsSync(directory)) return;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) normalizeEmittedImports(fullPath);
+    else if (entry.isFile() && entry.name.endsWith('.js')) {
+      const source = fs.readFileSync(fullPath, 'utf8');
+      const normalized = source.replace(
+        /((?:from\s+|import\s*\(\s*)['"])(\.\.?\/[^'"]+)(['"])/g,
+        (match, prefix, specifier, suffix) => {
+          if (path.extname(specifier)) return match;
+          if (specifier.endsWith('/useConnectionDisplayLabels')) return match;
+          const resolved = path.resolve(path.dirname(fullPath), specifier);
+          if (fs.existsSync(`${resolved}.js`)) return `${prefix}${specifier}.js${suffix}`;
+          if (fs.existsSync(path.join(resolved, 'index.js'))) return `${prefix}${specifier}/index.js${suffix}`;
+          return match;
+        },
+      );
+      if (normalized !== source) fs.writeFileSync(fullPath, normalized, 'utf8');
+    }
+  }
+}
+
+normalizeEmittedImports(path.resolve('.tmp-agent-tests'));
 
 const tests = [
   'tests/agentRunStore.partialize.test.mjs',
@@ -14,6 +44,8 @@ const tests = [
   'tests/hostKeyVerification.test.mjs',
   'tests/editorPluginFrameIsolation.test.mjs',
   'tests/pluginPanelSshConfirmation.test.mjs',
+  'tests/pluginCommandBridge.test.mjs',
+  'tests/uiConfirmQueue.test.mjs',
   'tests/keyPassphraseRuntime.test.mjs',
   'tests/connectionService.test.mjs',
   'tests/connectionTabService.test.mjs',
@@ -50,7 +82,15 @@ const tests = [
 ];
 
 for (const file of tests) {
-  const result = spawnSync(process.execPath, [file], { stdio: 'inherit' });
+  normalizeEmittedImports(path.resolve('.tmp-agent-tests'));
+  const args = file.startsWith('tests/terminal')
+    ? [
+        '--input-type=module',
+        '--eval',
+        `globalThis.window={ipcRenderer:{invoke:async()=>undefined,send:()=>{},on:()=>()=>{}},dispatchEvent:()=>true};await import(${JSON.stringify(pathToFileURL(path.resolve(file)).href)})`,
+      ]
+    : [file];
+  const result = spawnSync(process.execPath, args, { stdio: 'inherit' });
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }

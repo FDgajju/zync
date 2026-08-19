@@ -12,6 +12,14 @@ import {
 } from '../features/notifications/pluginNotifyAction';
 import { useAppStore } from '../store/useAppStore';
 import { confirmPluginTerminalAction } from '../features/plugins/confirmPluginTerminalAction';
+import {
+    filterUnsupportedHostThemes,
+    filterTrustedBuiltinThemeChoices,
+    handleWorkerTerminalCommand,
+    isTrustedBuiltinTheme,
+    postCurrentWorkerResponse,
+    resetPluginWorkers,
+} from '../features/plugins/pluginCommandBridge';
 
 export interface EditorProviderManifest {
     entry?: string;
@@ -266,6 +274,7 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [commands, setCommands] = useState<PluginCommand[]>([]);
     const [panels, setPanels] = useState<PluginPanel[]>([]);
     const workers = useRef<Map<string, Worker>>(new Map());
+    const trustedBuiltinThemes = useRef<Plugin[]>([]);
     const editorProviders = useMemo(
         () => plugins.filter((plugin) => plugin.enabled && plugin.manifest.type === 'editor-provider'),
         [plugins]
@@ -278,6 +287,8 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             rejectAllPendingPluginNotifyActions('Plugins shutting down');
             workers.current.forEach(w => w.terminate());
             workers.current.clear();
+            trustedBuiltinThemes.current = [];
+            document.querySelectorAll('style[data-zync-builtin-theme]').forEach(style => style.remove());
         };
     }, []);
 
@@ -286,36 +297,41 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const loadedPlugins: Plugin[] = await ipcRenderer.invoke('plugins:load');
             console.log('[Plugins] Discovered:', loadedPlugins);
 
-            loadedPlugins.forEach((plugin) => {
-                if (!plugin.style) return;
-                const styleId = `plugin-style-${plugin.manifest.id}`;
-                if (!document.getElementById(styleId)) {
-                    const styleEl = document.createElement('style');
-                    styleEl.id = styleId;
-                    styleEl.textContent = plugin.style;
-                    document.head.appendChild(styleEl);
-                }
+            // Only app-owned built-in themes may style the host document or start a theme runtime.
+            const hostCompatiblePlugins = filterUnsupportedHostThemes(loadedPlugins);
+            const enabledPlugins = hostCompatiblePlugins.filter(plugin => plugin.enabled);
+            trustedBuiltinThemes.current = enabledPlugins.filter(isTrustedBuiltinTheme);
+            const enabledPluginIds = new Set(enabledPlugins.map(plugin => plugin.manifest.id));
+            const runnablePlugins = resetPluginWorkers(
+                hostCompatiblePlugins,
+                workers.current,
+                pluginId => rejectPendingPluginNotifyActionsForPlugin(pluginId, 'Plugin reloaded'),
+            );
+
+            document.querySelectorAll('style[data-zync-builtin-theme]').forEach(style => style.remove());
+            enabledPlugins.forEach(plugin => {
+                if (!isTrustedBuiltinTheme(plugin) || !plugin.style) return;
+                const style = document.createElement('style');
+                style.dataset.zyncBuiltinTheme = plugin.manifest.id;
+                style.textContent = plugin.style;
+                document.head.appendChild(style);
             });
 
-            registerThemePluginModes(loadedPlugins);
+            // Third-party manifest.style is never injected. Editor styles remain inside
+            // EditorPluginFrame; builtin:// theme CSS is trusted app-owned content.
+            registerThemePluginModes(enabledPlugins);
             window.dispatchEvent(new CustomEvent('zync:theme-registry-ready'));
             setPlugins(loadedPlugins);
+            setCommands(previous => previous.filter(command => enabledPluginIds.has(command.pluginId)));
+            setPanels(previous => previous.filter(panel => enabledPluginIds.has(panel.pluginId)));
 
             // Initialize Workers
-            loadedPlugins.forEach(plugin => {
-                if (!plugin.script) return;
-
+            runnablePlugins.forEach(plugin => {
                 try {
                     // Combine bootstrap + user script
                     const blobContent = [WORKER_BOOTSTRAP, '\n\n// USER SCRIPT START\n\n', plugin.script];
                     const blob = new Blob(blobContent, { type: 'application/javascript' });
                     const workerUrl = URL.createObjectURL(blob);
-
-                    const previous = workers.current.get(plugin.manifest.id);
-                    if (previous) {
-                        rejectPendingPluginNotifyActionsForPlugin(plugin.manifest.id, 'Plugin reloaded');
-                        previous.terminate();
-                    }
 
                     const worker = new Worker(workerUrl);
                     URL.revokeObjectURL(workerUrl);
@@ -323,7 +339,7 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     // Handle messages FROM the worker
                     worker.onmessage = (e) => {
                         const { type, payload } = e.data;
-                        handlePluginMessage(plugin.manifest.id, type, payload);
+                        handlePluginMessage(plugin.manifest.id, type, payload, worker);
                     };
 
                     worker.onerror = (e) => {
@@ -346,14 +362,28 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
     };
 
-    const respond = (pluginId: string, type: string, payload: any) => {
-        const worker = workers.current.get(pluginId);
-        if (worker) {
-            worker.postMessage({ type: `${type}:response`, payload });
-        }
+    const respond = (requester: Worker, pluginId: string, type: string, payload: Record<string, unknown>) => {
+        postCurrentWorkerResponse(
+            requester,
+            candidate => workers.current.get(pluginId) === candidate,
+            type,
+            payload,
+        );
     };
 
-    const handlePluginMessage = async (pluginId: string, type: string, payload: any) => {
+    const handlePluginMessage = async (pluginId: string, type: string, payload: any, requester: Worker) => {
+        if (workers.current.get(pluginId) !== requester) return;
+        if (type === 'api:terminal:send' && await handleWorkerTerminalCommand({
+            type,
+            payload,
+            pluginId,
+            requester,
+            isCurrent: candidate => workers.current.get(pluginId) === candidate,
+            confirm: confirmPluginTerminalAction,
+            getActiveConnectionId: () => useAppStore.getState().activeConnectionId,
+            dispatch: (eventType, detail) => window.dispatchEvent(new CustomEvent(eventType, { detail })),
+        })) return;
+
         // API Implementation Bridge
         switch (type) {
             case 'api:panel:register':
@@ -380,8 +410,8 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             ...spec,
                             dismiss: false,
                             onClick: () => {
-                                const worker = workers.current.get(pluginId);
-                                if (!worker) {
+                                const worker = requester;
+                                if (workers.current.get(pluginId) !== worker) {
                                     notify.error('Plugin is not running', {
                                         source: `plugin:${pluginId}`,
                                     });
@@ -407,6 +437,7 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 });
                                 void wait
                                     .then((result) => {
+                                        if (workers.current.get(pluginId) !== worker) return;
                                         if (!result.ok) {
                                             notify.error(result.error || 'Plugin action failed', {
                                                 source: `plugin:${pluginId}`,
@@ -419,6 +450,7 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                         }
                                     })
                                     .catch((error: unknown) => {
+                                        if (workers.current.get(pluginId) !== worker) return;
                                         const message = error instanceof Error
                                             ? error.message
                                             : 'Plugin action failed';
@@ -449,16 +481,8 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     cancelText: payload.cancelText,
                     variant: payload.variant
                 });
-                respond(pluginId, type, { requestId: payload.requestId, confirmed });
+                respond(requester, pluginId, type, { requestId: payload.requestId, confirmed });
                 break;
-            case 'api:terminal:send': {
-                if (typeof payload?.text !== 'string' || !payload.text) break;
-                const confirmed = await confirmPluginTerminalAction(pluginId, 'send terminal input', payload.text);
-                if (!confirmed) break;
-                const activeConnId = useAppStore.getState().activeConnectionId;
-                window.dispatchEvent(new CustomEvent('zync:terminal:send', { detail: { text: payload.text, connectionId: activeConnId } }));
-                break;
-            }
             case 'api:statusbar:set':
                 window.dispatchEvent(new CustomEvent('zync:statusbar:set', { detail: { id: payload.id, text: payload.text } }));
                 break;
@@ -484,23 +508,26 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 // Dispatch event for CommandPalette to handle
                 window.dispatchEvent(new CustomEvent('zync:quick-pick', {
                     detail: {
-                        items: payload.items,
+                        items: pluginId === 'com.zync.theme.manager'
+                            ? filterTrustedBuiltinThemeChoices(payload.items, trustedBuiltinThemes.current)
+                            : payload.items,
                         options: payload.options,
                         requestId: payload.requestId,
-                        pluginId
+                        pluginId,
+                        requester,
                     }
                 }));
                 break;
             case 'api:plugins:load':
                 try {
                     const list = await ipcRenderer.invoke('plugins:load');
-                    respond(pluginId, 'api:plugins:load', {
+                    respond(requester, pluginId, 'api:plugins:load', {
                         requestId: payload.requestId,
-                        result: list
+                        result: filterUnsupportedHostThemes(list)
                     });
                 } catch (e) {
                     console.error('[PluginContext] Failed to load plugins for worker:', e);
-                    respond(pluginId, 'api:plugins:load', {
+                    respond(requester, pluginId, 'api:plugins:load', {
                         requestId: payload.requestId,
                         result: [],
                         error: String(e)
@@ -512,49 +539,49 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             case 'api:fs:read':
                 try {
                     const content = await ipcRenderer.invoke('plugin_fs_read', { path: payload.path });
-                    respond(pluginId, type, { requestId: payload.requestId, result: content });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, result: content });
                 } catch (e: any) {
-                    respond(pluginId, type, { requestId: payload.requestId, error: e.toString() });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, error: e.toString() });
                 }
                 break;
             case 'api:fs:write':
                 try {
                     await ipcRenderer.invoke('plugin_fs_write', { path: payload.path, content: payload.content });
-                    respond(pluginId, type, { requestId: payload.requestId, result: true });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, result: true });
                 } catch (e: any) {
-                    respond(pluginId, type, { requestId: payload.requestId, error: e.toString() });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, error: e.toString() });
                 }
                 break;
             case 'api:fs:list':
                 try {
                     const entries = await ipcRenderer.invoke('plugin_fs_list', { path: payload.path });
-                    respond(pluginId, type, { requestId: payload.requestId, result: entries });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, result: entries });
                 } catch (e: any) {
-                    respond(pluginId, type, { requestId: payload.requestId, error: e.toString() });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, error: e.toString() });
                 }
                 break;
             case 'api:fs:exists':
                 try {
                     const exists = await ipcRenderer.invoke('plugin_fs_exists', { path: payload.path });
-                    respond(pluginId, type, { requestId: payload.requestId, result: exists });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, result: exists });
                 } catch (e: any) {
-                    respond(pluginId, type, { requestId: payload.requestId, error: e.toString() });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, error: e.toString() });
                 }
                 break;
             case 'api:fs:mkdir':
                 try {
                     await ipcRenderer.invoke('plugin_fs_create_dir', { path: payload.path });
-                    respond(pluginId, type, { requestId: payload.requestId, result: true });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, result: true });
                 } catch (e: any) {
-                    respond(pluginId, type, { requestId: payload.requestId, error: e.toString() });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, error: e.toString() });
                 }
                 break;
             case 'api:window:create':
                 try {
                     await ipcRenderer.invoke('plugin_window_create', payload);
-                    respond(pluginId, type, { requestId: payload.requestId, result: true });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, result: true });
                 } catch (e: any) {
-                    respond(pluginId, type, { requestId: payload.requestId, error: e.toString() });
+                    respond(requester, pluginId, type, { requestId: payload.requestId, error: e.toString() });
                 }
                 break;
         }
@@ -573,7 +600,7 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Listen for Quick Pick selections from UI
     useEffect(() => {
         const handleQuickPickSelect = (e: any) => {
-            const { requestId, pluginId, selectedItem } = e.detail;
+            const { requestId, pluginId, selectedItem, requester } = e.detail;
             // console.log('[PluginContext] Quick Pick selected:', { requestId, pluginId, selectedItem });
 
             // Respond using standardized format? 
@@ -583,13 +610,13 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Wait, my updated WORKER_BOOTSTRAP uses generic handler which expects `result`.
             // So I should send `result: selectedItem`.
 
-            const worker = workers.current.get(pluginId);
-            if (worker) {
-                worker.postMessage({
-                    type: 'api:window:showQuickPick:response',
-                    payload: { requestId, result: selectedItem } // CHANGED from selectedItem to result
-                });
-            }
+            if (!requester) return;
+            postCurrentWorkerResponse(
+                requester,
+                (candidate: Worker) => workers.current.get(pluginId) === candidate,
+                'api:window:showQuickPick',
+                { requestId, result: selectedItem },
+            );
         };
 
         window.addEventListener('zync:quick-pick-select', handleQuickPickSelect);
