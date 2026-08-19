@@ -8,12 +8,24 @@ export function createUpdaterIpcHandler(deps: UpdaterIpcDependencies) {
   let currentUpdate: any = null;
   let isUpdateDownloaded = false;
 
+  const closeCurrentUpdate = async () => {
+    if (currentUpdate && typeof currentUpdate.close === 'function') {
+      try {
+        await currentUpdate.close();
+      } catch {
+        // ignore close errors
+      }
+    }
+    currentUpdate = null;
+  };
+
   return {
     async handleCheck() {
       try {
         const update = await deps.check();
         isUpdateDownloaded = false;
         if (update?.available) {
+          await closeCurrentUpdate();
           currentUpdate = update;
           return {
             updateInfo: {
@@ -23,9 +35,10 @@ export function createUpdaterIpcHandler(deps: UpdaterIpcDependencies) {
             },
           };
         }
-        currentUpdate = null;
+        await closeCurrentUpdate();
         return null;
       } catch (e) {
+        await closeCurrentUpdate();
         isUpdateDownloaded = false;
         console.error('Update check error:', e);
         throw e;

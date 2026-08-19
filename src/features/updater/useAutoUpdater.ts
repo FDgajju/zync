@@ -106,6 +106,9 @@ export function useAutoUpdater() {
                     // Scenario 1: Auto-update enabled -> quietly download in background without notification noise
                     hasAutoDownloadedRef.current = true;
                     await handleStartDownload();
+                    if (useAppStore.getState().updateStatus === 'error') {
+                        hasAutoDownloadedRef.current = false;
+                    }
                 } else if (!autoDownload) {
                     // Scenario 2: Auto-download disabled -> show available state + Download action
                     setUpdateStatus('available');

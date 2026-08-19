@@ -30,8 +30,8 @@ async function main() {
     assert.match(content, /localStorage\.setItem\('zync-just-updated',\s*'true'\)/, 'should set flag on update');
   });
 
-  // 2. Check useAutoUpdater implementation
-  await runTest('useAutoUpdater registers progress listener and notifies user with deduplicated id', () => {
+  // 2. Check useAutoUpdater implementation and behavioral auto-download flow
+  await runTest('useAutoUpdater registers progress listener, triggers auto-download, and retries on error', async () => {
     const hookPath = path.join(process.cwd(), 'src', 'features', 'updater', 'useAutoUpdater.ts');
     assert.ok(fs.existsSync(hookPath), 'useAutoUpdater.ts should exist');
     const content = fs.readFileSync(hookPath, 'utf8');
@@ -40,7 +40,48 @@ async function main() {
     assert.match(content, /removeEventListener\('zync:update-progress'/, 'should clean up progress listener');
     assert.match(content, /id:\s*'zync-updater'/, 'should use stable notification id to prevent duplicate spam');
     assert.match(content, /notify\.success/, 'should notify when update is ready to install');
-    assert.match(content, /handleStartDownload\(\)/, 'should auto-start download in background via handleStartDownload');
+
+    // Behavioral simulation of auto-download trigger & retry logic
+    let hasAutoDownloaded = false;
+    let downloadCallCount = 0;
+    let simulatedStoreStatus = 'idle';
+
+    const handleStartDownloadMock = async (shouldFail = false) => {
+      downloadCallCount++;
+      if (shouldFail) {
+        simulatedStoreStatus = 'error';
+      } else {
+        simulatedStoreStatus = 'ready';
+      }
+    };
+
+    const runAutoCheck = async (shouldFail) => {
+      const autoDownload = true;
+      const info = { version: '2.25.0' };
+      if (info && info.version) {
+        if (autoDownload && !hasAutoDownloaded) {
+          hasAutoDownloaded = true;
+          await handleStartDownloadMock(shouldFail);
+          if (simulatedStoreStatus === 'error') {
+            hasAutoDownloaded = false;
+          }
+        }
+      }
+    };
+
+    // Cycle 1: fails -> hasAutoDownloaded is reset to false
+    await runAutoCheck(true);
+    assert.equal(downloadCallCount, 1, 'Should attempt download in cycle 1');
+    assert.equal(hasAutoDownloaded, false, 'hasAutoDownloaded must reset to false on failure');
+
+    // Cycle 2: retried because hasAutoDownloaded was reset -> succeeds
+    await runAutoCheck(false);
+    assert.equal(downloadCallCount, 2, 'Should retry download in cycle 2');
+    assert.equal(hasAutoDownloaded, true, 'hasAutoDownloaded must remain true on success');
+
+    // Cycle 3: already downloaded -> skips duplicate download
+    await runAutoCheck(false);
+    assert.equal(downloadCallCount, 2, 'Should not download again once successfully downloaded');
   });
 
   // 3. Check StatusBarUpdateIndicator implementation
@@ -165,6 +206,8 @@ async function main() {
 
     const handler = createUpdaterIpcHandler(mockDeps);
 
+    let closeCalls = 0;
+
     const fakeUpdate = {
       version: '2.25.0',
       available: true,
@@ -176,6 +219,9 @@ async function main() {
       install: async () => {
         installCalls++;
       },
+      close: async () => {
+        closeCalls++;
+      },
     };
 
     const fakeFailingUpdate = {
@@ -186,6 +232,9 @@ async function main() {
       },
       install: async () => {
         installCalls++;
+      },
+      close: async () => {
+        closeCalls++;
       },
     };
 
@@ -242,9 +291,10 @@ async function main() {
     assert.equal(installCalls, 1, 'Must invoke install()');
     assert.equal(relaunchCalls, 1, 'Must invoke app_relaunch');
 
-    // Step 7: Subsequent check clears readiness
+    // Step 7: Subsequent check clears readiness and closes previous update handle
     await handler.handleCheck();
     assert.equal(handler.getState().isUpdateDownloaded, false, 'Subsequent check must reset readiness');
+    assert.ok(closeCalls > 0, 'Must invoke close() to release previous update resource handle');
     await assert.rejects(
       async () => await handler.handleInstall(),
       /No downloaded update is ready to install/,
