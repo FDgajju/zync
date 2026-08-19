@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { getZyncThemePayload } from '../../lib/themePayload';
 import { isDebugThemePayloadEnabled } from '../../lib/debugFlags';
+import { confirmPluginTerminalAction } from '../../features/plugins/confirmPluginTerminalAction';
 
 interface PluginPanelProps {
     html: string;
@@ -48,8 +49,15 @@ export function PluginPanel({ html, panelId, pluginId, connectionId }: PluginPan
             if (!type) return;
 
             if (type === 'zync:terminal:send') {
+                if (typeof payload?.text !== 'string' || !payload.text) return;
+                const confirmed = await confirmPluginTerminalAction(pluginId, 'send terminal input', payload.text);
+                if (!active || iframeRef.current?.contentWindow !== sourceWindow || !confirmed) return;
                 window.dispatchEvent(new CustomEvent('zync:terminal:send', { detail: { text: payload.text, connectionId } }));
             } else if (type === 'zync:terminal:opentab') {
+                if (typeof payload?.command === 'string' && payload.command) {
+                    const confirmed = await confirmPluginTerminalAction(pluginId, 'open a terminal and run', payload.command);
+                    if (!active || iframeRef.current?.contentWindow !== sourceWindow || !confirmed) return;
+                }
                 window.dispatchEvent(new CustomEvent('ssh-ui:new-terminal-tab', { detail: { connectionId, command: payload.command } }));
             } else if (type === 'zync:statusbar:set') {
                 window.dispatchEvent(new CustomEvent('zync:statusbar:set', { detail: payload }));
@@ -89,13 +97,11 @@ export function PluginPanel({ html, panelId, pluginId, connectionId }: PluginPan
                     return;
                 }
 
-                const confirmed = await useAppStore.getState().showConfirmDialog({
-                    title: 'Run SSH command?',
-                    message: `Plugin "${pluginId}" wants to run on connection "${connectionId}": ${payload.command}`,
-                    confirmText: 'Run command',
-                    cancelText: 'Cancel',
-                    variant: 'danger'
-                });
+                const confirmed = await confirmPluginTerminalAction(
+                    pluginId,
+                    `run an SSH command on connection "${connectionId}"`,
+                    payload.command,
+                );
                 if (!active || iframeRef.current?.contentWindow !== sourceWindow) return;
                 if (!confirmed) {
                     iframeRef.current?.contentWindow?.postMessage({

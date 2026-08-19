@@ -10,9 +10,14 @@ use crate::vault::error::VaultError;
 use crate::vault::store::VaultService;
 
 pub(crate) const PROVIDERS: [&str; 5] = ["gemini", "openai", "claude", "groq", "mistral"];
+const API_KEY_LOGICAL_ID_PREFIX: &str = "zync.ai.api-key.";
 
 pub(crate) fn api_key_logical_id(provider: &str) -> String {
-    format!("zync.ai.api-key.{provider}")
+    format!("{API_KEY_LOGICAL_ID_PREFIX}{provider}")
+}
+
+pub(crate) fn is_local_only_credential_logical_id(logical_id: &str) -> bool {
+    logical_id.starts_with(API_KEY_LOGICAL_ID_PREFIX)
 }
 
 fn api_key_label(provider: &str) -> String {
@@ -204,5 +209,48 @@ mod tests {
             .windows(secret.len())
             .any(|window| window == secret.as_bytes()));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn api_keys_are_excluded_from_exported_vaults() {
+        let root =
+            std::env::temp_dir().join(format!("zync-ai-key-export-test-{}", uuid::Uuid::new_v4()));
+        let source_dir = root.join("source");
+        let export_dir = root.join("export");
+        std::fs::create_dir_all(&source_dir).expect("create source directory");
+        std::fs::create_dir_all(&export_dir).expect("create export directory");
+
+        let passphrase = "test-passphrase";
+        let mut vault = VaultService::new(source_dir);
+        vault
+            .initialize(passphrase, false)
+            .expect("initialize vault");
+        save_api_key(&vault, "openai", "sk-local-only").expect("save API key");
+        vault
+            .item_create_with_secret_values(
+                "SSH password",
+                "ssh-password",
+                &BTreeMap::from([("password".to_string(), "export-me".to_string())]),
+                None,
+                Some("ssh-password-export-test"),
+            )
+            .expect("save exportable credential");
+
+        vault
+            .export_vault(&export_dir.join("vault.redb"))
+            .expect("export vault");
+        let mut exported = VaultService::new(export_dir);
+        exported
+            .unlock(passphrase, false)
+            .expect("unlock exported vault");
+
+        assert_eq!(get_api_key(&exported, "openai").unwrap(), None);
+        assert!(exported
+            .item_get_by_logical_id("ssh-password-export-test")
+            .is_ok());
+
+        drop(exported);
+        drop(vault);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

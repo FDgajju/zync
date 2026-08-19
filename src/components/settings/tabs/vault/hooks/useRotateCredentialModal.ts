@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { vaultIpc, type VaultItem } from '../../../../../vault/ipc';
 import type { ToastType } from '../../../../../store/toastSlice';
 import type { Connection } from '../../../../../features/connections/domain/types';
+import { vaultItemSecretReferenceField } from '../../../../../vault/credentialTypes';
 
 interface UseRotateCredentialModalOptions {
   items: VaultItem[];
@@ -93,7 +94,7 @@ export function useRotateCredentialModal({
             privateKey: secret,
             ...(trimmedPassphrase ? { passphrase } : {}),
           }
-        : { password: secret };
+        : { [vaultItemSecretReferenceField(item).name]: secret };
 
     setIsLoading(true);
     try {

@@ -11,6 +11,7 @@ import {
     waitForPluginNotifyActionResult,
 } from '../features/notifications/pluginNotifyAction';
 import { useAppStore } from '../store/useAppStore';
+import { confirmPluginTerminalAction } from '../features/plugins/confirmPluginTerminalAction';
 
 export interface EditorProviderManifest {
     entry?: string;
@@ -450,10 +451,14 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 });
                 respond(pluginId, type, { requestId: payload.requestId, confirmed });
                 break;
-            case 'api:terminal:send':
+            case 'api:terminal:send': {
+                if (typeof payload?.text !== 'string' || !payload.text) break;
+                const confirmed = await confirmPluginTerminalAction(pluginId, 'send terminal input', payload.text);
+                if (!confirmed) break;
                 const activeConnId = useAppStore.getState().activeConnectionId;
                 window.dispatchEvent(new CustomEvent('zync:terminal:send', { detail: { text: payload.text, connectionId: activeConnId } }));
                 break;
+            }
             case 'api:statusbar:set':
                 window.dispatchEvent(new CustomEvent('zync:statusbar:set', { detail: { id: payload.id, text: payload.text } }));
                 break;

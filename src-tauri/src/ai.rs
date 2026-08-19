@@ -21,7 +21,10 @@ mod types;
 pub(crate) mod util;
 
 pub use crate::utils::toon::{AiTranslateResponse, ChatMessage};
-pub(crate) use config::{delete_api_key, get_api_key, migrate_legacy_api_keys, save_api_key};
+pub(crate) use config::{
+    delete_api_key, get_api_key, is_local_only_credential_logical_id, migrate_legacy_api_keys,
+    save_api_key,
+};
 pub use model_catalog::{get_ollama_models, get_provider_models};
 pub use translate::{check_ollama, translate, translate_stream};
 pub use types::{AgentRunRequest, AiConfig, AiStreamChunk, AiStreamDone, TerminalContext};

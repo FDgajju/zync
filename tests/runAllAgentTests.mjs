@@ -12,6 +12,8 @@ const tests = [
   'tests/connectionLifecycleService.test.mjs',
   'tests/keyPassphrasePrompt.test.mjs',
   'tests/hostKeyVerification.test.mjs',
+  'tests/editorPluginFrameIsolation.test.mjs',
+  'tests/pluginPanelSshConfirmation.test.mjs',
   'tests/keyPassphraseRuntime.test.mjs',
   'tests/connectionService.test.mjs',
   'tests/connectionTabService.test.mjs',

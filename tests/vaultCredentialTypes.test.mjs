@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   getCredentialKindLabel,
   isHostAssignableCredentialKind,
+  isLocalOnlyCredential,
   isSupportedCreateCredentialKind,
   normalizeCredentialKind,
   vaultItemSecretReferenceField,
@@ -121,6 +122,12 @@ test('legacy ssh agent keys map to external keychain references', () => {
 test('legacy aliases normalize to canonical credential kinds', () => {
   assert.equal(normalizeCredentialKind('api-key'), 'api-token');
   assert.equal(normalizeCredentialKind('secure-note'), 'secret-text');
+});
+
+test('AI provider credentials are local-only', () => {
+  assert.equal(isLocalOnlyCredential({ logicalId: 'zync.ai.api-key.openai' }), true);
+  assert.equal(isLocalOnlyCredential({ logicalId: 'cred-1' }), false);
+  assert.equal(vaultItemSecretReferenceField({ id: 'ai-key', kind: 'api-token' }).name, 'token');
 });
 
 test('unsupported legacy kinds normalize to generic secret envelope', () => {

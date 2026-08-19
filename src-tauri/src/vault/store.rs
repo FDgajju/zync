@@ -1417,16 +1417,70 @@ impl VaultService {
 
     // ── Export / Import ───────────────────────────────────────────────────────
 
-    /// Copies vault.redb to `dest_path` as an encrypted backup.
+    /// Copies vault.redb to `dest_path` as an encrypted backup, omitting local-only records.
     pub fn export_vault(&mut self, dest_path: &Path) -> Result<(), VaultError> {
+        self.try_open()?;
         let src = self.vault_path();
         if !src.exists() {
             return Err(VaultError::NotInitialized);
         }
+        let excluded = {
+            let db = self.db.as_ref().ok_or(VaultError::NotInitialized)?;
+            let read_txn = db.begin_read()?;
+            let logical_ids = read_txn.open_table(LOGICAL_IDS)?;
+            let mut entries = Vec::new();
+            for entry in logical_ids.iter()? {
+                let (logical_id, item_id) = entry?;
+                if crate::ai::is_local_only_credential_logical_id(logical_id.value()) {
+                    entries.push((logical_id.value().to_string(), item_id.value().to_string()));
+                }
+            }
+            entries
+        };
         // Temporarily drop the DB handle to release the redb exclusive file lock.
         let had_db = self.db.take().is_some();
-        let result = std::fs::copy(&src, dest_path)
-            .map_err(|e| VaultError::InvalidData(format!("export failed: {e}")));
+        let result: Result<(), VaultError> = (|| {
+            std::fs::copy(&src, dest_path)
+                .map_err(|e| VaultError::InvalidData(format!("export failed: {e}")))?;
+            if excluded.is_empty() {
+                return Ok(());
+            }
+
+            let mut exported = Database::open(dest_path).map_err(Self::map_database_open_error)?;
+            let write_txn = exported.begin_write()?;
+            {
+                let mut records = write_txn.open_table(RECORDS)?;
+                let mut logical_ids = write_txn.open_table(LOGICAL_IDS)?;
+                let mut history = write_txn.open_multimap_table(REVISION_HISTORY)?;
+                for (logical_id, item_id) in &excluded {
+                    records.remove(item_id.as_str())?;
+                    logical_ids.remove(logical_id.as_str())?;
+                    drop(history.remove_all(item_id.as_str())?);
+                }
+
+                let mut meta_table = write_txn.open_table(VAULT_META)?;
+                let meta_bytes = meta_table.get("meta")?.ok_or(VaultError::NotInitialized)?;
+                let mut meta: VaultMeta = serde_json::from_slice(meta_bytes.value())?;
+                meta.live_records = Some(
+                    meta.live_records
+                        .unwrap_or(0)
+                        .saturating_sub(excluded.len() as u64),
+                );
+                meta.updated_at = Self::now_secs();
+                drop(meta_bytes);
+                meta_table.insert("meta", serde_json::to_vec(&meta)?.as_slice())?;
+            }
+            write_txn.commit()?;
+            while exported.compact().map_err(|error| {
+                VaultError::InvalidData(format!("export compaction failed: {error}"))
+            })? {}
+            drop(exported);
+            Self::restrict_vault_permissions(dest_path)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(dest_path);
+        }
         if had_db {
             let reopen_result = self.try_open();
             result?;
