@@ -1,6 +1,9 @@
 import { useAppStore } from '../../store/useAppStore';
 import { notify } from '../notifications/notify';
 import { installAndRestart, openReleasePage } from './updaterService';
+import { executeDownloadSimulation, type SimulationTarget } from './updaterIpcCore';
+
+export { executeDownloadSimulation, type SimulationTarget };
 
 /**
  * Development and testing utility for simulating updater events,
@@ -37,22 +40,16 @@ export const mockUpdater = {
      */
     async startSimulatedDownload(version: string = '2.25.0', durationMs: number = 2000) {
         const store = useAppStore.getState();
-        if (!store.updateInfo?.version) {
-            store.setUpdateInfo({ version });
-        }
-        store.setUpdateStatus('downloading');
-        store.setDownloadProgress(0);
-
-        const steps = 10;
-        const stepDelay = Math.max(80, durationMs / steps);
-        for (let i = 1; i <= steps; i++) {
-            const percent = Math.min(100, Math.round((i / steps) * 100));
-            store.setDownloadProgress(percent);
-            window.dispatchEvent(new CustomEvent('zync:update-progress', {
-                detail: { percent, status: i === steps ? 'finished' : 'progress' }
-            }));
-            await new Promise(r => setTimeout(r, stepDelay));
-        }
+        await executeDownloadSimulation(version, durationMs, {
+            hasVersion: () => Boolean(store.updateInfo?.version),
+            setUpdateInfo: (info) => store.setUpdateInfo(info),
+            setUpdateStatus: (status) => store.setUpdateStatus(status as any),
+            setDownloadProgress: (p) => store.setDownloadProgress(p),
+            dispatchEvent: (name, detail) => {
+                window.dispatchEvent(new CustomEvent(name, { detail }));
+            },
+        });
+        mockUpdater.mockUpdateReady(version);
     },
 
     /**
@@ -195,4 +192,15 @@ declare global {
 if (typeof window !== 'undefined' && import.meta.env.DEV) {
     window.zyncUpdater = mockUpdater;
     window.__zyncUpdaterTest = mockUpdater;
+}
+
+export async function runDevSimulatedDownloadFallback(version: string = '2.25.0', durationMs: number = 2000): Promise<boolean> {
+    if (!import.meta.env.DEV) return false;
+    try {
+        await mockUpdater.startSimulatedDownload(version, durationMs);
+        return true;
+    } catch (simErr) {
+        console.error('Simulated download failed:', simErr);
+        return false;
+    }
 }

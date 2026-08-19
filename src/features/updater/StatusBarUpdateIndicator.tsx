@@ -58,11 +58,11 @@ export function StatusBarUpdateIndicator() {
                         } catch (error) {
                             if (import.meta.env.DEV) {
                                 try {
-                                    const { mockUpdater } = await import('./mockUpdater');
-                                    await mockUpdater.startSimulatedDownload(updateInfo?.version || '2.25.0');
-                                    return;
+                                    const { runDevSimulatedDownloadFallback } = await import('./mockUpdater');
+                                    const handled = await runDevSimulatedDownloadFallback(updateInfo?.version || '2.25.0');
+                                    if (handled) return;
                                 } catch (simErr) {
-                                    console.error('Simulated download failed:', simErr);
+                                    console.error('Simulated download fallback failed:', simErr);
                                 }
                             }
                             console.error('Download start failed:', error);

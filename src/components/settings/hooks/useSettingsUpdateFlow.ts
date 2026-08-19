@@ -127,11 +127,11 @@ export function useSettingsUpdateFlow({
                     if (import.meta.env.DEV) {
                         console.warn('Real package download not available (running simulated download in dev mode)', error);
                         try {
-                            const { mockUpdater } = await import('../../../features/updater/mockUpdater');
-                            await mockUpdater.startSimulatedDownload(updateInfo?.version || '2.25.0', 2000);
-                            return;
+                            const { runDevSimulatedDownloadFallback } = await import('../../../features/updater/mockUpdater');
+                            const handled = await runDevSimulatedDownloadFallback(updateInfo?.version || '2.25.0', 2000);
+                            if (handled) return;
                         } catch (simErr) {
-                            console.error('Simulated download failed:', simErr);
+                            console.error('Simulated download fallback failed:', simErr);
                         }
                     }
                     console.error('Update download failed', error);

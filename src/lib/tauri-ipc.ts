@@ -3,8 +3,15 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { check } from '@tauri-apps/plugin-updater';
 import { getVersion } from '@tauri-apps/api/app';
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
+import { createUpdaterIpcHandler } from '../features/updater/updaterIpcCore';
 
-let currentUpdate: any = null;
+const updaterIpc = createUpdaterIpcHandler({
+  check,
+  invoke,
+  dispatchEvent: (name, detail) => {
+    window.dispatchEvent(new CustomEvent(name, { detail }));
+  },
+});
 
 // Map to track active listeners for cleanup
 interface ListenerRegistration {
@@ -289,85 +296,15 @@ const ipcRenderer = {
       }
 
       if (channel === 'update:check') {
-        try {
-          const update = await check();
-          if (update?.available) {
-            currentUpdate = update;
-            return {
-              updateInfo: {
-                version: update.version,
-                body: update.body,
-                date: update.date
-              }
-            };
-          }
-          currentUpdate = null;
-          return null;
-        } catch (e) {
-          console.error('Update check error:', e);
-          throw e;
-        }
+        return await updaterIpc.handleCheck();
       }
 
       if (channel === 'update:download') {
-        if (!currentUpdate) {
-          const update = await check();
-          if (update?.available) {
-            currentUpdate = update;
-          }
-        }
-
-        if (!currentUpdate) {
-          throw new Error('No update available to download');
-        }
-
-        // Locally scoped progress tracking state
-        const downloadState = { downloaded: 0, total: 0 };
-
-        try {
-          // Use download() so Tauri stores downloadedBytes resource handle
-          await currentUpdate.download((event: any) => {
-            try {
-              if (event.event === 'Started') {
-                downloadState.total = event.data?.contentLength || 0;
-                downloadState.downloaded = 0;
-                window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 0, status: 'started' } }));
-              } else if (event.event === 'Progress') {
-                downloadState.downloaded += event.data?.chunkLength || 0;
-                let percent = 0;
-                if (downloadState.total > 0) {
-                  percent = (downloadState.downloaded / downloadState.total) * 100;
-                }
-                percent = Math.min(100, Math.max(0, percent));
-                window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent, status: 'progress' } }));
-              } else if (event.event === 'Finished') {
-                window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 100, status: 'finished' } }));
-              }
-            } catch (err) {
-              console.error('Error in download callback:', err);
-              window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 0, status: 'error' } }));
-            }
-          });
-          return { success: true };
-        } catch (error) {
-          console.error('Update download error:', error);
-          window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 0, status: 'error' } }));
-          throw error;
-        }
+        return await updaterIpc.handleDownload();
       }
 
       if (channel === 'update:install') {
-        try {
-          if (currentUpdate && typeof currentUpdate.install === 'function') {
-            await currentUpdate.install();
-          }
-          // Relaunch the application cleanly using native Rust command
-          await invoke('app_relaunch');
-          return { success: true };
-        } catch (error) {
-          console.error('Failed to install and relaunch update:', error);
-          throw error;
-        }
+        return await updaterIpc.handleInstall();
       }
 
       if (channel === 'app:relaunch') {

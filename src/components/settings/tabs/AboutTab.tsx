@@ -17,6 +17,16 @@ interface AboutTabProps {
     hero: ReactNode;
 }
 
+const getMockUpdater = async () => {
+    try {
+        const { mockUpdater } = await import('../../../features/updater/mockUpdater');
+        return mockUpdater;
+    } catch (err) {
+        console.error('Failed to load mockUpdater:', err);
+        return null;
+    }
+};
+
 function LinkButton({
     onClick,
     children,
@@ -87,12 +97,19 @@ export function AboutTab({
                         {updateStatus === 'downloading' && `Downloading... ${percent}%`}
                         {updateStatus === 'ready' && 'Install & Restart'}
                         {updateStatus === 'not-available' && 'Up to date'}
-                        {updateStatus === 'error' && 'Check Failed (Retry)'}
+                        {updateStatus === 'error' && 'Update Failed (Retry)'}
                     </span>
                 </button>
 
                 {updateStatus === 'downloading' && (
-                    <div className="h-1.5 w-full bg-[var(--color-app-bg)] rounded-full overflow-hidden mt-2.5">
+                    <div
+                        role="progressbar"
+                        aria-valuenow={percent}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label="Update download progress"
+                        className="h-1.5 w-full bg-[var(--color-app-bg)] rounded-full overflow-hidden mt-2.5"
+                    >
                         <div
                             className="h-full bg-[var(--color-app-accent)] transition-all duration-300 ease-out"
                             style={{ width: `${percent}%` }}
@@ -125,8 +142,8 @@ export function AboutTab({
                         <button
                             type="button"
                             onClick={async () => {
-                                const { mockUpdater } = await import('../../../features/updater/mockUpdater');
-                                void mockUpdater.simulateAutoUpdateFlow('2.25.0', 2500);
+                                const updater = await getMockUpdater();
+                                void updater?.simulateAutoUpdateFlow('2.25.0', 2500);
                             }}
                             className="inline-flex items-center gap-1 text-[11px] text-[var(--color-app-muted)] hover:text-[var(--color-app-accent)] transition-colors cursor-pointer py-1 px-2 rounded hover:bg-[var(--color-app-surface)]/50 border border-[var(--color-app-border)]/30"
                             title="Simulate Scenario 1: silent auto-download in background -> ready notification + status bar button"
@@ -137,8 +154,8 @@ export function AboutTab({
                         <button
                             type="button"
                             onClick={async () => {
-                                const { mockUpdater } = await import('../../../features/updater/mockUpdater');
-                                mockUpdater.simulateManualUpdateFlow('2.25.0');
+                                const updater = await getMockUpdater();
+                                updater?.simulateManualUpdateFlow('2.25.0');
                             }}
                             className="inline-flex items-center gap-1 text-[11px] text-[var(--color-app-muted)] hover:text-[var(--color-app-accent)] transition-colors cursor-pointer py-1 px-2 rounded hover:bg-[var(--color-app-surface)]/50 border border-[var(--color-app-border)]/30"
                             title="Simulate Scenario 2: update available notification with Download button + status bar Download button"
@@ -149,8 +166,8 @@ export function AboutTab({
                         <button
                             type="button"
                             onClick={async () => {
-                                const { mockUpdater } = await import('../../../features/updater/mockUpdater');
-                                mockUpdater.mockPostUpdateCelebration(appVersion);
+                                const updater = await getMockUpdater();
+                                updater?.mockPostUpdateCelebration(appVersion);
                             }}
                             className="inline-flex items-center gap-1 text-[11px] text-[var(--color-app-muted)] hover:text-emerald-400 transition-colors cursor-pointer py-1 px-2 rounded hover:bg-[var(--color-app-surface)]/50 border border-[var(--color-app-border)]/30"
                             title="Simulate post-update celebration toast with 'What’s New' action button"
@@ -161,8 +178,8 @@ export function AboutTab({
                         <button
                             type="button"
                             onClick={async () => {
-                                const { mockUpdater } = await import('../../../features/updater/mockUpdater');
-                                mockUpdater.reset();
+                                const updater = await getMockUpdater();
+                                updater?.reset();
                             }}
                             className="inline-flex items-center gap-1 text-[11px] text-[var(--color-app-muted)] hover:text-red-400 transition-colors cursor-pointer py-1 px-2 rounded hover:bg-[var(--color-app-surface)]/50"
                             title="Reset update state back to idle"

@@ -49,10 +49,10 @@ export function useAutoUpdater() {
             if (import.meta.env.DEV) {
                 console.warn('Real package download not available (running simulated download in dev mode):', error);
                 try {
-                    const { mockUpdater } = await import('./mockUpdater');
+                    const { runDevSimulatedDownloadFallback } = await import('./mockUpdater');
                     const currentInfo = useAppStore.getState().updateInfo;
-                    await mockUpdater.startSimulatedDownload(currentInfo?.version || '2.25.0', 2000);
-                    return;
+                    const handled = await runDevSimulatedDownloadFallback(currentInfo?.version || '2.25.0', 2000);
+                    if (handled) return;
                 } catch (simErr) {
                     console.error('Simulated download failed:', simErr);
                 }
@@ -81,6 +81,8 @@ export function useAutoUpdater() {
     }, [setUpdateStatus, setDownloadProgress]);
 
     const performCheck = useCallback(async (isManual = false) => {
+        const currentStatus = useAppStore.getState().updateStatus;
+        if (currentStatus === 'downloading' || currentStatus === 'ready') return;
         if (isCheckingRef.current) return;
         isCheckingRef.current = true;
         setUpdateStatus('checking');
@@ -103,15 +105,7 @@ export function useAutoUpdater() {
                 if (autoDownload && !hasAutoDownloadedRef.current) {
                     // Scenario 1: Auto-update enabled -> quietly download in background without notification noise
                     hasAutoDownloadedRef.current = true;
-                    setUpdateStatus('downloading');
-                    setDownloadProgress(0);
-
-                    try {
-                        await startDownload();
-                    } catch (downloadErr) {
-                        console.error('Auto-download error:', downloadErr);
-                        setUpdateStatus('error');
-                    }
+                    await handleStartDownload();
                 } else if (!autoDownload) {
                     // Scenario 2: Auto-download disabled -> show available state + Download action
                     setUpdateStatus('available');
@@ -236,8 +230,18 @@ export function useAutoUpdater() {
         void initUpdateCheck();
 
         // 4-hour recurring check interval
-        const interval = setInterval(() => {
-            void performCheck(false);
+        const interval = setInterval(async () => {
+            try {
+                const config = await window.ipcRenderer.invoke('config:get') as { autoUpdateCheck?: boolean } | null;
+                if (isCancelled) return;
+                if (config?.autoUpdateCheck !== false) {
+                    void performCheck(false);
+                }
+            } catch {
+                if (!isCancelled) {
+                    void performCheck(false);
+                }
+            }
         }, FOUR_HOURS_MS);
 
         return () => {
