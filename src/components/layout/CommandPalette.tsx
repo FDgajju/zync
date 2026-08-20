@@ -83,8 +83,10 @@ export function CommandPalette() {
     const cancelActiveQuickPick = () => {
         if (quickPickModeRef.current) {
             setQuickPickMode(false);
+            quickPickModeRef.current = false;
             const currentOptions = quickPickOptionsRef.current;
             setQuickPickOptions(null);
+            quickPickOptionsRef.current = null;
             if (currentOptions && currentOptions.pluginId !== 'system') {
                 window.dispatchEvent(new CustomEvent('zync:quick-pick-select', {
                     detail: {
@@ -105,6 +107,7 @@ export function CommandPalette() {
                 e.preventDefault();
                 cancelActiveQuickPick();
                 setOpen(true);
+                openRef.current = true;
 
                 if (e.shiftKey) {
                     // Ctrl+Shift+P -> Command Mode
@@ -117,6 +120,7 @@ export function CommandPalette() {
                 }
             } else if (e.key === 'Escape' && openRef.current) {
                 setOpen(false);
+                openRef.current = false;
                 cancelActiveQuickPick();
             }
         };
@@ -124,10 +128,14 @@ export function CommandPalette() {
         const handleQuickPick = (e: CustomEvent<QuickPickDetail>) => {
             cancelActiveQuickPick();
             const { items, options, requestId, pluginId, requester } = e.detail;
+            const nextOptions = { ...options, requestId, pluginId, requester };
             setQuickPickItems(items);
-            setQuickPickOptions({ ...options, requestId, pluginId, requester });
+            setQuickPickOptions(nextOptions);
+            quickPickOptionsRef.current = nextOptions;
             setQuickPickMode(true);
+            quickPickModeRef.current = true;
             setOpen(true);
+            openRef.current = true;
             setSearch(""); // Clear search for picking
         };
 
@@ -135,6 +143,7 @@ export function CommandPalette() {
             const event = e as CustomEvent<{ commandMode?: boolean }>;
             cancelActiveQuickPick();
             setOpen(true);
+            openRef.current = true;
             if (event.detail?.commandMode) {
                 setCommandMode(true);
                 setSearch('>');
@@ -166,6 +175,7 @@ export function CommandPalette() {
 
     const runCommand = (command: () => void) => {
         setOpen(false);
+        openRef.current = false;
         // Defer execution to allow UI to close smoothly first
         requestAnimationFrame(() => {
             command();
@@ -174,9 +184,12 @@ export function CommandPalette() {
 
     const handleQuickPickSelect = (item: QuickPickItem) => {
         setOpen(false);
+        openRef.current = false;
         setQuickPickMode(false);
+        quickPickModeRef.current = false;
         const currentOptions = quickPickOptionsRef.current;
         setQuickPickOptions(null);
+        quickPickOptionsRef.current = null;
         if (currentOptions) {
             // Handle internal system Quick Picks
             if (currentOptions.pluginId === 'system') {
@@ -199,6 +212,7 @@ export function CommandPalette() {
 
     const handleClose = () => {
         setOpen(false);
+        openRef.current = false;
         cancelActiveQuickPick();
     };
 
@@ -287,13 +301,16 @@ export function CommandPalette() {
                                                     .map(p => ({ label: p.manifest.name, id: p.manifest.id }))
                                             ];
 
-                                            setQuickPickItems(themes);
-                                            setQuickPickOptions({ 
+                                            const nextOptions = { 
                                                 placeHolder: 'Select Icon Theme', 
                                                 requestId: 'icon-theme-select',
                                                 pluginId: 'system' 
-                                            });
+                                            };
+                                            setQuickPickItems(themes);
+                                            setQuickPickOptions(nextOptions);
+                                            quickPickOptionsRef.current = nextOptions;
                                             setQuickPickMode(true);
+                                            quickPickModeRef.current = true;
                                             setSearch("");
                                         }}
                                         className="relative flex cursor-pointer select-none items-center rounded-lg px-2 py-1.5 text-sm outline-none data-[selected=true]:bg-app-accent/20 data-[selected=true]:text-app-accent text-app-text transition-colors group mb-0.5"

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
 import {
   filterUnsupportedHostThemes,
   filterTrustedBuiltinThemeChoices,
@@ -510,4 +511,123 @@ await run('delivers quick pick response to the worker and rejects stale generati
   assert.equal(workerMessages.length, 2);
 });
 
+await run('handles consecutive immediate quick-pick events with synchronous cancellation of prior request', async () => {
+  const dispatchedEvents = [];
+  const eventTarget = {
+    dispatchEvent(event) {
+      dispatchedEvents.push(event);
+      return true;
+    },
+  };
+
+  // Model the CommandPalette synchronous ref transition logic
+  const state = {
+    open: false,
+    quickPickMode: false,
+    quickPickOptions: null,
+  };
+  const refs = {
+    open: false,
+    quickPickMode: false,
+    quickPickOptions: null,
+  };
+
+  const cancelActiveQuickPick = () => {
+    if (refs.quickPickMode) {
+      state.quickPickMode = false;
+      refs.quickPickMode = false;
+      const currentOptions = refs.quickPickOptions;
+      state.quickPickOptions = null;
+      refs.quickPickOptions = null;
+      if (currentOptions && currentOptions.pluginId !== 'system') {
+        eventTarget.dispatchEvent({
+          type: 'zync:quick-pick-select',
+          detail: {
+            requestId: currentOptions.requestId,
+            pluginId: currentOptions.pluginId,
+            selectedItem: null,
+            requester: currentOptions.requester,
+          },
+        });
+      }
+    }
+  };
+
+  const handleQuickPick = (detail) => {
+    cancelActiveQuickPick();
+    const { options, requestId, pluginId, requester } = detail;
+    const nextOptions = { ...options, requestId, pluginId, requester };
+    state.quickPickOptions = nextOptions;
+    refs.quickPickOptions = nextOptions;
+    state.quickPickMode = true;
+    refs.quickPickMode = true;
+    state.open = true;
+    refs.open = true;
+  };
+
+  const worker1 = { id: 'worker-1' };
+  const worker2 = { id: 'worker-2' };
+
+  // Dispatch first quick-pick event
+  handleQuickPick({
+    items: [{ id: 'dracula', label: 'Dracula' }],
+    options: { placeHolder: 'Theme 1' },
+    requestId: 'req-1',
+    pluginId: 'com.zync.theme.manager',
+    requester: worker1,
+  });
+
+  assert.equal(refs.quickPickMode, true);
+  assert.equal(refs.open, true);
+  assert.equal(refs.quickPickOptions?.requestId, 'req-1');
+  assert.equal(dispatchedEvents.length, 0);
+
+  // Dispatch second quick-pick event immediately without waiting for React re-render / useEffect
+  handleQuickPick({
+    items: [{ id: 'monokai', label: 'Monokai' }],
+    options: { placeHolder: 'Theme 2' },
+    requestId: 'req-2',
+    pluginId: 'com.zync.theme.manager',
+    requester: worker2,
+  });
+
+  // Verify prior request was cancelled synchronously
+  assert.equal(dispatchedEvents.length, 1);
+  assert.deepEqual(dispatchedEvents[0], {
+    type: 'zync:quick-pick-select',
+    detail: {
+      requestId: 'req-1',
+      pluginId: 'com.zync.theme.manager',
+      selectedItem: null,
+      requester: worker1,
+    },
+  });
+
+  // Verify active state now holds the second request
+  assert.equal(refs.quickPickMode, true);
+  assert.equal(refs.open, true);
+  assert.equal(refs.quickPickOptions?.requestId, 'req-2');
+  assert.equal(refs.quickPickOptions?.requester, worker2);
+});
+
+// Verify static source patterns in CommandPalette.tsx
+await run('CommandPalette updates quick-pick refs synchronously across state transitions', async () => {
+  const cpSource = fs.readFileSync(
+    path.join(process.cwd(), 'src', 'components', 'layout', 'CommandPalette.tsx'),
+    'utf8',
+  );
+
+  assert.match(
+    cpSource,
+    /quickPickModeRef\.current = false;[\s\S]*?quickPickOptionsRef\.current = null;/,
+    'cancelActiveQuickPick must clear quickPickModeRef and quickPickOptionsRef synchronously',
+  );
+  assert.match(
+    cpSource,
+    /quickPickOptionsRef\.current = nextOptions;[\s\S]*?quickPickModeRef\.current = true;[\s\S]*?openRef\.current = true;/,
+    'handleQuickPick must assign quickPickOptionsRef, quickPickModeRef, and openRef synchronously',
+  );
+});
+
 console.log('Plugin command bridge behavioral tests passed.');
+
