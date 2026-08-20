@@ -107,6 +107,7 @@ impl PluginScanner {
         inject(Self::builtin_theme_manager());
         inject(Self::builtin_codemirror_editor_provider());
         inject(Self::builtin_plain_editor_provider());
+        inject(Self::builtin_dark());
         inject(Self::builtin_dracula());
         inject(Self::builtin_monokai());
         inject(Self::builtin_midnight());
@@ -474,6 +475,43 @@ impl PluginScanner {
             },
             script: None,
             style: None,
+            editor_html: None,
+            enabled: true,
+        }
+    }
+
+    fn builtin_dark() -> Plugin {
+        Plugin {
+            path: "builtin://dark".to_string(),
+            manifest: Manifest {
+                id: "com.zync.theme.dark".to_string(),
+                name: "Dark Theme".to_string(),
+                version: "1.0.0".to_string(),
+                main: None,
+                style: Some("theme.css".to_string()),
+                mode: Some("dark".to_string()),
+                preview_bg: Some("#09090b".to_string()),
+                preview_accent: Some("#797bce".to_string()),
+                icon: None,
+                manifest_type: None,
+                icons_path: None,
+                editor: None,
+            },
+            script: None,
+            style: Some(
+                r#"
+                [data-theme='dark'] {
+                    --color-app-bg: #09090b;
+                    --color-app-panel: #18181b;
+                    --color-app-surface: #27272a;
+                    --color-app-border: #27272a;
+                    --color-app-text: #e4e4e7;
+                    --color-app-muted: #a1a1aa;
+                    --color-app-accent: #797bce;
+                }
+            "#
+                .to_string(),
+            ),
             editor_html: None,
             enabled: true,
         }

@@ -71,6 +71,7 @@
         "src/features/notifications/pluginNotify.ts",
         "src/features/notifications/pluginNotifyAction.ts",
         "src/features/plugins/pluginCommandBridge.ts",
+        "src/features/updater/updaterIpcCore.ts",
         "src/store/uiSlice.ts",
         "src/vault/syncIpc.ts",
         "src/lib/ghostSuggestions/activeSegment.ts",

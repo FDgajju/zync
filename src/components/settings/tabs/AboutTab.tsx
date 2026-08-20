@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronRight, Download, Gift, RefreshCw, Star } from 'lucide-react';
+import { AlertTriangle, Check, ChevronRight, Download, Gift, RefreshCw, Sparkles, Star, Wrench } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { UpdateInfo, UpdateStatus } from '../../../store/updateSlice';
 import type { Contributor } from '../hooks/useAboutStats';
@@ -8,7 +8,7 @@ interface AboutTabProps {
     platformLabel: string;
     updateStatus: UpdateStatus;
     updateInfo: UpdateInfo | null;
-    canAutoUpdate: boolean;
+    downloadProgress?: number;
     stars: number | null;
     contributors: Contributor[];
     onUpdateAction: () => void;
@@ -16,6 +16,16 @@ interface AboutTabProps {
     openExternal: (url: string) => void;
     hero: ReactNode;
 }
+
+const getMockUpdater = async () => {
+    try {
+        const { mockUpdater } = await import('../../../features/updater/mockUpdater');
+        return mockUpdater;
+    } catch (err) {
+        console.error('Failed to load mockUpdater:', err);
+        return null;
+    }
+};
 
 function LinkButton({
     onClick,
@@ -27,7 +37,7 @@ function LinkButton({
     return (
         <button
             onClick={onClick}
-            className="px-3 py-1.5 rounded-full text-xs font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-text)] bg-[var(--color-app-surface)]/50 hover:bg-[var(--color-app-surface)] border border-[var(--color-app-border)]/50 transition-all"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-[var(--color-app-muted)] hover:text-[var(--color-app-text)] bg-[var(--color-app-surface)]/50 hover:bg-[var(--color-app-surface)] border border-[var(--color-app-border)]/50 transition-all"
         >
             {children}
         </button>
@@ -39,7 +49,7 @@ export function AboutTab({
     platformLabel,
     updateStatus,
     updateInfo,
-    canAutoUpdate,
+    downloadProgress = 0,
     stars,
     contributors,
     onUpdateAction,
@@ -47,6 +57,8 @@ export function AboutTab({
     openExternal,
     hero
 }: AboutTabProps) {
+    const percent = Math.round(downloadProgress);
+
     return (
         <div className="flex flex-col items-center justify-start min-h-full pt-12 pb-10 px-4 animate-in fade-in duration-300">
             <div className="mb-8">{hero}</div>
@@ -59,14 +71,14 @@ export function AboutTab({
                 </div>
                 <button
                     onClick={onUpdateAction}
-                    disabled={updateStatus === 'checking' || (canAutoUpdate && updateStatus === 'downloading')}
+                    disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
                     className={`
-                        flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all
-                        ${updateStatus === 'available'
+                        flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer
+                        ${updateStatus === 'available' || updateStatus === 'ready'
                             ? 'bg-[var(--color-app-accent)] text-white hover:opacity-90 shadow-md shadow-[var(--color-app-accent)]/25'
                             : 'bg-[var(--color-app-bg)] text-[var(--color-app-text)] border border-[var(--color-app-border)] hover:border-[var(--color-app-accent)]/50'
                         }
-                        disabled:opacity-50 disabled:cursor-not-allowed
+                        disabled:opacity-60 disabled:cursor-not-allowed
                     `}
                 >
                     <div className={`shrink-0 ${updateStatus === 'checking' ? 'animate-spin' : ''}`}>
@@ -74,7 +86,7 @@ export function AboutTab({
                         {updateStatus === 'idle' && <RefreshCw size={14} />}
                         {updateStatus === 'available' && <Download size={14} />}
                         {updateStatus === 'downloading' && <RefreshCw size={14} className="animate-spin" />}
-                        {updateStatus === 'ready' && <Download size={14} />}
+                        {updateStatus === 'ready' && <RefreshCw size={14} />}
                         {updateStatus === 'not-available' && <Check size={14} />}
                         {updateStatus === 'error' && <AlertTriangle size={14} />}
                     </div>
@@ -82,25 +94,100 @@ export function AboutTab({
                         {updateStatus === 'idle' && 'Check for Updates'}
                         {updateStatus === 'checking' && 'Checking...'}
                         {updateStatus === 'available' && 'Download Update'}
-                        {updateStatus === 'downloading' && 'Downloading...'}
+                        {updateStatus === 'downloading' && `Downloading... ${percent}%`}
                         {updateStatus === 'ready' && 'Install & Restart'}
                         {updateStatus === 'not-available' && 'Up to date'}
-                        {updateStatus === 'error' && 'Check Failed'}
+                        {updateStatus === 'error' && 'Update Failed (Retry)'}
                     </span>
                 </button>
+
+                {updateStatus === 'downloading' && (
+                    <div
+                        role="progressbar"
+                        aria-valuenow={percent}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label="Update download progress"
+                        className="h-1.5 w-full bg-[var(--color-app-bg)] rounded-full overflow-hidden mt-2.5"
+                    >
+                        <div
+                            className="h-full bg-[var(--color-app-accent)] transition-all duration-300 ease-out"
+                            style={{ width: `${percent}%` }}
+                        />
+                    </div>
+                )}
+
                 {updateStatus === 'available' && updateInfo?.version && (
                     <p className="text-center text-xs text-[var(--color-app-accent)] font-medium mt-2">
                         v{updateInfo.version} available
                     </p>
                 )}
+                {updateStatus === 'ready' && updateInfo?.version && (
+                    <p className="text-center text-xs text-emerald-400 font-medium mt-2">
+                        v{updateInfo.version} ready to install
+                    </p>
+                )}
                 <button
                     onClick={onOpenReleaseNotes}
-                    className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-accent)] transition-colors rounded-md hover:bg-[var(--color-app-surface)]/50"
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 text-xs text-[var(--color-app-muted)] hover:text-[var(--color-app-accent)] transition-colors rounded-md hover:bg-[var(--color-app-surface)]/50 cursor-pointer"
                 >
                     <Gift size={12} />
                     <span>What&apos;s New in v{appVersion}?</span>
                     <ChevronRight size={12} className="transition-transform duration-200" />
                 </button>
+
+                {import.meta.env.DEV && (
+                    <div className="mt-3 pt-2.5 border-t border-[var(--color-app-border)]/40 flex flex-wrap items-center justify-center gap-2">
+                        <span className="text-[10px] uppercase tracking-wider text-[var(--color-app-muted)]/60 font-medium w-full text-center mb-0.5">Dev Test Simulations</span>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const updater = await getMockUpdater();
+                                void updater?.simulateAutoUpdateFlow('2.25.0', 2500);
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] text-[var(--color-app-muted)] hover:text-[var(--color-app-accent)] transition-colors cursor-pointer py-1 px-2 rounded hover:bg-[var(--color-app-surface)]/50 border border-[var(--color-app-border)]/30"
+                            title="Simulate Scenario 1: silent auto-download in background -> ready notification + status bar button"
+                        >
+                            <Wrench size={11} />
+                            <span>Auto Flow</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const updater = await getMockUpdater();
+                                updater?.simulateManualUpdateFlow('2.25.0');
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] text-[var(--color-app-muted)] hover:text-[var(--color-app-accent)] transition-colors cursor-pointer py-1 px-2 rounded hover:bg-[var(--color-app-surface)]/50 border border-[var(--color-app-border)]/30"
+                            title="Simulate Scenario 2: update available notification with Download button + status bar Download button"
+                        >
+                            <Download size={11} />
+                            <span>Manual Flow</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const updater = await getMockUpdater();
+                                updater?.mockPostUpdateCelebration(appVersion);
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] text-[var(--color-app-muted)] hover:text-emerald-400 transition-colors cursor-pointer py-1 px-2 rounded hover:bg-[var(--color-app-surface)]/50 border border-[var(--color-app-border)]/30"
+                            title="Simulate post-update celebration toast with 'What’s New' action button"
+                        >
+                            <Sparkles size={11} className="text-amber-400" />
+                            <span>Celebration</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const updater = await getMockUpdater();
+                                updater?.reset();
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] text-[var(--color-app-muted)] hover:text-red-400 transition-colors cursor-pointer py-1 px-2 rounded hover:bg-[var(--color-app-surface)]/50"
+                            title="Reset update state back to idle"
+                        >
+                            <span>Reset</span>
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div className="w-full max-w-[320px] mt-6">

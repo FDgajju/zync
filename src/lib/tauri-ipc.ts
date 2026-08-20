@@ -3,8 +3,15 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { check } from '@tauri-apps/plugin-updater';
 import { getVersion } from '@tauri-apps/api/app';
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
+import { createUpdaterIpcHandler } from '../features/updater/updaterIpcCore';
 
-let currentUpdate: any = null;
+const updaterIpc = createUpdaterIpcHandler({
+  check,
+  invoke,
+  dispatchEvent: (name, detail) => {
+    window.dispatchEvent(new CustomEvent(name, { detail }));
+  },
+});
 
 // Map to track active listeners for cleanup
 interface ListenerRegistration {
@@ -19,12 +26,6 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   }
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
-};
-
-// Progress tracking state
-let downloadState = {
-  downloaded: 0,
-  total: 0
 };
 
 // Tauri IPC wrapper to replace Electron's ipcRenderer
@@ -209,6 +210,8 @@ const ipcRenderer = {
       'plugins:load': 'plugins_load',
       'plugins:install_local': 'plugins_install_local',
       'app:getExeDir': 'app_get_exe_dir',
+      'app:relaunch': 'app_relaunch',
+      'app:exit': 'app_exit',
       'ai:translate': 'ai_translate',
       'ai:checkOllama': 'ai_check_ollama',
     };
@@ -293,68 +296,19 @@ const ipcRenderer = {
       }
 
       if (channel === 'update:check') {
-        try {
-          const update = await check();
-          if (update?.available) {
-            currentUpdate = update;
-            return {
-              updateInfo: {
-                version: update.version,
-                body: update.body,
-                date: update.date
-              }
-            };
-          }
-          return null;
-        } catch (e) {
-          console.error('Update check error:', e);
-          throw e;
-        }
+        return await updaterIpc.handleCheck();
       }
 
       if (channel === 'update:download') {
-        if (currentUpdate) {
-          // Reset state
-          downloadState = { downloaded: 0, total: 0 };
-
-          // We use downloadAndInstall because it handles the specific flow better
-          // But 'download' gives us more granular control if we want subsequent install
-          await currentUpdate.downloadAndInstall((event: any) => {
-            try {
-              if (event.event === 'Started') {
-                downloadState.total = event.data.contentLength || 0;
-                downloadState.downloaded = 0;
-                // Emit started event
-                window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 0, status: 'started' } }));
-              } else if (event.event === 'Progress') {
-                downloadState.downloaded += event.data.chunkLength;
-                let percent = 0;
-                if (downloadState.total > 0) {
-                  percent = (downloadState.downloaded / downloadState.total) * 100;
-                }
-                // Cap at 100
-                percent = Math.min(100, percent);
-                window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent, status: 'progress' } }));
-              } else if (event.event === 'Finished') {
-                window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 100, status: 'finished' } }));
-              }
-            } catch (err) {
-              console.error('Error in download callback:', err);
-              window.dispatchEvent(new CustomEvent('zync:update-progress', { detail: { percent: 0, status: 'error' } }));
-            }
-          });
-        }
-        return;
+        return await updaterIpc.handleDownload();
       }
 
       if (channel === 'update:install') {
-        if (currentUpdate && typeof currentUpdate.install === 'function') {
-          await currentUpdate.install();
-        } else {
-          const { relaunch } = await import('@tauri-apps/plugin-process');
-          await relaunch();
-        }
-        return;
+        return await updaterIpc.handleInstall();
+      }
+
+      if (channel === 'app:relaunch') {
+        return await invoke('app_relaunch');
       }
 
       // Tauri invoke expects a single object as the argument with named keys

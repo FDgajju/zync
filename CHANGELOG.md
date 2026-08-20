@@ -4,6 +4,33 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Fixed
+- **Command palette theme switching**: Preserved active plugin worker requester across quick-pick dispatches and fallback resolution, restoring `Preferences: Color Theme` selection from the command palette. ([e3f1732])
+- **Default Dark theme in theme picker**: Added `builtin_dark` plugin registration and included `'dark'` in trusted built-in theme choices so `Dark (Default)` is available in the theme selection list and Appearance settings. ([e3f1732])
+- **Quick-pick lifecycle & abandonment cleanup**: Extracted `cancelActiveQuickPick` helper in `CommandPalette.tsx` to dispatch cancellation on `Escape`, backdrop close, mode switches, and before request replacement, preventing dangling worker promises. ([e3f1732])
+
+## [2.25.0] - 2026-08-20
+
+### Security
+- **SSH host key verification (`known_hosts`)**: Prompts for confirmation when connecting to an unknown host for the first time, persists approved fingerprints to `~/.ssh/known_hosts`, and blocks connections with a warning if a host key has changed to protect against MITM attacks. ([9f61b28])
+- **Consent-based SSH agent forwarding**: Per-connection opt-in toggle under Advanced Settings to forward one explicitly chosen private key or Vault credential. Every cryptographic signature request from the remote server requires approval via an interactive dialog with a 30-second expiry timer. ([9f61b28], [7b45919])
+- **Plugin iframe isolation & command confirmation**: Dropped `allow-same-origin` from plugin iframes to prevent access to parent Tauri internals, added user confirmation prompts before executing plugin-requested SSH commands, and introduced a FIFO confirmation queue. ([48645c8], [c53f4f6])
+- **AI provider API keys encrypted in Vault**: AI provider API keys (OpenAI, Anthropic, Gemini, Groq, Mistral) are stored encrypted with AES-256-GCM in the Vault, with automatic migration of legacy plaintext keys upon vault unlock. ([c050715], [c53f4f6])
+- **Expanded AI secret redaction**: Masks command-line passwords (`sshpass`, `mysql -p`, `PGPASSWORD`), URL credentials, Basic/Bearer authorization headers, raw JWTs, cloud API keys, and truncated PEM private keys before sending terminal context to AI models. ([49e23f4], [c53f4f6])
+- **Restricted file permissions & atomic vault exports**: Sets POSIX file mode `0600` on Unix for vault databases and managed private keys, and makes vault exports atomic via temporary staging. ([c050715], [c53f4f6])
+
+### Added
+- **Multi-platform auto-updater & background download**: Unified in-app updater across Windows, macOS, and Linux with silent background downloads, dedicated status bar progress indicator, and celebration toast upon launch. ([9952051], [9971575], [ecc61cf])
+- **Status bar update indicator**: Translucent soft-highlight button in the bottom status bar displaying download progress (`Updating X%`), available update actions (`Download vX.X.X`), and one-click `Restart to update`. ([9952051])
+- **Updater dev simulation suite**: Built-in interactive test controls in Settings → About and `window.zyncUpdater` (development mode only) to test auto-download, manual flow, and post-update celebration. ([9952051])
+- **SSH agent forwarding documentation**: Canonical architecture and security guide in `docs/AGENT_FORWARDING.md`. ([b8e5e65])
+
+### Fixed
+- **Modal stacking over Settings**: Elevated z-index (`z-[15000]`) for global Vault unlock and SSH key passphrase prompts so they float cleanly on top of open Settings and Connection modals. ([dbf2cda])
+- **Native restart on all platforms**: Added native Rust `app_relaunch` command ensuring clean restarts without permission or process lifecycle issues across Windows, macOS, and Linux. ([9952051])
+- **Updater download reliability**: Clears stale update handles and retries failed background downloads. ([9971575], [ecc61cf])
+- **Status bar placeholder cleanup**: Removed unused static "Ready" label from the bottom status bar. ([9952051])
+
 ## [2.24.0] - 2026-08-18
 
 ### Added
@@ -1176,6 +1203,16 @@ All notable changes to Zync are documented in this file. The format is based on 
 [b915006]: https://github.com/zync-sh/zync/commit/b915006
 [e6e9e3f]: https://github.com/zync-sh/zync/commit/e6e9e3f
 [d15f536]: https://github.com/zync-sh/zync/commit/d15f536
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.0...HEAD
+[2.25.0]: https://github.com/zync-sh/zync/compare/v2.24.0...v2.25.0
+[2.24.0]: https://github.com/zync-sh/zync/compare/v2.23.1...v2.24.0
+[2.23.1]: https://github.com/zync-sh/zync/compare/v2.23.0...v2.23.1
+[2.23.0]: https://github.com/zync-sh/zync/compare/v2.22.0...v2.23.0
+[2.22.0]: https://github.com/zync-sh/zync/compare/v2.21.0...v2.22.0
+[2.21.0]: https://github.com/zync-sh/zync/compare/v2.20.0...v2.21.0
+[2.20.0]: https://github.com/zync-sh/zync/compare/v2.19.0...v2.20.0
+[2.19.0]: https://github.com/zync-sh/zync/compare/v2.18.0...v2.19.0
+[2.18.0]: https://github.com/zync-sh/zync/compare/v2.17.0...v2.18.0
 [2.17.0]: https://github.com/zync-sh/zync/compare/v2.16.1...v2.17.0
 [2.16.1]: https://github.com/zync-sh/zync/compare/v2.16.0...v2.16.1
 [2.16.0]: https://github.com/zync-sh/zync/compare/v2.15.1...v2.16.0
@@ -1212,7 +1249,17 @@ All notable changes to Zync are documented in this file. The format is based on 
 [2.3.0]: https://github.com/zync-sh/zync/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/zync-sh/zync/releases/tag/v2.2.1
 
-
+[9f61b28]: https://github.com/zync-sh/zync/commit/9f61b28
+[7b45919]: https://github.com/zync-sh/zync/commit/7b45919
+[48645c8]: https://github.com/zync-sh/zync/commit/48645c8
+[c53f4f6]: https://github.com/zync-sh/zync/commit/c53f4f6
+[c050715]: https://github.com/zync-sh/zync/commit/c050715
+[49e23f4]: https://github.com/zync-sh/zync/commit/49e23f4
+[dbf2cda]: https://github.com/zync-sh/zync/commit/dbf2cda
+[9952051]: https://github.com/zync-sh/zync/commit/9952051
+[9971575]: https://github.com/zync-sh/zync/commit/9971575
+[ecc61cf]: https://github.com/zync-sh/zync/commit/ecc61cf
+[b8e5e65]: https://github.com/zync-sh/zync/commit/b8e5e65
 [feee7bb]: https://github.com/zync-sh/zync/commit/feee7bb
 [6e8dd42]: https://github.com/zync-sh/zync/commit/6e8dd42
 [d9d3663]: https://github.com/zync-sh/zync/commit/d9d3663
@@ -1223,3 +1270,4 @@ All notable changes to Zync are documented in this file. The format is based on 
 [2df515d]: https://github.com/zync-sh/zync/commit/2df515d
 [22256fb]: https://github.com/zync-sh/zync/commit/22256fb
 [7b8e5a6]: https://github.com/zync-sh/zync/commit/7b8e5a6
+[e3f1732]: https://github.com/zync-sh/zync/commit/e3f1732
