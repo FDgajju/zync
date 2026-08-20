@@ -145,10 +145,17 @@ fn get_legacy_settings_candidates(app: &AppHandle) -> Vec<std::path::PathBuf> {
     if let Ok(app_data_dir) = app.path().app_data_dir() {
         candidates.push(app_data_dir.join("settings.json"));
     }
+    candidates.extend(
+        crate::identity_migration::legacy_app_data_dir_candidates(
+            app.path().app_data_dir().ok().as_deref(),
+        )
+        .into_iter()
+        .map(|path| path.join("settings.json")),
+    );
     if let Ok(home_dir) = app.path().home_dir() {
         candidates.push(home_dir.join(".zync").join("settings.json"));
     }
-    candidates
+    crate::identity_migration::dedupe_paths(candidates)
 }
 
 /// Write file content atomically via temporary file + rename.
@@ -501,6 +508,12 @@ pub fn get_data_dir(app: &AppHandle) -> std::path::PathBuf {
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
     let merged_settings =
         read_effective_settings(app).unwrap_or_else(|_| Value::Object(serde_json::Map::new()));
+    let has_custom_data_path = merged_settings
+        .get("dataPath")
+        .and_then(|v| v.as_str())
+        .is_some_and(|value| !value.trim().is_empty());
+
+    crate::identity_migration::migrate_default_dirs(app, &default_dir, has_custom_data_path);
 
     let (resolved, cache_result) =
         if let Some(data_path) = merged_settings.get("dataPath").and_then(|v| v.as_str()) {

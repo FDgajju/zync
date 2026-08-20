@@ -4,7 +4,13 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Changed
+- **Canonical desktop app identity**: Standardized the Tauri bundle identifier to `in.thesudoer.zync` across platforms and added copy-only first-launch migration from legacy default app data/config directories (`zync`, `com.zync.desktop`) while preserving custom `dataPath` locations.
+
 ### Fixed
+- **macOS Keychain prompt reduction**: Avoided passive status reads of OS credential-store secrets for Vault remember-device state, sync collection cache state, and Google sync status so macOS prompts are limited to real secret use instead of routine refreshes.
+- **Sync collection key recovery states**: Preserved first-time setup with provider-selected collection IDs while keeping remote relink failures explicit when no recoverable key wrap exists.
+- **Legacy Google token migration**: Preserved migration of plaintext refresh tokens into the OS credential store even when only metadata/status is read.
 - **Command palette theme switching**: Preserved active plugin worker requester across quick-pick dispatches and fallback resolution, restoring `Preferences: Color Theme` selection from the command palette. ([e3f1732])
 - **Default Dark theme in theme picker**: Added `builtin_dark` plugin registration and included `'dark'` in trusted built-in theme choices so `Dark (Default)` is available in the theme selection list and Appearance settings. ([e3f1732])
 - **Quick-pick lifecycle & abandonment cleanup**: Extracted `cancelActiveQuickPick` helper in `CommandPalette.tsx` to dispatch cancellation on `Escape`, backdrop close, mode switches, and before request replacement, preventing dangling worker promises. ([e3f1732])

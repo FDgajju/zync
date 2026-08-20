@@ -63,6 +63,7 @@ fn keyring_entry(account: &str) -> Result<keyring::Entry, VaultError> {
 }
 
 #[cfg(not(test))]
+#[allow(dead_code)]
 pub fn has_session_cache(vault_id: &str) -> Result<bool, VaultError> {
     let entry = keyring_entry(&session_cache_account(vault_id))?;
     match entry.get_password() {

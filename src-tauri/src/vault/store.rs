@@ -50,6 +50,9 @@ pub struct VaultService {
     /// When true, `status()` must not auto-restore unlock from the OS session cache.
     /// Set by explicit `lock()`; cleared by initialize/unlock/recovery unlock.
     suppress_session_cache_unlock: bool,
+    /// Avoid repeatedly triggering OS keychain prompts from passive status
+    /// polling after a remember-device restore attempt fails or is denied.
+    session_cache_unlock_attempted: bool,
 }
 
 impl VaultService {
@@ -60,6 +63,7 @@ impl VaultService {
             meta: None,
             data_dir,
             suppress_session_cache_unlock: false,
+            session_cache_unlock_attempted: false,
         }
     }
 
@@ -123,7 +127,10 @@ impl VaultService {
     // ── Status ────────────────────────────────────────────────────────────────
 
     pub fn status(&mut self) -> Result<VaultStatus, VaultError> {
-        let _ = self.try_unlock_from_session_cache();
+        if !self.session_cache_unlock_attempted {
+            self.session_cache_unlock_attempted = true;
+            let _ = self.try_unlock_from_session_cache();
+        }
         self.status_after_session_attempt()
     }
 
@@ -153,7 +160,8 @@ impl VaultService {
         let item_count = live_record_count(&read_txn)?;
 
         if self.vek.is_none() {
-            return Ok(self.locked_status(vault_id, item_count));
+            let remembered_on_device = meta_table.get(SESSION_CACHE_VERIFIER_META_KEY)?.is_some();
+            return Ok(self.locked_status(vault_id, item_count, remembered_on_device));
         }
 
         Ok(VaultStatus::Unlocked {
@@ -162,9 +170,12 @@ impl VaultService {
         })
     }
 
-    fn locked_status(&self, vault_id: String, item_count: u64) -> VaultStatus {
-        let remembered_on_device =
-            super::session_cache::has_session_cache(&vault_id).unwrap_or(false);
+    fn locked_status(
+        &self,
+        vault_id: String,
+        item_count: u64,
+        remembered_on_device: bool,
+    ) -> VaultStatus {
         VaultStatus::Locked {
             vault_id,
             item_count,
@@ -391,6 +402,7 @@ impl VaultService {
         self.vek = Some(vek);
         self.meta = Some(meta);
         self.suppress_session_cache_unlock = false;
+        self.session_cache_unlock_attempted = false;
         self.persist_session_cache_best_effort(remember_on_device);
 
         self.build_unlocked_status()
@@ -444,6 +456,7 @@ impl VaultService {
         vek_arr.zeroize();
         self.meta = Some(meta);
         self.suppress_session_cache_unlock = false;
+        self.session_cache_unlock_attempted = false;
         drop(ks);
         drop(vm);
         drop(read_txn);
@@ -597,6 +610,7 @@ impl VaultService {
         self.vek = None;
         self.meta = None;
         self.suppress_session_cache_unlock = true;
+        self.session_cache_unlock_attempted = true;
     }
 
     /// Returns the vault ID if the vault is unlocked (meta is cached).
@@ -1398,6 +1412,7 @@ impl VaultService {
         vek_arr.zeroize();
         self.meta = Some(meta);
         self.suppress_session_cache_unlock = false;
+        self.session_cache_unlock_attempted = false;
 
         drop(slot_bytes);
         drop(ks);
@@ -1550,11 +1565,14 @@ impl VaultService {
             return Err(e);
         }
 
+        self.session_cache_unlock_attempted = false;
+
         if let Err(e) = self.try_open().and_then(|_| self.status()) {
             if backup.exists() {
                 self.db = None;
                 let _ = std::fs::copy(&backup, &dest);
                 let _ = sync_file(&dest);
+                self.session_cache_unlock_attempted = false;
                 self.try_open()?;
             }
             return Err(VaultError::InvalidData(format!(

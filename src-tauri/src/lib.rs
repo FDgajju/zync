@@ -3,6 +3,7 @@ mod atomic_io;
 mod commands;
 mod fs;
 mod ghost;
+mod identity_migration;
 pub mod plugins;
 mod pty;
 mod session;

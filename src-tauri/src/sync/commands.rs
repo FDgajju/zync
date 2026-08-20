@@ -1,10 +1,10 @@
 use super::collection::{
-    clear_collection_key_cache, collection_key_wrap_object_name, enforce_collection_key_cache_ttl,
-    has_recovery_key_slot, is_collection_key_cached, load_collection_key, load_manifest,
-    regenerate_recovery_key, remote_key_wrap_from_manifest, save_manifest,
-    set_collection_key_cache_ttl, setup_manifest, unlock_collection_key_with_passphrase,
-    unlock_collection_key_with_recovery_key, RemoteCollectionKeyWrapV1,
-    SYNC_COLLECTION_KEY_CACHE_TTL_SECS,
+    clear_collection_key_cache, collection_key_cache_metadata_fresh,
+    collection_key_wrap_object_name, enforce_collection_key_cache_ttl, has_recovery_key_slot,
+    load_collection_key, load_manifest, regenerate_recovery_key, remote_key_wrap_from_manifest,
+    save_manifest, set_collection_key_cache_ttl, setup_manifest,
+    unlock_collection_key_with_passphrase, unlock_collection_key_with_recovery_key,
+    RemoteCollectionKeyWrapV1, SYNC_COLLECTION_KEY_CACHE_TTL_SECS,
 };
 use super::domain_hosts::{apply_hosts_restore_records, load_hosts_sync_records, HostSyncRecord};
 use super::domain_settings::{
@@ -420,7 +420,7 @@ fn collection_status_from_manifest(
             sync_collection_id: Some(m.sync_collection_id.clone()),
             key_policy_mode: Some(m.key_policy_mode),
             has_recovery_key: has_recovery_key_slot(&m),
-            key_cached: is_collection_key_cached(&m),
+            key_cached: collection_key_cache_metadata_fresh(&m),
             key_cache_ttl_secs: Some(
                 m.key_cache_ttl_secs
                     .unwrap_or(SYNC_COLLECTION_KEY_CACHE_TTL_SECS),
@@ -3051,7 +3051,13 @@ pub async fn sync_collection_setup(
             match download_remote_collection_key_wrap(provider_impl.as_ref(), &app, collection_id)
                 .await
             {
-                Ok(wrap) => wrap,
+                Ok(Some(wrap)) => Some(wrap),
+                Ok(None) => {
+                    return Err(
+                        "[sync_collection_key_unrecoverable] No encryption key wrap was found for this Drive backup on this device or on Drive. Older backups created before key-wrap cloud backup cannot be recovered with the passphrase alone after a full local reset. Start a new empty collection and re-upload hosts, or recover from a machine that still has the original key."
+                            .to_string(),
+                    );
+                }
                 Err(error) => {
                     eprintln!(
                         "[sync] Failed to download collection key wrap from provider: {error}"
