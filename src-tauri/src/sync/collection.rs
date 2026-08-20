@@ -242,14 +242,6 @@ pub fn setup_manifest(
     }
 
     let account = collection_key_account(&manifest);
-    // Linking an existing Drive collection id after local wipe (no wrap metadata yet).
-    let linking_existing_remote = !existing_manifest
-        && preferred_sync_collection_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_some();
-
     let collection_key = match load_collection_key_secret(&account) {
         Ok(encoded) => decode_collection_key(&encoded)?,
         Err(_) => {
@@ -276,12 +268,10 @@ Use the same passphrase that was used when these Drive records were created.",
                         ));
                     }
                 }
-            } else if existing_manifest || linking_existing_remote {
+            } else if existing_manifest {
                 return Err(SyncError::new(
-                    "sync_collection_key_unrecoverable",
-                    "No encryption key wrap was found for this Drive backup on this device or on Drive. \
-Older backups created before key-wrap cloud backup cannot be recovered with the passphrase alone after a full local reset. \
-Start a new empty collection and re-upload hosts, or recover from a machine that still has the original key.",
+                    "sync_collection_key_missing",
+                    "No cached sync collection key or key wrap was found for this local collection.",
                 ));
             } else {
                 // Brand-new collection id — safe to generate a new key.
@@ -386,9 +376,20 @@ pub fn load_collection_key(manifest: &SyncCollectionManifest) -> SyncResult<[u8;
     decode_collection_key(&encoded)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn is_collection_key_cached(manifest: &SyncCollectionManifest) -> bool {
     let account = collection_key_account(manifest);
     load_collection_key_secret(&account).is_ok()
+}
+
+pub fn collection_key_cache_metadata_fresh(manifest: &SyncCollectionManifest) -> bool {
+    let Some(anchor) = manifest.key_cache_unlocked_at else {
+        return false;
+    };
+    let ttl = manifest
+        .key_cache_ttl_secs
+        .unwrap_or(SYNC_COLLECTION_KEY_CACHE_TTL_SECS);
+    now_secs().saturating_sub(anchor) < ttl
 }
 
 pub fn clear_collection_key_cache(manifest: &SyncCollectionManifest) -> SyncResult<()> {
@@ -400,20 +401,11 @@ pub fn enforce_collection_key_cache_ttl(
     data_dir: &Path,
     manifest: &mut SyncCollectionManifest,
 ) -> SyncResult<bool> {
-    if !is_collection_key_cached(manifest) {
-        return Ok(false);
-    }
-    let anchor = manifest
-        .key_cache_unlocked_at
-        .unwrap_or(manifest.updated_at);
-    let now = now_secs();
-    let ttl = manifest
-        .key_cache_ttl_secs
-        .unwrap_or(SYNC_COLLECTION_KEY_CACHE_TTL_SECS);
-    if now.saturating_sub(anchor) < ttl {
+    if collection_key_cache_metadata_fresh(manifest) {
         return Ok(false);
     }
 
+    let now = now_secs();
     clear_collection_key_cache(manifest)?;
     manifest.key_cache_unlocked_at = None;
     manifest.updated_at = now;

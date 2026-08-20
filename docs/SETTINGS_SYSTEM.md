@@ -79,6 +79,8 @@ No local override file should be assumed active unless explicitly implemented in
 
 If canonical native settings are missing, backend performs one-time migration from legacy candidates (for example old app-data path or `~/.zync/settings.json`).
 
+The canonical Tauri bundle identifier is `in.thesudoer.zync`. On first launch after this identity change, backend performs a copy-only migration from legacy default app data/config directories for `zync` and `com.zync.desktop` when the new default directory is empty. User-configured `dataPath` values are respected and are not moved automatically.
+
 ## Key Files
 
 ### Frontend

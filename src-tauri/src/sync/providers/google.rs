@@ -314,18 +314,33 @@ async fn save_tokens(data_dir: &Path, key: &str, tokens: &StoredTokens) -> SyncR
 fn load_tokens(data_dir: &Path, key: &str) -> Option<StoredTokens> {
     let json = std::fs::read_to_string(tokens_path(data_dir, key)).ok()?;
     let mut tokens: StoredTokens = serde_json::from_str(&json).ok()?;
-    if let Some(refresh_token) = tokens.refresh_token.clone() {
-        if save_refresh_token(key, &refresh_token).is_ok() {
-            tokens.has_refresh_token = true;
-            if let Ok(json) = serde_json::to_string(&tokens_for_disk(&tokens)) {
-                let _ = std::fs::write(tokens_path(data_dir, key), json);
-            }
-        }
-    } else if tokens.has_refresh_token {
+    migrate_plaintext_refresh_token(data_dir, key, &mut tokens);
+    if tokens.refresh_token.is_none() && tokens.has_refresh_token {
         tokens.refresh_token = load_refresh_token(key);
         tokens.has_refresh_token = tokens.refresh_token.is_some();
     }
     Some(tokens)
+}
+
+fn load_tokens_metadata(data_dir: &Path, key: &str) -> Option<StoredTokens> {
+    let json = std::fs::read_to_string(tokens_path(data_dir, key)).ok()?;
+    let mut tokens: StoredTokens = serde_json::from_str(&json).ok()?;
+    migrate_plaintext_refresh_token(data_dir, key, &mut tokens);
+    tokens.access_token = None;
+    tokens.refresh_token = None;
+    Some(tokens)
+}
+
+fn migrate_plaintext_refresh_token(data_dir: &Path, key: &str, tokens: &mut StoredTokens) {
+    let Some(refresh_token) = tokens.refresh_token.as_deref() else {
+        return;
+    };
+    if save_refresh_token(key, refresh_token).is_ok() {
+        tokens.has_refresh_token = true;
+        if let Ok(json) = serde_json::to_string(&tokens_for_disk(tokens)) {
+            let _ = std::fs::write(tokens_path(data_dir, key), json);
+        }
+    }
 }
 
 fn delete_tokens(data_dir: &Path, key: &str) {
@@ -932,10 +947,10 @@ impl VaultProviderV1 for GoogleVaultProvider {
 
     async fn status(&self, app: &tauri::AppHandle) -> SyncResult<ProviderStatusSnapshot> {
         let provider_data_dir = data_dir(app);
-        let tokens = load_tokens(&provider_data_dir, GOOGLE_TOKENS_KEY);
+        let tokens = load_tokens_metadata(&provider_data_dir, GOOGLE_TOKENS_KEY);
         let connected = tokens
             .as_ref()
-            .map(|t| t.refresh_token.is_some() || t.has_refresh_token)
+            .map(|t| t.has_refresh_token)
             .unwrap_or(false);
 
         Ok(ProviderStatusSnapshot {
@@ -1113,9 +1128,9 @@ impl VaultProviderV1 for GoogleVaultProvider {
 }
 
 pub fn legacy_google_token_snapshot(data_dir: &Path) -> Option<ProviderStatusSnapshot> {
-    let tokens = load_tokens(data_dir, GOOGLE_TOKENS_KEY)?;
+    let tokens = load_tokens_metadata(data_dir, GOOGLE_TOKENS_KEY)?;
     Some(ProviderStatusSnapshot {
-        connected: tokens.refresh_token.is_some() || tokens.has_refresh_token,
+        connected: tokens.has_refresh_token,
         email: tokens.email.clone(),
         avatar_url: tokens.avatar_url.clone(),
         last_sync: tokens.last_sync,
