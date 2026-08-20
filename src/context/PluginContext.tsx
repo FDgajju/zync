@@ -600,16 +600,7 @@ export const PluginProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Listen for Quick Pick selections from UI
     useEffect(() => {
         const handleQuickPickSelect = (e: any) => {
-            const { requestId, pluginId, selectedItem, requester } = e.detail;
-            // console.log('[PluginContext] Quick Pick selected:', { requestId, pluginId, selectedItem });
-
-            // Respond using standardized format? 
-            // The worker expects `result` in payload for generic handler.
-            // But for Quick Pick, we sent `selectedItem`.
-            // Let's modify respond helper or just call postMessage manually here to match expectation.
-            // Wait, my updated WORKER_BOOTSTRAP uses generic handler which expects `result`.
-            // So I should send `result: selectedItem`.
-
+            const { requestId, pluginId, selectedItem, requester = workers.current.get(pluginId) } = e.detail;
             if (!requester) return;
             postCurrentWorkerResponse(
                 requester,

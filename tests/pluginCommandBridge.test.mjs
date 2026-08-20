@@ -428,7 +428,9 @@ await run('starts the real built-in theme manager and exposes only backed theme 
   const command = commands.get('workbench.action.selectTheme');
   assert.equal(command?.title, 'Preferences: Color Theme');
   await command.handler();
+  assert.ok(shownItems.some(item => item.id === 'system'));
   assert.ok(shownItems.some(item => item.id === 'light'));
+  assert.ok(shownItems.some(item => item.id === 'dark'));
   assert.ok(shownItems.some(item => item.id === 'dracula'));
   assert.ok(!shownItems.some(item => item.id === 'night-owl'));
   assert.ok(!shownItems.some(item => item.id === 'evil'));
@@ -455,6 +457,57 @@ await run('stops the previous Worker generation and starts only enabled scripts'
   assert.deepEqual(terminated, ['enabled', 'disabled', 'removed']);
   assert.deepEqual(rejected, ['enabled', 'disabled', 'removed']);
   assert.equal(workers.size, 0);
+});
+
+await run('delivers quick pick response to the worker and rejects stale generation', async () => {
+  const workerMessages = [];
+  const worker = {
+    postMessage(msg) {
+      workerMessages.push(msg);
+    },
+  };
+  const workers = new Map([['com.zync.theme.manager', worker]]);
+  const isCurrent = candidate => workers.get('com.zync.theme.manager') === candidate;
+
+  // Scenario 1: requester provided and active
+  const ok1 = postCurrentWorkerResponse(
+    worker,
+    isCurrent,
+    'api:window:showQuickPick',
+    { requestId: 'qp-1', result: { id: 'dracula', label: 'Dracula' } },
+  );
+  assert.equal(ok1, true);
+  assert.deepEqual(workerMessages[0], {
+    type: 'api:window:showQuickPick:response',
+    payload: { requestId: 'qp-1', result: { id: 'dracula', label: 'Dracula' } },
+  });
+
+  // Scenario 2: targetWorker resolved from map and active
+  const targetWorker = workers.get('com.zync.theme.manager');
+  const ok2 = postCurrentWorkerResponse(
+    targetWorker,
+    isCurrent,
+    'api:window:showQuickPick',
+    { requestId: 'qp-2', result: { id: 'monokai', label: 'Monokai' } },
+  );
+  assert.equal(ok2, true);
+  assert.deepEqual(workerMessages[1], {
+    type: 'api:window:showQuickPick:response',
+    payload: { requestId: 'qp-2', result: { id: 'monokai', label: 'Monokai' } },
+  });
+
+  // Scenario 3: stale replaced worker
+  const staleWorker = worker;
+  const newWorker = { postMessage() {} };
+  workers.set('com.zync.theme.manager', newWorker);
+  const ok3 = postCurrentWorkerResponse(
+    staleWorker,
+    isCurrent,
+    'api:window:showQuickPick',
+    { requestId: 'qp-3', result: { id: 'light', label: 'Light' } },
+  );
+  assert.equal(ok3, false);
+  assert.equal(workerMessages.length, 2);
 });
 
 console.log('Plugin command bridge behavioral tests passed.');

@@ -70,7 +70,7 @@ export function filterTrustedBuiltinThemeChoices<P extends PluginDescriptor, I e
     items: I[],
     plugins: P[],
 ): I[] {
-    const allowed = new Set(['system']);
+    const allowed = new Set(['system', 'dark']);
     plugins.filter(isTrustedBuiltinTheme).forEach((plugin) => {
         if (plugin.manifest.id !== 'com.zync.theme.manager') {
             allowed.add(plugin.manifest.id.replace('com.zync.theme.', ''));

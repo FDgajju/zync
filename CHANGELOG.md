@@ -4,6 +4,11 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Fixed
+- **Command palette theme switching**: Preserved active plugin worker requester across quick-pick dispatches and fallback resolution, restoring `Preferences: Color Theme` selection from the command palette.
+- **Default Dark theme in theme picker**: Added `builtin_dark` plugin registration and included `'dark'` in trusted built-in theme choices so `Dark (Default)` is available in the theme selection list and Appearance settings.
+- **Quick-pick lifecycle & abandonment cleanup**: Extracted `cancelActiveQuickPick` helper in `CommandPalette.tsx` to dispatch cancellation on `Escape`, backdrop close, mode switches, and before request replacement, preventing dangling worker promises.
+
 ## [2.25.0] - 2026-08-20
 
 ### Security

@@ -38,6 +38,7 @@ interface QuickPickDetail {
     };
     requestId: string;
     pluginId: string;
+    requester?: unknown;
 }
 
 /** Global command/search palette with command mode and plugin quick-pick support. */
@@ -49,13 +50,15 @@ export function CommandPalette() {
     // Quick Pick State
     const [quickPickMode, setQuickPickMode] = useState(false);
     const [quickPickItems, setQuickPickItems] = useState<QuickPickItem[]>([]);
-    const [quickPickOptions, setQuickPickOptions] = useState<{ placeHolder?: string, requestId: string, pluginId: string } | null>(null);
+    const [quickPickOptions, setQuickPickOptions] = useState<{ placeHolder?: string, requestId: string, pluginId: string, requester?: unknown } | null>(null);
 
     const openRef = useRef(open);
     const quickPickModeRef = useRef(quickPickMode);
+    const quickPickOptionsRef = useRef(quickPickOptions);
 
     useEffect(() => { openRef.current = open; }, [open]);
     useEffect(() => { quickPickModeRef.current = quickPickMode; }, [quickPickMode]);
+    useEffect(() => { quickPickOptionsRef.current = quickPickOptions; }, [quickPickOptions]);
 
     // Optimize selectors with shallow comparison
     const { connections, setAddConnectionModalOpen, openTab, openSettings } = useAppStore(
@@ -77,38 +80,52 @@ export function CommandPalette() {
 
     const openAddConnectionModal = () => setAddConnectionModalOpen(true);
 
+    const cancelActiveQuickPick = () => {
+        if (quickPickModeRef.current) {
+            setQuickPickMode(false);
+            const currentOptions = quickPickOptionsRef.current;
+            setQuickPickOptions(null);
+            if (currentOptions && currentOptions.pluginId !== 'system') {
+                window.dispatchEvent(new CustomEvent('zync:quick-pick-select', {
+                    detail: {
+                        requestId: currentOptions.requestId,
+                        pluginId: currentOptions.pluginId,
+                        selectedItem: null,
+                        requester: currentOptions.requester,
+                    }
+                }));
+            }
+        }
+    };
+
     // Listen for global toggle event
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key.toLowerCase() === 'p' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
+                cancelActiveQuickPick();
                 setOpen(true);
 
                 if (e.shiftKey) {
                     // Ctrl+Shift+P -> Command Mode
                     setCommandMode(true);
                     setSearch(">"); // Start with >
-                    setQuickPickMode(false); // Reset QP
                 } else {
                     // Ctrl+P -> File/History Mode
                     setCommandMode(false);
                     setSearch("");
-                    setQuickPickMode(false); // Reset QP
                 }
             } else if (e.key === 'Escape' && openRef.current) {
                 setOpen(false);
-                if (quickPickModeRef.current) {
-                    // If cancelling QP, maybe we should just close it?
-                    // Or notify cancellation? For MVP, just close.
-                    setQuickPickMode(false);
-                }
+                cancelActiveQuickPick();
             }
         };
 
         const handleQuickPick = (e: CustomEvent<QuickPickDetail>) => {
-            const { items, options, requestId, pluginId } = e.detail;
+            cancelActiveQuickPick();
+            const { items, options, requestId, pluginId, requester } = e.detail;
             setQuickPickItems(items);
-            setQuickPickOptions({ ...options, requestId, pluginId });
+            setQuickPickOptions({ ...options, requestId, pluginId, requester });
             setQuickPickMode(true);
             setOpen(true);
             setSearch(""); // Clear search for picking
@@ -116,16 +133,15 @@ export function CommandPalette() {
 
         const handleOpenCommandPalette = (e: Event) => {
             const event = e as CustomEvent<{ commandMode?: boolean }>;
+            cancelActiveQuickPick();
             setOpen(true);
             if (event.detail?.commandMode) {
                 setCommandMode(true);
                 setSearch('>');
-                setQuickPickMode(false);
                 return;
             }
             setCommandMode(false);
             setSearch('');
-            setQuickPickMode(false);
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -159,10 +175,12 @@ export function CommandPalette() {
     const handleQuickPickSelect = (item: QuickPickItem) => {
         setOpen(false);
         setQuickPickMode(false);
-        if (quickPickOptions) {
+        const currentOptions = quickPickOptionsRef.current;
+        setQuickPickOptions(null);
+        if (currentOptions) {
             // Handle internal system Quick Picks
-            if (quickPickOptions.pluginId === 'system') {
-                if (quickPickOptions.requestId === 'icon-theme-select') {
+            if (currentOptions.pluginId === 'system') {
+                if (currentOptions.requestId === 'icon-theme-select') {
                     useAppStore.getState().updateSettings({ iconTheme: item.id });
                 }
                 return;
@@ -170,12 +188,18 @@ export function CommandPalette() {
 
             window.dispatchEvent(new CustomEvent('zync:quick-pick-select', {
                 detail: {
-                    requestId: quickPickOptions.requestId,
-                    pluginId: quickPickOptions.pluginId,
-                    selectedItem: item
+                    requestId: currentOptions.requestId,
+                    pluginId: currentOptions.pluginId,
+                    selectedItem: item,
+                    requester: currentOptions.requester,
                 }
             }));
         }
+    };
+
+    const handleClose = () => {
+        setOpen(false);
+        cancelActiveQuickPick();
     };
 
     if (!open) return null;
@@ -189,7 +213,7 @@ export function CommandPalette() {
             {/* Backdrop */}
             <div
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                onClick={() => setOpen(false)}
+                onClick={handleClose}
             />
 
             <div className="relative w-full max-w-2xl transform transition-all">
@@ -254,6 +278,7 @@ export function CommandPalette() {
                                     <Command.Item
                                         value="Preferences: Icon Theme"
                                         onSelect={() => {
+                                            cancelActiveQuickPick();
                                             const themes = [
                                                 { label: 'VSCode Icons (Default)', id: 'vscode-icons' },
                                                 { label: 'Lucide Minimalist', id: 'lucide' },
