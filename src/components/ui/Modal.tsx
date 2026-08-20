@@ -1,9 +1,20 @@
-import { X } from 'lucide-react';
-import { type ReactNode, useEffect } from 'react';
+import { GripHorizontal, X } from 'lucide-react';
+import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useRef } from 'react';
 import { ZPortal } from './ZPortal';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls, useMotionValue } from 'framer-motion';
 import { cn } from '../../lib/utils';
 import { Button } from './Button';
+
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+const DRAG_BLOCK_SELECTOR = 'button, a, input, textarea, select, [role="button"], [data-no-modal-drag="true"]';
 
 interface ModalProps {
   isOpen: boolean;
@@ -61,6 +72,12 @@ export function Modal({
   explicitDismissOnly = false,
   zIndexClassName,
 }: ModalProps) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const dragConstraintsRef = useRef<HTMLDivElement>(null);
+  const dragControls = useDragControls();
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
   const effectiveCloseOnEsc = explicitDismissOnly ? false : closeOnEsc;
   const effectiveCloseOnOverlayClick = explicitDismissOnly ? false : closeOnOverlayClick;
   const effectiveShowCloseButton = explicitDismissOnly
@@ -92,18 +109,79 @@ export function Modal({
     return () => window.removeEventListener('keydown', handleEsc, { capture: true });
   }, [effectiveCloseOnEsc, isOpen, onClose]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    x.set(0);
+    y.set(0);
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const frame = window.requestAnimationFrame(() => {
+      const dialog = dialogRef.current;
+      const firstFocusable = dialog?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      (firstFocusable ?? dialog)?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      previouslyFocused?.focus();
+    };
+  }, [isOpen, x, y]);
+
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Tab') return;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      .filter((element) => element.offsetParent !== null);
+
+    if (focusable.length === 0) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const handleDragHandlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (target?.closest(DRAG_BLOCK_SELECTOR)) return;
+    dragControls.start(event.nativeEvent);
+  };
+
   return (
     <ZPortal>
       <AnimatePresence>
         {isOpen && (
-          <div className={cn("absolute inset-0 flex items-center justify-center p-4", zIndexClassName ?? "z-[9999]")}>
+          <div
+            ref={dragConstraintsRef}
+            className={cn("absolute inset-0 flex items-center justify-center p-4", zIndexClassName ?? "z-[9999]")}
+          >
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
               onClick={effectiveCloseOnOverlayClick ? onClose : undefined}
-              className="absolute inset-0 bg-black/70 backdrop-blur-md"
+              className="absolute inset-0 bg-black/70"
             />
             <motion.div
               layout
@@ -116,21 +194,41 @@ export function Modal({
                 bounce: 0.2,
                 layout: { duration: 0.35, ease: [0.32, 0.72, 0, 1] },
               }}
+              drag
+              dragControls={dragControls}
+              dragListener={false}
+              dragConstraints={dragConstraintsRef}
+              dragElastic={0}
+              dragMomentum={false}
+              style={{ x, y }}
               className={cn(
                 'relative w-full bg-app-panel backdrop-blur-xl border border-app-border rounded-xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden ring-1 ring-black/5 dark:ring-white/5 transition-[max-width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
                 width,
                 className
               )}
+              ref={dialogRef}
               data-zync-modal-surface="true"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              tabIndex={-1}
+              onKeyDown={handleDialogKeyDown}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className={cn("flex items-start justify-between p-5 border-b border-app-border/50", headerClassName)}>
+              <div
+                className={cn("flex items-start justify-between p-5 border-b border-app-border/50 cursor-move active:cursor-grabbing select-none", headerClassName)}
+                onPointerDown={handleDragHandlePointerDown}
+              >
                 <div className="min-w-0 pr-2">
-                  <h3 className={cn("text-lg font-semibold text-app-text tracking-tight", titleClassName)}>{title}</h3>
+                  <h3 id={titleId} className={cn("text-lg font-semibold text-app-text tracking-tight", titleClassName)}>{title}</h3>
                   {subtitle && (
                     <p className="mt-1 text-xs text-app-muted leading-relaxed">{subtitle}</p>
                   )}
                 </div>
+                <GripHorizontal
+                  aria-hidden="true"
+                  className="mx-3 mt-1 h-4 w-4 shrink-0 text-app-muted/45"
+                />
                 {effectiveShowCloseButton && (
                   <Button
                     variant="ghost"

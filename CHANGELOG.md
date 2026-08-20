@@ -6,8 +6,10 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ### Changed
 - **Canonical desktop app identity**: Standardized the Tauri bundle identifier to `in.thesudoer.zync` across platforms and added copy-only first-launch migration from legacy default app data/config directories (`zync`, `com.zync.desktop`) while preserving custom `dataPath` locations.
+- **Modal and frameless window polish**: Removed full-window backdrop blur from modal-like overlays, added constrained header-only dragging with reset-on-open for shared and Settings modals, and refined the custom frameless window border.
 
 ### Fixed
+- **Custom modal accessibility**: Added dialog roles/labels, focus trap, and focus restore behavior to the shared modal and Settings modal.
 - **macOS Keychain prompt reduction**: Avoided passive status reads of OS credential-store secrets for Vault remember-device state, sync collection cache state, and Google sync status so macOS prompts are limited to real secret use instead of routine refreshes.
 - **Sync collection key recovery states**: Preserved first-time setup with provider-selected collection IDs while keeping remote relink failures explicit when no recoverable key wrap exists.
 - **Legacy Google token migration**: Preserved migration of plaintext refresh tokens into the OS credential store even when only metadata/status is read.
