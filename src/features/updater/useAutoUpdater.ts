@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { notify } from '../notifications/notify';
 import { checkForUpdates, startDownload, installAndRestart, openReleasePage } from './updaterService';
+import { evaluateAutoDownloadDecision } from './updaterIpcCore';
 import type { UpdateProgressDetail } from './types';
 
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
@@ -102,9 +103,14 @@ export function useAutoUpdater() {
             if (info && info.version) {
                 setUpdateInfo(info);
 
-                if (autoDownload && !hasAutoDownloadedRef.current) {
+                const decision = evaluateAutoDownloadDecision({
+                    autoDownload,
+                    hasAutoDownloaded: hasAutoDownloadedRef.current,
+                });
+
+                if (decision.shouldTriggerDownload) {
                     // Scenario 1: Auto-update enabled -> quietly download in background without notification noise
-                    hasAutoDownloadedRef.current = true;
+                    hasAutoDownloadedRef.current = decision.nextHasAutoDownloaded;
                     await handleStartDownload();
                     if (useAppStore.getState().updateStatus === 'error') {
                         hasAutoDownloadedRef.current = false;

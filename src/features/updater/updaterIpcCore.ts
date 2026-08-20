@@ -7,6 +7,7 @@ export interface UpdaterIpcDependencies {
 export function createUpdaterIpcHandler(deps: UpdaterIpcDependencies) {
   let currentUpdate: any = null;
   let isUpdateDownloaded = false;
+  let activeOperation: 'check' | 'download' | 'install' | null = null;
 
   const closeCurrentUpdate = async () => {
     if (currentUpdate && typeof currentUpdate.close === 'function') {
@@ -21,6 +22,10 @@ export function createUpdaterIpcHandler(deps: UpdaterIpcDependencies) {
 
   return {
     async handleCheck() {
+      if (activeOperation) {
+        throw new Error(`Updater operation '${activeOperation}' is already in progress`);
+      }
+      activeOperation = 'check';
       try {
         const update = await deps.check();
         isUpdateDownloaded = false;
@@ -42,26 +47,34 @@ export function createUpdaterIpcHandler(deps: UpdaterIpcDependencies) {
         isUpdateDownloaded = false;
         console.error('Update check error:', e);
         throw e;
+      } finally {
+        activeOperation = null;
       }
     },
 
     async handleDownload() {
+      if (activeOperation) {
+        throw new Error(`Updater operation '${activeOperation}' is already in progress`);
+      }
+      activeOperation = 'download';
       isUpdateDownloaded = false;
-      if (!currentUpdate) {
-        const update = await deps.check();
-        if (update?.available) {
-          currentUpdate = update;
-        }
-      }
-
-      if (!currentUpdate) {
-        throw new Error('No update available to download');
-      }
-
-      const downloadState = { downloaded: 0, total: 0 };
 
       try {
-        await currentUpdate.download((event: any) => {
+        if (!currentUpdate) {
+          const update = await deps.check();
+          if (update?.available) {
+            currentUpdate = update;
+          }
+        }
+
+        const targetUpdate = currentUpdate;
+        if (!targetUpdate) {
+          throw new Error('No update available to download');
+        }
+
+        const downloadState = { downloaded: 0, total: 0 };
+
+        await targetUpdate.download((event: any) => {
           try {
             if (event.event === 'Started') {
               downloadState.total = event.data?.contentLength || 0;
@@ -83,27 +96,39 @@ export function createUpdaterIpcHandler(deps: UpdaterIpcDependencies) {
             deps.dispatchEvent('zync:update-progress', { percent: 0, status: 'error' });
           }
         });
-        isUpdateDownloaded = true;
+
+        if (currentUpdate === targetUpdate) {
+          isUpdateDownloaded = true;
+        }
         return { success: true };
       } catch (error) {
         isUpdateDownloaded = false;
         console.error('Update download error:', error);
         deps.dispatchEvent('zync:update-progress', { percent: 0, status: 'error' });
         throw error;
+      } finally {
+        activeOperation = null;
       }
     },
 
     async handleInstall() {
+      if (activeOperation) {
+        throw new Error(`Updater operation '${activeOperation}' is already in progress`);
+      }
+      activeOperation = 'install';
       try {
-        if (!currentUpdate || !isUpdateDownloaded || typeof currentUpdate.install !== 'function') {
+        const targetUpdate = currentUpdate;
+        if (!targetUpdate || !isUpdateDownloaded || typeof targetUpdate.install !== 'function') {
           throw new Error('No downloaded update is ready to install.');
         }
-        await currentUpdate.install();
+        await targetUpdate.install();
         await deps.invoke('app_relaunch');
         return { success: true };
       } catch (error) {
         console.error('Failed to install and relaunch update:', error);
         throw error;
+      } finally {
+        activeOperation = null;
       }
     },
 
@@ -111,9 +136,25 @@ export function createUpdaterIpcHandler(deps: UpdaterIpcDependencies) {
       return {
         hasCurrentUpdate: Boolean(currentUpdate),
         isUpdateDownloaded,
+        activeOperation,
       };
     },
   };
+}
+
+export interface AutoDownloadDecisionInput {
+  autoDownload: boolean;
+  hasAutoDownloaded: boolean;
+}
+
+export function evaluateAutoDownloadDecision(input: AutoDownloadDecisionInput): {
+  shouldTriggerDownload: boolean;
+  nextHasAutoDownloaded: boolean;
+} {
+  if (input.autoDownload && !input.hasAutoDownloaded) {
+    return { shouldTriggerDownload: true, nextHasAutoDownloaded: true };
+  }
+  return { shouldTriggerDownload: false, nextHasAutoDownloaded: input.hasAutoDownloaded };
 }
 
 export interface SimulationTarget {

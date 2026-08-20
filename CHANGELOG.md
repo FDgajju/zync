@@ -10,19 +10,21 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **SSH host key verification (`known_hosts`)**: Prompts for confirmation when connecting to an unknown host for the first time, persists approved fingerprints to `~/.ssh/known_hosts`, and blocks connections with a warning if a host key has changed to protect against MITM attacks. ([9f61b28])
 - **Consent-based SSH agent forwarding**: Per-connection opt-in toggle under Advanced Settings to forward one explicitly chosen private key or Vault credential. Every cryptographic signature request from the remote server requires approval via an interactive dialog with a 30-second expiry timer. ([9f61b28], [7b45919])
 - **Plugin iframe isolation & command confirmation**: Dropped `allow-same-origin` from plugin iframes to prevent access to parent Tauri internals, added user confirmation prompts before executing plugin-requested SSH commands, and introduced a FIFO confirmation queue. ([48645c8], [c53f4f6])
-- **AI provider API keys encrypted in Vault**: AI provider API keys (OpenAI, Claude, Gemini, Groq, Mistral) are stored encrypted with AES-256-GCM in the Vault, with automatic migration of legacy plaintext keys upon vault unlock. ([c050715], [c53f4f6])
+- **AI provider API keys encrypted in Vault**: AI provider API keys (OpenAI, Anthropic, Gemini, Groq, Mistral) are stored encrypted with AES-256-GCM in the Vault, with automatic migration of legacy plaintext keys upon vault unlock. ([c050715], [c53f4f6])
 - **Expanded AI secret redaction**: Masks command-line passwords (`sshpass`, `mysql -p`, `PGPASSWORD`), URL credentials, Basic/Bearer authorization headers, raw JWTs, cloud API keys, and truncated PEM private keys before sending terminal context to AI models. ([49e23f4], [c53f4f6])
 - **Restricted file permissions & atomic vault exports**: Sets POSIX file mode `0600` on Unix for vault databases and managed private keys, and makes vault exports atomic via temporary staging. ([c050715], [c53f4f6])
 
 ### Added
-- **Multi-platform auto-updater & background download**: Unified in-app updater across Windows, macOS, and Linux with silent background downloads, dedicated status bar progress indicator, and celebration toast upon launch. ([e2fa602])
-- **Status bar update indicator**: Translucent soft-highlight button in the bottom status bar displaying download progress (`Updating X%`), available update actions (`Download vX.X.X`), and one-click `Restart to update`. ([e2fa602])
-- **Updater dev simulation suite**: Built-in interactive test controls in Settings → About and `window.zyncUpdater` (development mode only) to test auto-download, manual flow, and post-update celebration. ([e2fa602])
+- **Multi-platform auto-updater & background download**: Unified in-app updater across Windows, macOS, and Linux with silent background downloads, dedicated status bar progress indicator, and celebration toast upon launch. ([9952051], [9971575], [ecc61cf])
+- **Status bar update indicator**: Translucent soft-highlight button in the bottom status bar displaying download progress (`Updating X%`), available update actions (`Download vX.X.X`), and one-click `Restart to update`. ([9952051])
+- **Updater dev simulation suite**: Built-in interactive test controls in Settings → About and `window.zyncUpdater` (development mode only) to test auto-download, manual flow, and post-update celebration. ([9952051])
+- **SSH agent forwarding documentation**: Canonical architecture and security guide in `docs/AGENT_FORWARDING.md`. ([b8e5e65])
 
 ### Fixed
 - **Modal stacking over Settings**: Elevated z-index (`z-[15000]`) for global Vault unlock and SSH key passphrase prompts so they float cleanly on top of open Settings and Connection modals. ([dbf2cda])
-- **Native restart on all platforms**: Added native Rust `app_relaunch` command ensuring clean restarts without permission or process lifecycle issues across Windows, macOS, and Linux. ([e2fa602])
-- **Status bar placeholder cleanup**: Removed unused static "Ready" label from the bottom status bar. ([e2fa602])
+- **Native restart on all platforms**: Added native Rust `app_relaunch` command ensuring clean restarts without permission or process lifecycle issues across Windows, macOS, and Linux. ([9952051])
+- **Updater download reliability**: Clears stale update handles and retries failed background downloads. ([9971575], [ecc61cf])
+- **Status bar placeholder cleanup**: Removed unused static "Ready" label from the bottom status bar. ([9952051])
 
 ## [2.24.0] - 2026-08-18
 
@@ -1249,7 +1251,10 @@ All notable changes to Zync are documented in this file. The format is based on 
 [c050715]: https://github.com/zync-sh/zync/commit/c050715
 [49e23f4]: https://github.com/zync-sh/zync/commit/49e23f4
 [dbf2cda]: https://github.com/zync-sh/zync/commit/dbf2cda
-[e2fa602]: https://github.com/zync-sh/zync/commit/e2fa602
+[9952051]: https://github.com/zync-sh/zync/commit/9952051
+[9971575]: https://github.com/zync-sh/zync/commit/9971575
+[ecc61cf]: https://github.com/zync-sh/zync/commit/ecc61cf
+[b8e5e65]: https://github.com/zync-sh/zync/commit/b8e5e65
 [feee7bb]: https://github.com/zync-sh/zync/commit/feee7bb
 [6e8dd42]: https://github.com/zync-sh/zync/commit/6e8dd42
 [d9d3663]: https://github.com/zync-sh/zync/commit/d9d3663

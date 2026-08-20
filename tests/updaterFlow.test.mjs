@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createUpdaterIpcHandler, executeDownloadSimulation } from '../.tmp-agent-tests/src/features/updater/updaterIpcCore.js';
+import { createUpdaterIpcHandler, executeDownloadSimulation, evaluateAutoDownloadDecision } from '../.tmp-agent-tests/src/features/updater/updaterIpcCore.js';
 
 async function runTest(name, fn) {
   try {
@@ -30,7 +30,7 @@ async function main() {
     assert.match(content, /localStorage\.setItem\('zync-just-updated',\s*'true'\)/, 'should set flag on update');
   });
 
-  // 2. Check useAutoUpdater implementation and behavioral auto-download flow
+  // 2. Check useAutoUpdater implementation and evaluateAutoDownloadDecision helper
   await runTest('useAutoUpdater registers progress listener, triggers auto-download, and retries on error', async () => {
     const hookPath = path.join(process.cwd(), 'src', 'features', 'updater', 'useAutoUpdater.ts');
     assert.ok(fs.existsSync(hookPath), 'useAutoUpdater.ts should exist');
@@ -41,7 +41,7 @@ async function main() {
     assert.match(content, /id:\s*'zync-updater'/, 'should use stable notification id to prevent duplicate spam');
     assert.match(content, /notify\.success/, 'should notify when update is ready to install');
 
-    // Behavioral simulation of auto-download trigger & retry logic
+    // Test production evaluateAutoDownloadDecision helper across cycles
     let hasAutoDownloaded = false;
     let downloadCallCount = 0;
     let simulatedStoreStatus = 'idle';
@@ -57,14 +57,16 @@ async function main() {
 
     const runAutoCheck = async (shouldFail) => {
       const autoDownload = true;
-      const info = { version: '2.25.0' };
-      if (info && info.version) {
-        if (autoDownload && !hasAutoDownloaded) {
-          hasAutoDownloaded = true;
-          await handleStartDownloadMock(shouldFail);
-          if (simulatedStoreStatus === 'error') {
-            hasAutoDownloaded = false;
-          }
+      const decision = evaluateAutoDownloadDecision({
+        autoDownload,
+        hasAutoDownloaded,
+      });
+
+      if (decision.shouldTriggerDownload) {
+        hasAutoDownloaded = decision.nextHasAutoDownloaded;
+        await handleStartDownloadMock(shouldFail);
+        if (simulatedStoreStatus === 'error') {
+          hasAutoDownloaded = false;
         }
       }
     };
@@ -292,14 +294,50 @@ async function main() {
     assert.equal(relaunchCalls, 1, 'Must invoke app_relaunch');
 
     // Step 7: Subsequent check clears readiness and closes previous update handle
+    const beforeCloseCount = closeCalls;
+    const newFakeUpdate = {
+      version: '2.26.0',
+      available: true,
+      download: async (cb) => {
+        cb({ event: 'Finished' });
+      },
+      install: async () => {},
+      close: async () => {
+        closeCalls++;
+      },
+    };
+    availableUpdate = newFakeUpdate;
     await handler.handleCheck();
     assert.equal(handler.getState().isUpdateDownloaded, false, 'Subsequent check must reset readiness');
-    assert.ok(closeCalls > 0, 'Must invoke close() to release previous update resource handle');
+    assert.equal(closeCalls, beforeCloseCount + 1, 'Must invoke close() on previous update handle exactly once');
     await assert.rejects(
       async () => await handler.handleInstall(),
       /No downloaded update is ready to install/,
       'Install must reject until re-downloaded',
     );
+
+    // Step 8: Concurrency guard - overlapping operations are rejected
+    let resolveCheck;
+    const hangingCheckPromise = new Promise((resolve) => { resolveCheck = resolve; });
+    availableUpdate = hangingCheckPromise;
+
+    const inFlightCheck = handler.handleCheck();
+    // Overlapping check while first check is in flight
+    await assert.rejects(
+      async () => await handler.handleCheck(),
+      /is already in progress/,
+      'Overlapping check must be rejected',
+    );
+    // Overlapping download while check is in flight
+    await assert.rejects(
+      async () => await handler.handleDownload(),
+      /is already in progress/,
+      'Overlapping download during check must be rejected',
+    );
+
+    resolveCheck(newFakeUpdate);
+    await inFlightCheck;
+    assert.equal(handler.getState().activeOperation, null, 'Active operation must clear upon completion');
   });
 
   console.log('All comprehensive updater flow tests passed successfully.');
