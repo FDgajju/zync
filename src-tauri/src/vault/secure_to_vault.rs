@@ -105,6 +105,11 @@ pub struct SecureToVaultResult {
 /// Key files are read and stored in vault; original files are left untouched.
 /// A backup is written to `connections.json.pre-secure-to-vault` before any change.
 pub fn secure(data_dir: &Path, vault: &VaultService) -> Result<SecureToVaultResult, VaultError> {
+    // Caller already holds Mutex<VaultService>. Take CONNECTIONS_MUTATION_LOCK
+    // second so vault reset/repair and this writer share the same lock order.
+    let _connections_guard = crate::commands::CONNECTIONS_MUTATION_LOCK
+        .lock()
+        .map_err(|error| VaultError::InvalidData(format!("lock connections file: {error}")))?;
     let connections_path = data_dir.join("connections.json");
     let backup_path = data_dir.join("connections.json.pre-secure-to-vault");
     let legacy_backup_path = data_dir.join("connections.json.pre-vault-migration");

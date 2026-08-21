@@ -7,6 +7,7 @@ import { SecretField } from './SecretField';
 import { useVaultStore } from '../../vault/useVaultStore';
 import { useAppStore } from '../../store/useAppStore';
 import { PASSPHRASE_MIN_LENGTH } from '../../vault/passphrase';
+import { readRememberOnDevicePreference } from '../../vault/rememberOnDevice';
 
 interface Props {
   isOpen: boolean;
@@ -71,6 +72,7 @@ export function ChangePassphraseModal({
     try {
       await changePassphrase(newPassphrase, {
         currentPassphrase: requireCurrent ? currentPassphrase : undefined,
+        rememberOnDevice: readRememberOnDevicePreference(),
       });
       showToast(
         'success',

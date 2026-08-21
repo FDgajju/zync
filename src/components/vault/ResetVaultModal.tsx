@@ -34,7 +34,7 @@ export function ResetVaultModal({ isOpen, onClose, onReset }: Props) {
     clearError();
   }, [isOpen, clearError]);
 
-  const canConfirm = confirmText.trim() === CONFIRM_WORD;
+  const canConfirm = confirmText === CONFIRM_WORD;
 
   const handleClose = () => {
     if (isLoading) return;

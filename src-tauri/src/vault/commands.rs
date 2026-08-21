@@ -128,20 +128,22 @@ pub async fn vault_reset_local(
     vault: State<'_, Mutex<VaultService>>,
 ) -> VaultResult<VaultResetLocalResult> {
     let data_dir = crate::commands::get_data_dir(&app);
-    // Strip host vault links before deleting vault files. If wipe fails afterward,
-    // credentials remain in the vault and hosts can be re-linked; the reverse order
-    // can leave a wiped vault with dangling authRef pointers.
-    // strip_connection_auth_refs takes CONNECTIONS_MUTATION_LOCK and drops it
-    // before vault.lock() below so the two locks are never held together.
-    let cleared_auth_refs = tokio::task::spawn_blocking(move || strip_connection_auth_refs(&data_dir))
-        .await
-        .map_err(|error| VaultCommandError {
-            code: "error".into(),
-            message: format!("failed to strip host vault links: {error}"),
-        })?
-        .map_err(VaultCommandError::from)?;
+    // Lock order: vault mutex, then CONNECTIONS_MUTATION_LOCK. Hold both across
+    // strip + wipe so connections_save / secure_to_vault cannot write authRef
+    // data into the gap. If wipe fails after strip, credentials remain and
+    // hosts can be re-linked; the reverse order can leave dangling authRefs.
     let mut vault = vault.lock().await;
-    let status = vault.reset_local().map_err(VaultCommandError::from)?;
+    let (cleared_auth_refs, status) = tokio::task::block_in_place(|| {
+        let _connections_guard = crate::commands::CONNECTIONS_MUTATION_LOCK
+            .lock()
+            .map_err(|error| {
+                VaultError::InvalidData(format!("lock connections file: {error}"))
+            })?;
+        let cleared_auth_refs = strip_connection_auth_refs_locked(&data_dir)?;
+        let status = vault.reset_local()?;
+        Ok::<_, VaultError>((cleared_auth_refs, status))
+    })
+    .map_err(VaultCommandError::from)?;
     Ok(VaultResetLocalResult {
         status,
         cleared_auth_refs,
@@ -585,11 +587,9 @@ fn load_saved_connections(path: &std::path::Path) -> Result<SavedData, VaultErro
 
 /// Strip vault `authRef` links from local hosts after a vault wipe.
 /// Leaves `privateKeyPath` and non-vault passwords intact.
-fn strip_connection_auth_refs(data_dir: &std::path::Path) -> Result<u32, VaultError> {
+/// Caller must already hold `CONNECTIONS_MUTATION_LOCK`.
+fn strip_connection_auth_refs_locked(data_dir: &std::path::Path) -> Result<u32, VaultError> {
     let path = data_dir.join("connections.json");
-    let _connections_guard = crate::commands::CONNECTIONS_MUTATION_LOCK
-        .lock()
-        .map_err(|e| VaultError::InvalidData(format!("lock connections file: {e}")))?;
     let mut saved = load_saved_connections(&path)?;
     let mut cleared = 0u32;
     let mut changed = false;

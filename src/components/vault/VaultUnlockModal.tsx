@@ -10,20 +10,12 @@ import { ChangePassphraseModal } from './ChangePassphraseModal';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { PASSPHRASE_MIN_LENGTH } from '../../vault/passphrase';
+import {
+  persistRememberOnDevicePreference,
+  readRememberOnDevicePreference,
+} from '../../vault/rememberOnDevice';
 
 export { PASSPHRASE_MIN_LENGTH };
-
-const REMEMBER_ON_DEVICE_PREF_KEY = 'zync:vault:rememberOnDevice';
-
-const readRememberOnDevicePreference = (): boolean => {
-  if (typeof localStorage === 'undefined') return false;
-  return localStorage.getItem(REMEMBER_ON_DEVICE_PREF_KEY) === 'true';
-};
-
-const persistRememberOnDevicePreference = (enabled: boolean) => {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(REMEMBER_ON_DEVICE_PREF_KEY, enabled ? 'true' : 'false');
-};
 
 interface Props {
   isOpen: boolean;

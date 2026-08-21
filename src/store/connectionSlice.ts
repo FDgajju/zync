@@ -444,7 +444,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
         return runSerializedConnectOp(id, async () => {
         const attemptId = createConnectAttemptId(id);
         activeConnectAttempts.set(id, attemptId);
-        registerConnectAttempt({
+        const inheritedQueuedCancel = registerConnectAttempt({
             connectionId: id,
             attemptId,
             pending: pendingConnectCancellations,
@@ -464,12 +464,34 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 } catch (error) {
                     console.error('Failed to cleanup cancelled connection:', error);
                 }
+                // Same as disconnect/transport-lost: freeze PTYs and keep tabs
+                // pendingRestore so a late cancel cannot leave live terminals
+                // talking to a disconnected backend.
+                suspendAllTerminalsForConnection(get().terminals[id]);
+            }
+            if (id !== 'local' && disconnectBackend) {
+                const tabs = get().terminals[id] || [];
+                if (tabs.length > 0) {
+                    set(state => ({
+                        connections: markConnectionStatus(state.connections, id, 'disconnected'),
+                        terminals: {
+                            ...state.terminals,
+                            [id]: tabs.map(t => ({ ...t, pendingRestore: true })),
+                        },
+                    }));
+                    return true;
+                }
             }
             set(state => ({
                 connections: markConnectionStatus(state.connections, id, 'disconnected'),
             }));
             return true;
         };
+
+        if (inheritedQueuedCancel) {
+            await finishCancelledConnect();
+            return;
+        }
 
         // Optimistic update
         set(state => ({
@@ -620,6 +642,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
 
             try {
                 await get().loadTunnels(id);
+                if (await finishCancelledConnect(true)) return;
                 const tunnels = get().tunnels[id] || [];
                 const startTunnel = get().startTunnel;
 
