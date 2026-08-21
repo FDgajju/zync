@@ -3,6 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+const JS_RUNTIME_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.json', '.node']);
+
+function hasJsRuntimeExtension(specifier) {
+  return JS_RUNTIME_EXTENSIONS.has(path.extname(specifier));
+}
+
 // Node ESM requires exact extensions. Normalize the relative imports emitted from
 // production files that still use bundler-style extensionless module specifiers.
 function normalizeEmittedImports(directory) {
@@ -15,7 +21,7 @@ function normalizeEmittedImports(directory) {
       const normalized = source.replace(
         /((?:from\s+|import\s*\(\s*)['"])(\.\.?\/[^'"]+)(['"])/g,
         (match, prefix, specifier, suffix) => {
-          if (path.extname(specifier)) return match;
+          if (hasJsRuntimeExtension(specifier)) return match;
           if (specifier.endsWith('/useConnectionDisplayLabels')) return match;
           const resolved = path.resolve(path.dirname(fullPath), specifier);
           if (fs.existsSync(`${resolved}.js`)) return `${prefix}${specifier}.js${suffix}`;
@@ -38,6 +44,7 @@ const tests = [
   'tests/connectionDisplay.test.mjs',
   'tests/notificationHistory.test.mjs',
   'tests/connectionOpQueue.test.mjs',
+  'tests/connectCancelState.test.mjs',
   'tests/connectionFormTransforms.test.mjs',
   'tests/connectionLifecycleService.test.mjs',
   'tests/keyPassphrasePrompt.test.mjs',
@@ -83,7 +90,6 @@ const tests = [
 ];
 
 for (const file of tests) {
-  normalizeEmittedImports(path.resolve('.tmp-agent-tests'));
   const args = file.startsWith('tests/terminal')
     ? [
         '--input-type=module',

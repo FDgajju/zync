@@ -34,7 +34,7 @@ export function ResetVaultModal({ isOpen, onClose, onReset }: Props) {
     clearError();
   }, [isOpen, clearError]);
 
-  const canConfirm = confirmText.trim().toUpperCase() === CONFIRM_WORD;
+  const canConfirm = confirmText.trim() === CONFIRM_WORD;
 
   const handleClose = () => {
     if (isLoading) return;
@@ -54,6 +54,11 @@ export function ResetVaultModal({ isOpen, onClose, onReset }: Props) {
         await loadConnections();
       } catch (loadError: unknown) {
         console.error('[Vault] Failed to reload connections after reset:', loadError);
+      }
+      if (result.status.status !== 'uninitialized') {
+        setLocalError('Vault reset did not finish. The local vault may still be present. Try again.');
+        showToast('error', 'Vault reset did not fully complete.');
+        return;
       }
       const cleared = result.clearedAuthRefs;
       showToast(

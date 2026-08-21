@@ -131,7 +131,15 @@ pub async fn vault_reset_local(
     // Strip host vault links before deleting vault files. If wipe fails afterward,
     // credentials remain in the vault and hosts can be re-linked; the reverse order
     // can leave a wiped vault with dangling authRef pointers.
-    let cleared_auth_refs = strip_connection_auth_refs(&data_dir).map_err(VaultCommandError::from)?;
+    // strip_connection_auth_refs takes CONNECTIONS_MUTATION_LOCK and drops it
+    // before vault.lock() below so the two locks are never held together.
+    let cleared_auth_refs = tokio::task::spawn_blocking(move || strip_connection_auth_refs(&data_dir))
+        .await
+        .map_err(|error| VaultCommandError {
+            code: "error".into(),
+            message: format!("failed to strip host vault links: {error}"),
+        })?
+        .map_err(VaultCommandError::from)?;
     let mut vault = vault.lock().await;
     let status = vault.reset_local().map_err(VaultCommandError::from)?;
     Ok(VaultResetLocalResult {

@@ -172,8 +172,8 @@ export const vaultIpc = {
     const status = normalizeVaultStatus(
       (record.status as VaultStatus | Record<string, unknown> | undefined) ?? null,
     );
-    if (!status || status.status !== 'uninitialized') {
-      throw new Error('Vault reset did not return an uninitialized status.');
+    if (!status) {
+      throw new Error('Vault reset did not return a vault status.');
     }
     const clearedRaw = record.clearedAuthRefs ?? record.cleared_auth_refs;
     const clearedAuthRefs = typeof clearedRaw === 'number' ? clearedRaw : Number(clearedRaw);

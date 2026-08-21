@@ -14,6 +14,11 @@ export function hasSerializedConnectOp(connectionId: string): boolean {
   return connectionId !== 'local' && (connectOpCounts.get(connectionId) ?? 0) > 0;
 }
 
+/** True when another connect is waiting behind the currently running one. */
+export function hasQueuedSerializedConnectOp(connectionId: string): boolean {
+  return connectionId !== 'local' && (connectOpCounts.get(connectionId) ?? 0) > 1;
+}
+
 export function runSerializedConnectionOp<T>(
   connectionId: string,
   op: () => Promise<T>,

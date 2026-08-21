@@ -111,6 +111,7 @@
         "src/lib/terminal/connectionBackend.ts",
         "src/lib/terminal/terminalSpawnErrors.ts",
         "src/features/connections/infrastructure/connectionOpQueue.ts",
+        "src/features/connections/infrastructure/connectCancelState.ts",
         "src/lib/terminal/suspendAllTerminals.ts",
         "src/lib/terminal/ptyLifecycle.ts",
         "src/lib/terminal/spawnContext.ts",

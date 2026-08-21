@@ -9,9 +9,9 @@ import { ResetVaultModal } from './ResetVaultModal';
 import { ChangePassphraseModal } from './ChangePassphraseModal';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { PASSPHRASE_MIN_LENGTH } from '../../vault/passphrase';
 
-/** Minimum passphrase length enforced at vault creation time. */
-export const PASSPHRASE_MIN_LENGTH = 12;
+export { PASSPHRASE_MIN_LENGTH };
 
 const REMEMBER_ON_DEVICE_PREF_KEY = 'zync:vault:rememberOnDevice';
 

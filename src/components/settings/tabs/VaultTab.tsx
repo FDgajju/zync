@@ -290,13 +290,12 @@ export function VaultTab({ focusedProfileId = DEFAULT_VAULT_PROFILE_ID }: VaultT
     if (!confirmed) return;
     try {
       await forgetDevice();
-      await refresh();
       showToast('success', 'Remembered unlock removed from this device.');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       showToast('error', `Failed to forget device: ${message}`);
     }
-  }, [forgetDevice, refresh, showConfirmDialog, showToast]);
+  }, [forgetDevice, showConfirmDialog, showToast]);
 
   const canSyncItemsToGoogle = Boolean(
     panel.googleSync?.connected
@@ -313,7 +312,7 @@ export function VaultTab({ focusedProfileId = DEFAULT_VAULT_PROFILE_ID }: VaultT
       <button
         type="button"
         onClick={() => setShowResetVault(true)}
-        disabled={isVaultInUseError(error)}
+        disabled={vaultInUse}
         className="shrink-0 text-[11px] font-medium text-[var(--color-app-danger)] underline-offset-2 hover:underline disabled:opacity-50 disabled:no-underline"
       >
         Reset Vault →

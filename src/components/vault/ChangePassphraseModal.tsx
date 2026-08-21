@@ -6,9 +6,7 @@ import { Input } from '../ui/Input';
 import { SecretField } from './SecretField';
 import { useVaultStore } from '../../vault/useVaultStore';
 import { useAppStore } from '../../store/useAppStore';
-
-/** Keep in sync with vault unlock create flow / Rust PASSPHRASE_MIN_LENGTH. */
-const PASSPHRASE_MIN_LENGTH = 12;
+import { PASSPHRASE_MIN_LENGTH } from '../../vault/passphrase';
 
 interface Props {
   isOpen: boolean;
@@ -82,9 +80,12 @@ export function ChangePassphraseModal({
       );
       onClose();
     } catch (e: unknown) {
+      const code =
+        e && typeof e === 'object' && 'code' in e
+          ? String((e as { code: unknown }).code)
+          : undefined;
       const message = e instanceof Error ? e.message : String(e);
-      const normalized = message.toLowerCase();
-      if (normalized.includes('wrong_passphrase') || normalized.includes('incorrect')) {
+      if (code === 'wrong_passphrase') {
         setLocalError('Current passphrase is incorrect.');
         return;
       }

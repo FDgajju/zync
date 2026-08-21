@@ -1663,27 +1663,47 @@ impl VaultService {
 
         let entries = std::fs::read_dir(&self.data_dir).map_err(|error| {
             VaultError::InvalidData(format!(
-                "failed to enumerate data dir for sync cache cleanup {}: {error}",
+                "failed to enumerate data dir for vault reset cleanup {}: {error}",
                 self.data_dir.display()
             ))
         })?;
         for entry in entries {
             let entry = entry.map_err(|error| {
                 VaultError::InvalidData(format!(
-                    "failed to read data dir entry during sync cache cleanup: {error}"
+                    "failed to read data dir entry during vault reset cleanup: {error}"
                 ))
             })?;
             let file_name = entry.file_name();
             let name = file_name.to_string_lossy();
-            if name.starts_with("sync-collection-") && name.ends_with(".json") {
-                let path = entry.path();
-                std::fs::remove_file(&path).map_err(|error| {
+            let is_sync_cache = name.starts_with("sync-collection-") && name.ends_with(".json");
+            let is_file = entry
+                .file_type()
+                .map_err(|error| {
                     VaultError::InvalidData(format!(
-                        "failed to remove sync collection cache {}: {error}",
-                        path.display()
+                        "failed to inspect data dir entry {} during vault reset cleanup: {error}",
+                        entry.path().display()
                     ))
-                })?;
+                })?
+                .is_file();
+            let is_vault_leftover = is_file
+                && (name.starts_with("vault.redb")
+                    || name.contains("vault-export.tmp.")
+                    || name.contains("vault-export.bak."));
+            if !is_sync_cache && !is_vault_leftover {
+                continue;
             }
+            let path = entry.path();
+            std::fs::remove_file(&path).map_err(|error| {
+                VaultError::InvalidData(format!(
+                    "{} {}: {error}",
+                    if is_sync_cache {
+                        "failed to remove sync collection cache"
+                    } else {
+                        "failed to remove"
+                    },
+                    path.display()
+                ))
+            })?;
         }
 
         self.status()
@@ -2298,13 +2318,31 @@ mod tests {
             .expect("create item");
         let vault_path = vault.dir.join("vault.redb");
         let cache_path = vault.dir.join("sync-collection-demo.json");
+        let leftover_vault = vault.dir.join("vault.redb.orphan");
+        let leftover_export = vault.dir.join("backup.vault-export.tmp.demo");
+        let leftover_export_bak = vault.dir.join("backup.vault-export.bak.demo");
+        let leftover_pre_import = vault.dir.join("vault.redb.pre-import");
+        let leftover_sync_tmp = vault.dir.join("vault.redb.sync-tmp");
+        let leftover_download_tmp = vault.dir.join("vault.redb.download-tmp");
         std::fs::write(&cache_path, b"{}").expect("write sync collection cache");
+        std::fs::write(&leftover_vault, b"orphan").expect("write leftover vault file");
+        std::fs::write(&leftover_export, b"tmp").expect("write leftover export file");
+        std::fs::write(&leftover_export_bak, b"bak").expect("write leftover export backup");
+        std::fs::write(&leftover_pre_import, b"pre").expect("write leftover pre-import file");
+        std::fs::write(&leftover_sync_tmp, b"sync").expect("write leftover sync tmp");
+        std::fs::write(&leftover_download_tmp, b"dl").expect("write leftover download tmp");
         assert!(vault_path.exists());
 
         let status = vault.service.reset_local().expect("reset local vault");
         assert!(matches!(status, VaultStatus::Uninitialized));
         assert!(!vault_path.exists());
         assert!(!cache_path.exists());
+        assert!(!leftover_vault.exists());
+        assert!(!leftover_export.exists());
+        assert!(!leftover_export_bak.exists());
+        assert!(!leftover_pre_import.exists());
+        assert!(!leftover_sync_tmp.exists());
+        assert!(!leftover_download_tmp.exists());
 
         // A fresh vault can be created afterward.
         vault

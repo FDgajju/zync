@@ -61,10 +61,16 @@ import { vaultIpc } from '../vault/ipc';
 import { seedRemoteGhostHistory } from '../lib/ghostSuggestions/client';
 import { ghostDebug } from '../lib/ghostSuggestions/ghostDebug';
 import {
+    hasQueuedSerializedConnectOp,
     hasSerializedConnectOp,
     runSerializedConnectOp,
     runSerializedConnectionOp,
 } from '../features/connections/infrastructure/connectionOpQueue';
+import {
+    clearCancelledConnectAttempt,
+    recordConnectCancellation,
+    registerConnectAttempt,
+} from '../features/connections/infrastructure/connectCancelState';
 import {
     markConnectionBackendLive,
     markConnectionBackendOffline,
@@ -438,17 +444,16 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
         return runSerializedConnectOp(id, async () => {
         const attemptId = createConnectAttemptId(id);
         activeConnectAttempts.set(id, attemptId);
-        if (pendingConnectCancellations.delete(id)) {
-            cancelledConnectAttempts.add(attemptId);
-        } else {
-            cancelledConnectAttempts.delete(attemptId);
-        }
+        registerConnectAttempt({
+            connectionId: id,
+            attemptId,
+            pending: pendingConnectCancellations,
+            cancelledAttempts: cancelledConnectAttempts,
+        });
         const skipVaultPrompt = options?.skipVaultPrompt ?? false;
 
         const finishCancelledConnect = async (disconnectBackend = false): Promise<boolean> => {
-            if (!cancelledConnectAttempts.has(attemptId)) return false;
-            cancelledConnectAttempts.delete(attemptId);
-            pendingConnectCancellations.delete(id);
+            if (!clearCancelledConnectAttempt(cancelledConnectAttempts, attemptId)) return false;
             if (activeConnectAttempts.get(id) === attemptId) {
                 activeConnectAttempts.delete(id);
             }
@@ -737,7 +742,10 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             if (!skipVaultPrompt && isVaultLockedError(message)) {
                 const unlocked = await useVaultStore.getState().requestUnlock();
                 if (unlocked) {
-                    return get().connect(id, { skipVaultPrompt: true });
+                    queueMicrotask(() => {
+                        void get().connect(id, { skipVaultPrompt: true });
+                    });
+                    return;
                 }
                 set(state => ({
                     connections: markConnectionStatus(state.connections, id, 'disconnected'),
@@ -753,21 +761,9 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 return { connections: nextConnections };
             });
         } finally {
+            await finishCancelledConnect(true);
             if (activeConnectAttempts.get(id) === attemptId) {
                 activeConnectAttempts.delete(id);
-            }
-            if (cancelledConnectAttempts.has(attemptId)) {
-                cancelledConnectAttempts.delete(attemptId);
-                pendingConnectCancellations.delete(id);
-                markConnectionBackendOffline(id);
-                try {
-                    await disconnectIpc(id);
-                } catch (error) {
-                    console.error('Failed to cleanup cancelled connection:', error);
-                }
-                set(state => ({
-                    connections: markConnectionStatus(state.connections, id, 'disconnected'),
-                }));
             }
         }
         });
@@ -777,13 +773,14 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
         if (id === 'local') return;
 
         const attemptId = activeConnectAttempts.get(id);
-        if (attemptId) {
-            cancelledConnectAttempts.add(attemptId);
-        } else if (hasSerializedConnectOp(id)) {
-            // Connect is queued / about to register attemptId — keep cancel until it starts.
-            // Only track connect ops so a queued disconnect cannot leave a stale pending cancel.
-            pendingConnectCancellations.add(id);
-        }
+        recordConnectCancellation({
+            connectionId: id,
+            activeAttemptId: attemptId,
+            hasQueuedConnect: hasQueuedSerializedConnectOp(id),
+            hasSerializedConnect: hasSerializedConnectOp(id),
+            pending: pendingConnectCancellations,
+            cancelledAttempts: cancelledConnectAttempts,
+        });
         markConnectionBackendOffline(id);
         set(state => ({
             connections: markConnectionStatus(state.connections, id, 'disconnected'),
