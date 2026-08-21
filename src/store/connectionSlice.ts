@@ -70,6 +70,7 @@ import {
     clearCancelledConnectAttempt,
     recordConnectCancellation,
     registerConnectAttempt,
+    shouldScheduleUnlockRetry,
 } from '../features/connections/infrastructure/connectCancelState';
 import {
     markConnectionBackendLive,
@@ -764,7 +765,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             const message = connectionErrorMessage(error);
             if (!skipVaultPrompt && isVaultLockedError(message)) {
                 const unlocked = await useVaultStore.getState().requestUnlock();
-                if (unlocked) {
+                if (shouldScheduleUnlockRetry(unlocked, cancelledConnectAttempts, attemptId)) {
                     queueMicrotask(() => {
                         void get().connect(id, { skipVaultPrompt: true });
                     });

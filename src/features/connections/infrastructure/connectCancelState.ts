@@ -41,3 +41,12 @@ export function clearCancelledConnectAttempt(
 ): boolean {
   return cancelledAttempts.delete(attemptId);
 }
+
+/** Unlock succeeded, but do not start another connect if this attempt was cancelled meanwhile. */
+export function shouldScheduleUnlockRetry(
+  unlocked: boolean,
+  cancelledAttempts: Set<string>,
+  attemptId: string,
+): boolean {
+  return unlocked && !cancelledAttempts.has(attemptId);
+}

@@ -3,6 +3,7 @@ import {
   clearCancelledConnectAttempt,
   recordConnectCancellation,
   registerConnectAttempt,
+  shouldScheduleUnlockRetry,
 } from '../.tmp-agent-tests/src/features/connections/infrastructure/connectCancelState.js';
 
 function runTest(name, fn) {
@@ -70,6 +71,21 @@ runTest('cancel with no active attempt only records pending for serialized conne
 
   assert.equal(pending.has('host-b'), true);
   assert.equal(cancelledAttempts.size, 0);
+});
+
+runTest('cancel during pending requestUnlock does not schedule another connect', () => {
+  const cancelledAttempts = new Set();
+  const attemptId = 'host-c:attempt-c';
+
+  assert.equal(shouldScheduleUnlockRetry(true, cancelledAttempts, attemptId), true);
+
+  cancelledAttempts.add(attemptId);
+  assert.equal(
+    shouldScheduleUnlockRetry(true, cancelledAttempts, attemptId),
+    false,
+    'unlock success must not retry a cancelled attempt',
+  );
+  assert.equal(shouldScheduleUnlockRetry(false, cancelledAttempts, attemptId), false);
 });
 
 console.log('Connect cancel state tests passed.');
