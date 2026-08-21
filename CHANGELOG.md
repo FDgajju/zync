@@ -5,18 +5,18 @@ All notable changes to Zync are documented in this file. The format is based on 
 ## [Unreleased]
 
 ### Added
-- **Reset Vault**: Destructive local vault wipe when both passphrase and recovery key are lost (unlock dialog + Vault settings). Clears remember-device unlock, local sync-collection cache, and host `authRef` links; does not delete remote provider data. Local key-file / on-host password hosts are kept. ([b139d77])
-- **Change Passphrase**: Rotate the vault passphrase without deleting credentials (Vault → Security). After recovery-key unlock, prompts to set a new passphrase so password unlock works again. ([b139d77])
-- **Forgot passphrase on unlock**: Unlock dialog offers **Forgot passphrase?** (switches to Recovery Key) and **Don't have your recovery key? Reset Vault…** at the bottom. ([b139d77])
+- **Reset Vault**: Destructive local vault wipe when both passphrase and recovery key are lost (unlock dialog + Vault settings). Clears remember-device unlock, local sync-collection cache, and host `authRef` links; does not delete remote provider data. Local key-file / on-host password hosts are kept. ([b8241b9])
+- **Change Passphrase**: Rotate the vault passphrase without deleting credentials (Vault → Security). After recovery-key unlock, prompts to set a new passphrase so password unlock works again. ([b8241b9])
+- **Forgot passphrase on unlock**: Unlock dialog offers **Forgot passphrase?** (switches to Recovery Key) and **Don't have your recovery key? Reset Vault…** at the bottom. ([b8241b9])
 
 ### Security
-- **Passphrase change without current passphrase**: Requires a prior recovery-key unlock authorization flag; cleared on lock, normal unlock, session unlock, and after a successful change. ([b139d77])
-- **Reset Vault cleanup**: Propagates remember-device and sync-cache cleanup failures instead of reporting a successful uninitialized status after partial cleanup. Strips host `authRef`s before deleting vault files to avoid dangling links after a failed wipe. ([b139d77])
+- **Passphrase change without current passphrase**: Requires a prior recovery-key unlock authorization flag; cleared on lock, normal unlock, session unlock, and after a successful change. ([b8241b9])
+- **Reset Vault cleanup**: Propagates remember-device and sync-cache cleanup failures instead of reporting a successful uninitialized status after partial cleanup. Strips host `authRef`s before deleting vault files to avoid dangling links after a failed wipe. ([b8241b9])
 
 ### Fixed
-- **Forget Device hang**: Dropped the vault read transaction before clearing the session-cache verifier write so Forget Device no longer stalls under redb. ([b139d77])
-- **Labeled inputs**: `Input` / `SecretField` associate labels with controls via stable `id` / `htmlFor` (including when no explicit `id` is passed). ([b139d77])
-- **Create Vault after reset**: Confirm passphrase always shows when creating a vault; submit validation no longer depends on a stale Recovery Key mode. ([b139d77])
+- **Forget Device hang**: Dropped the vault read transaction before clearing the session-cache verifier write so Forget Device no longer stalls under redb. ([b8241b9])
+- **Labeled inputs**: `Input` / `SecretField` associate labels with controls via stable `id` / `htmlFor` (including when no explicit `id` is passed). ([b8241b9])
+- **Create Vault after reset**: Confirm passphrase always shows when creating a vault; submit validation no longer depends on a stale Recovery Key mode. ([b8241b9])
 
 ## [2.25.1] - 2026-08-21
 
@@ -1296,4 +1296,4 @@ All notable changes to Zync are documented in this file. The format is based on 
 [22256fb]: https://github.com/zync-sh/zync/commit/22256fb
 [7b8e5a6]: https://github.com/zync-sh/zync/commit/7b8e5a6
 [e3f1732]: https://github.com/zync-sh/zync/commit/e3f1732
-[b139d77]: https://github.com/zync-sh/zync/commit/b139d77
+[b8241b9]: https://github.com/zync-sh/zync/commit/b8241b9

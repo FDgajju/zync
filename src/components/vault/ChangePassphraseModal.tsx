@@ -167,7 +167,7 @@ export function ChangePassphraseModal({
             }
             isLoading={isLoading}
           >
-            {requireCurrent ? 'Update Passphrase' : 'Set Passphrase'}
+            {requireCurrent ? 'Update' : 'Set'}
           </Button>
         </div>
       </form>
