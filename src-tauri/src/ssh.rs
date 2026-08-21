@@ -1304,6 +1304,7 @@ mod tests {
                     }),
                     jump_host: None,
                     host_key_approval: Some(approval),
+                    connect_attempt_id: None,
                 },
                 tunnels,
             )
@@ -1379,6 +1380,7 @@ mod tests {
                     agent_forwarding: None,
                     jump_host: None,
                     host_key_approval: Some(approval_a),
+                    connect_attempt_id: None,
                 },
                 tunnels.clone(),
             )
@@ -1398,6 +1400,7 @@ mod tests {
                     agent_forwarding: None,
                     jump_host: None,
                     host_key_approval: Some(approval_b),
+                    connect_attempt_id: None,
                 },
                 tunnels,
             )

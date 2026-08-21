@@ -74,6 +74,7 @@ runTest('getCloseTabPreActions returns disconnect for connected remote tab', () 
   const connections = [{ id: 'c1', status: 'connected' }];
   const actions = getCloseTabPreActions(tab, tabs, connections);
   assert.equal(actions.disconnectConnectionId, 'c1');
+  assert.equal(actions.cancelConnectConnectionId, null);
   assert.equal(actions.clearLocalTerminals, false);
 });
 
@@ -83,12 +84,34 @@ runTest('getCloseTabPreActions does not disconnect when another tab uses same co
   const connections = [{ id: 'c1', status: 'connected' }];
   const actions = getCloseTabPreActions(tab, tabs, connections);
   assert.equal(actions.disconnectConnectionId, null);
+  assert.equal(actions.cancelConnectConnectionId, null);
+  assert.equal(actions.clearLocalTerminals, false);
+});
+
+runTest('getCloseTabPreActions returns cancel for connecting remote tab', () => {
+  const tab = { id: 't1', connectionId: 'c1' };
+  const tabs = [{ id: 't1', connectionId: 'c1' }];
+  const connections = [{ id: 'c1', status: 'connecting' }];
+  const actions = getCloseTabPreActions(tab, tabs, connections);
+  assert.equal(actions.disconnectConnectionId, null);
+  assert.equal(actions.cancelConnectConnectionId, 'c1');
+  assert.equal(actions.clearLocalTerminals, false);
+});
+
+runTest('getCloseTabPreActions does not cancel connecting host when another tab uses same connection', () => {
+  const tab = { id: 't1', connectionId: 'c1' };
+  const tabs = [{ id: 't1', connectionId: 'c1' }, { id: 't2', connectionId: 'c1' }];
+  const connections = [{ id: 'c1', status: 'connecting' }];
+  const actions = getCloseTabPreActions(tab, tabs, connections);
+  assert.equal(actions.disconnectConnectionId, null);
+  assert.equal(actions.cancelConnectConnectionId, null);
   assert.equal(actions.clearLocalTerminals, false);
 });
 
 runTest('getCloseTabPreActions returns local terminal clear action for local tab', () => {
   const actions = getCloseTabPreActions({ id: 't1', connectionId: 'local', view: 'terminal' }, [{ id: 't1', connectionId: 'local', view: 'terminal' }], []);
   assert.equal(actions.disconnectConnectionId, null);
+  assert.equal(actions.cancelConnectConnectionId, null);
   assert.equal(actions.clearLocalTerminals, true);
 });
 
@@ -102,6 +125,7 @@ runTest('getCloseTabPreActions keeps local terminal session when other local ter
     [],
   );
   assert.equal(actions.disconnectConnectionId, null);
+  assert.equal(actions.cancelConnectConnectionId, null);
   assert.equal(actions.clearLocalTerminals, false);
 });
 
@@ -112,6 +136,7 @@ runTest('getCloseTabPreActions does not clear local terminals for local snippets
     [],
   );
   assert.equal(actions.disconnectConnectionId, null);
+  assert.equal(actions.cancelConnectConnectionId, null);
   assert.equal(actions.clearLocalTerminals, false);
 });
 

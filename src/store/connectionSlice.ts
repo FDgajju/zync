@@ -50,6 +50,7 @@ import { useVaultStore } from '../vault/useVaultStore';
 import { isVaultInUseError, VAULT_IN_USE_USER_MESSAGE } from '../vault/vaultLoading';
 import { isVaultLockedError } from '../vault/vaultUnlockPrompt';
 import {
+    cancelConnectIpc,
     connectIpc,
     disconnectIpc,
     getRemoteCwdIpc,
@@ -86,6 +87,11 @@ import {
 } from '../features/connections/application/keyPassphraseRuntime';
 export type { Connection, Folder, Tab } from '../features/connections/domain/types.js';
 
+const activeConnectAttempts = new Map<string, string>();
+const cancelledConnectAttempts = new Set<string>();
+const createConnectAttemptId = (connectionId: string): string =>
+    `${connectionId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+
 export interface ConnectionSlice {
     connections: Connection[];
     tabs: Tab[];
@@ -111,6 +117,7 @@ export interface ConnectionSlice {
 
     // Connection Actions
     connect: (id: string, options?: { skipVaultPrompt?: boolean }) => Promise<void>;
+    cancelConnect: (id: string) => Promise<void>;
     disconnect: (id: string) => Promise<void>;
     /** WiFi drop / SSH EOF — stop active tunnels, keep terminal tabs and scrollback. */
     handleTransportLost: (id: string) => Promise<void>;
@@ -423,7 +430,30 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
 
     connect: async (id, options) => {
         return runSerializedConnectionOp(id, async () => {
+        const attemptId = createConnectAttemptId(id);
+        activeConnectAttempts.set(id, attemptId);
+        cancelledConnectAttempts.delete(attemptId);
         const skipVaultPrompt = options?.skipVaultPrompt ?? false;
+
+        const finishCancelledConnect = async (disconnectBackend = false): Promise<boolean> => {
+            if (!cancelledConnectAttempts.has(attemptId)) return false;
+            cancelledConnectAttempts.delete(attemptId);
+            if (activeConnectAttempts.get(id) === attemptId) {
+                activeConnectAttempts.delete(id);
+            }
+            markConnectionBackendOffline(id);
+            if (disconnectBackend) {
+                try {
+                    await disconnectIpc(id);
+                } catch (error) {
+                    console.error('Failed to cleanup cancelled connection:', error);
+                }
+            }
+            set(state => ({
+                connections: markConnectionStatus(state.connections, id, 'disconnected'),
+            }));
+            return true;
+        };
 
         // Optimistic update
         set(state => ({
@@ -455,6 +485,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 return;
             }
             const fullConfig = configResult.config;
+            fullConfig.connect_attempt_id = attemptId;
             const legacyLocalKeyPassphraseIds = new Set<string>();
             const collectLegacyKeyPassphrases = (
                 config: typeof fullConfig,
@@ -498,12 +529,14 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             }
 
             await prepareConnectKeyPassphrases(fullConfig);
+            if (await finishCancelledConnect()) return;
 
             const response = await connectWithHostKeyVerification(
                 fullConfig,
                 connectIpc,
                 get().showConfirmDialog,
             );
+            if (await finishCancelledConnect(true)) return;
             markConnectionBackendLive(id);
 
             // Fetch home path after connection
@@ -515,6 +548,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             } catch (e) {
                 console.error('[CONNECT] Failed to fetch home path:', e);
             }
+            if (await finishCancelledConnect(true)) return;
 
             set(state => {
                 const connected = markConnectionConnected(state.connections, id, homePath, response?.detected_os);
@@ -594,6 +628,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 console.error('Failed to load/start tunnels:', err);
             }
         } catch (error) {
+            if (await finishCancelledConnect()) return;
             if (error instanceof KeyPassphrasePromptCancelledError) {
                 set(state => ({
                     connections: markConnectionStatus(state.connections, id, 'disconnected'),
@@ -701,8 +736,32 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 if (nextConnections === state.connections) return state;
                 return { connections: nextConnections };
             });
+        } finally {
+            if (activeConnectAttempts.get(id) === attemptId) {
+                activeConnectAttempts.delete(id);
+            }
+            cancelledConnectAttempts.delete(attemptId);
         }
         });
+    },
+
+    cancelConnect: async (id) => {
+        if (id === 'local') return;
+
+        const attemptId = activeConnectAttempts.get(id);
+        if (attemptId) {
+            cancelledConnectAttempts.add(attemptId);
+        }
+        markConnectionBackendOffline(id);
+        set(state => ({
+            connections: markConnectionStatus(state.connections, id, 'disconnected'),
+        }));
+
+        try {
+            await cancelConnectIpc(id, attemptId);
+        } catch (error) {
+            console.error('Failed to cancel connection backend state:', error);
+        }
     },
 
     handleTransportLost: async (id) => {
@@ -899,6 +958,9 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
         const preActions = getCloseTabPreActions(tab, state.tabs, state.connections);
         if (preActions.disconnectConnectionId) {
             get().disconnect(preActions.disconnectConnectionId);
+        }
+        if (preActions.cancelConnectConnectionId) {
+            get().cancelConnect(preActions.cancelConnectConnectionId);
         }
         if (preActions.clearLocalTerminals) {
             get().clearTerminals('local');

@@ -9,7 +9,7 @@ use secrecy::{ExposeSecret, SecretString};
 use std::collections::{HashMap, HashSet};
 use std::io::ErrorKind;
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
@@ -52,6 +52,7 @@ static PLUGIN_WINDOW_TEMP_FILES: LazyLock<StdMutex<HashMap<String, std::path::Pa
     LazyLock::new(|| StdMutex::new(HashMap::new()));
 static SETTINGS_MUTATION_LOCK: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
+static NEXT_CONNECT_TASK_ID: AtomicU64 = AtomicU64::new(1);
 pub(crate) use crate::sync::domain_hosts::CONNECTIONS_MUTATION_LOCK;
 
 #[derive(Debug, Deserialize)]
@@ -596,6 +597,7 @@ pub struct AppState {
     pub ssh_manager: Arc<SshManager>,
     pub tunnel_manager: Arc<TunnelManager>,
     pub snippets_manager: Arc<crate::snippets::SnippetsManager>,
+    pub connect_tasks: Arc<Mutex<HashMap<String, ConnectAttempt>>>,
     pub transfers: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     // Agent v2: active run cancellation tokens
     pub agent_runs: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
@@ -622,6 +624,7 @@ impl AppState {
             ssh_manager: Arc::new(SshManager::with_app(app_handle.clone())),
             tunnel_manager: Arc::new(TunnelManager::new(failure_tx)),
             snippets_manager: Arc::new(crate::snippets::SnippetsManager::new(data_dir.clone())),
+            connect_tasks: Arc::new(Mutex::new(HashMap::new())),
             transfers: Arc::new(Mutex::new(HashMap::new())),
             agent_runs: Arc::new(Mutex::new(HashMap::new())),
             agent_checkpoints: Arc::new(Mutex::new(HashMap::new())),
@@ -645,6 +648,17 @@ pub struct ConnectionHandle {
     pub reconnect_generation: u64,
     /// Serializes reconnect attempts for this connection to prevent races.
     pub reconnect_lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+pub enum ConnectAttempt {
+    Preparing {
+        attempt_id: String,
+        cancelled: bool,
+    },
+    Connecting {
+        attempt_id: String,
+        abort_handle: tokio::task::AbortHandle,
+    },
 }
 
 /// Internal helper: establishes a full SSH connection (session + SFTP + OS detection)
@@ -951,10 +965,37 @@ pub async fn ssh_connect(
     vault: State<'_, tokio::sync::Mutex<crate::vault::store::VaultService>>,
 ) -> Result<ConnectionResponse, String> {
     let original_config = config.clone();
+    let connection_id = original_config.id.clone();
+    let attempt_id = original_config
+        .connect_attempt_id
+        .clone()
+        .unwrap_or_else(|| {
+            NEXT_CONNECT_TASK_ID
+                .fetch_add(1, Ordering::Relaxed)
+                .to_string()
+        });
+    {
+        let mut connect_tasks = state.connect_tasks.lock().await;
+        if let Some(previous) = connect_tasks.insert(
+            connection_id.clone(),
+            ConnectAttempt::Preparing {
+                attempt_id: attempt_id.clone(),
+                cancelled: false,
+            },
+        ) {
+            if let ConnectAttempt::Connecting { abort_handle, .. } = previous {
+                abort_handle.abort();
+            }
+        }
+    }
+
     let uses_vault_auth = config_uses_vault_auth(&original_config);
-    let relinked = resolve_vault_refs(&mut config, &vault).await?;
-    inject_remembered_key_passphrases_blocking(&mut config).await?;
-    if !relinked.is_empty() {
+    let prepare_result = async {
+        let relinked = resolve_vault_refs(&mut config, &vault).await?;
+        inject_remembered_key_passphrases_blocking(&mut config).await?;
+        if relinked.is_empty() {
+            return Ok(());
+        }
         let app_handle = app.clone();
         let persist_result = tokio::task::spawn_blocking(move || {
             persist_relinked_vault_refs(&app_handle, &relinked)
@@ -971,9 +1012,109 @@ pub async fn ssh_connect(
                 ))
             }
         }
+        Ok::<(), String>(())
     }
-    match reconnect_connection(&config, &state.ssh_manager, &state.tunnel_manager).await {
+    .await;
+
+    if let Err(error) = prepare_result {
+        let mut connect_tasks = state.connect_tasks.lock().await;
+        match connect_tasks.get(&connection_id) {
+            Some(ConnectAttempt::Preparing {
+                attempt_id: active_attempt_id,
+                cancelled,
+            }) if active_attempt_id == &attempt_id => {
+                let cancelled = *cancelled;
+                connect_tasks.remove(&connection_id);
+                if cancelled {
+                    return Err("Connection cancelled".to_string());
+                }
+                return Err(error);
+            }
+            _ => {
+                return Err("Connection superseded".to_string());
+            }
+        }
+    }
+
+    {
+        let mut connect_tasks = state.connect_tasks.lock().await;
+        match connect_tasks.get(&connection_id) {
+            Some(ConnectAttempt::Preparing {
+                attempt_id: active_attempt_id,
+                cancelled: true,
+            }) if active_attempt_id == &attempt_id => {
+                connect_tasks.remove(&connection_id);
+                return Err("Connection cancelled".to_string());
+            }
+            Some(ConnectAttempt::Preparing {
+                attempt_id: active_attempt_id,
+                cancelled: false,
+            }) if active_attempt_id == &attempt_id => {}
+            _ => return Err("Connection superseded".to_string()),
+        }
+    }
+
+    let task_config = config.clone();
+    let ssh_manager = state.ssh_manager.clone();
+    let tunnel_manager = state.tunnel_manager.clone();
+    let connect_task = tokio::spawn(async move {
+        reconnect_connection(&task_config, &ssh_manager, &tunnel_manager).await
+    });
+    {
+        let mut connect_tasks = state.connect_tasks.lock().await;
+        match connect_tasks.get(&connection_id) {
+            Some(ConnectAttempt::Preparing {
+                attempt_id: active_attempt_id,
+                cancelled: true,
+            }) if active_attempt_id == &attempt_id => {
+                connect_tasks.remove(&connection_id);
+                connect_task.abort();
+                return Err("Connection cancelled".to_string());
+            }
+            Some(ConnectAttempt::Preparing {
+                attempt_id: active_attempt_id,
+                cancelled: false,
+            }) if active_attempt_id == &attempt_id => {
+                connect_tasks.insert(
+                    connection_id.clone(),
+                    ConnectAttempt::Connecting {
+                        attempt_id: attempt_id.clone(),
+                        abort_handle: connect_task.abort_handle(),
+                    },
+                );
+            }
+            _ => {
+                connect_task.abort();
+                return Err("Connection superseded".to_string());
+            }
+        }
+    }
+
+    let connect_result = match connect_task.await {
+        Ok(result) => result,
+        Err(join_error) if join_error.is_cancelled() => Err("Connection cancelled".to_string()),
+        Err(join_error) => Err(format!("Connection task failed: {join_error}")),
+    };
+    let still_owns_attempt = {
+        let mut connect_tasks = state.connect_tasks.lock().await;
+        let still_owns_attempt = matches!(
+            connect_tasks.get(&connection_id),
+            Some(ConnectAttempt::Connecting {
+                attempt_id: active_attempt_id,
+                ..
+            }) if active_attempt_id == &attempt_id
+        );
+        if still_owns_attempt {
+            connect_tasks.remove(&connection_id);
+        }
+        still_owns_attempt
+    };
+
+    match connect_result {
         Ok(mut handle) => {
+            if !still_owns_attempt {
+                return Err("Connection cancelled".to_string());
+            }
             let detected_os = handle.detected_os.clone();
             // Do not keep decrypted vault secrets in the long-lived handle config.
             // The handle keeps the original VaultRef config so future reconnects
@@ -999,6 +1140,50 @@ pub async fn ssh_connect(
             Err(e)
         }
     }
+}
+
+#[tauri::command]
+pub async fn ssh_cancel_connect(
+    id: String,
+    attempt_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let abort_handle = {
+        let mut connect_tasks = state.connect_tasks.lock().await;
+        match connect_tasks.get_mut(&id) {
+            Some(ConnectAttempt::Preparing {
+                attempt_id: active_attempt_id,
+                cancelled,
+            }) if attempt_id
+                .as_deref()
+                .map(|attempt_id| attempt_id == active_attempt_id)
+                .unwrap_or(true) =>
+            {
+                *cancelled = true;
+                None
+            }
+            Some(ConnectAttempt::Connecting {
+                attempt_id: active_attempt_id,
+                ..
+            }) if attempt_id
+                .as_deref()
+                .map(|attempt_id| attempt_id == active_attempt_id)
+                .unwrap_or(true) =>
+            {
+                match connect_tasks.remove(&id) {
+                    Some(ConnectAttempt::Connecting { abort_handle, .. }) => Some(abort_handle),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    };
+
+    if let Some(abort_handle) = abort_handle {
+        abort_handle.abort();
+    }
+
+    Ok(())
 }
 
 async fn resolve_auth_method(

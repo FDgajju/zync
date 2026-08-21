@@ -136,6 +136,7 @@ pub fn run() {
             commands::ssh_delete_ephemeral_key,
             commands::ssh_migrate_all_keys,
             commands::ssh_disconnect,
+            commands::ssh_cancel_connect,
             commands::ssh_transport_lost,
             commands::ssh_disconnect_vault_backed,
             commands::terminal_write,
