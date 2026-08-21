@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, useState, useEffect, useId, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { motion, useDragControls, useMotionValue } from 'framer-motion';
 import { ZPortal } from '../ui/ZPortal';
 import { useAppStore } from '../../store/useAppStore'; // Updated Import
 import { usePlugins } from '../../context/PluginContext';
 
-import { X, Type, Monitor, FileText, Keyboard, Info, RefreshCw, FolderOpen, Settings as SettingsIcon, Package, Code, Sparkles } from 'lucide-react';
+import { X, Type, Monitor, FileText, Keyboard, Info, RefreshCw, FolderOpen, Settings as SettingsIcon, Package, Code, Sparkles, GripHorizontal } from 'lucide-react';
 import { ToastContainer } from '../ui/Toast';
 
 import { buildEditorProviderOptions, CODEMIRROR_EDITOR_ID, formatEditorCapabilities } from '../editor/providers';
@@ -38,8 +39,23 @@ interface SettingsModalProps {
 
 type Tab = 'general' | 'terminal' | 'appearance' | 'fileManager' | 'shortcuts' | 'plugins' | 'ai' | 'about';
 const BUILTIN_ICON_THEME_COUNT = 2; // VSCode Icons + Lucide
+const FOCUSABLE_SELECTOR = [
+    'a[href]',
+    'button:not([disabled])',
+    'textarea:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+].join(',');
+const DRAG_BLOCK_SELECTOR = 'button, a, input, textarea, select, [role="button"], [data-no-modal-drag="true"]';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+    const titleId = useId();
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const dragConstraintsRef = useRef<HTMLDivElement>(null);
+    const dragControls = useDragControls();
+    const x = useMotionValue(0);
+    const y = useMotionValue(0);
     const requestVaultUnlock = useVaultStore(state => state.requestUnlock);
     const settings = useAppStore(state => state.settings);
     const settingsFocusTab = useAppStore(state => state.settingsFocusTab);
@@ -130,6 +146,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setActiveTab(settingsFocusTab);
         clearSettingsFocusTab();
     }, [isOpen, settingsFocusTab, clearSettingsFocusTab]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        x.set(0);
+        y.set(0);
+
+        const previouslyFocused = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        const frame = window.requestAnimationFrame(() => {
+            const dialog = dialogRef.current;
+            const firstFocusable = dialog?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+            (firstFocusable ?? dialog)?.focus();
+        });
+
+        return () => {
+            window.cancelAnimationFrame(frame);
+            previouslyFocused?.focus();
+        };
+    }, [isOpen, x, y]);
 
     // Global Update State
     const updateStatus = useAppStore(state => state.updateStatus);
@@ -407,12 +443,64 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         }
     };
     const getTabIndex = (tab: Tab) => (activeTab === tab ? 0 : -1);
+    const handleDragHandlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+        if (event.button !== 0) return;
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest(DRAG_BLOCK_SELECTOR)) return;
+        dragControls.start(event.nativeEvent);
+    };
+    const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== 'Tab') return;
+
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+
+        const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+            .filter((element) => element.offsetParent !== null);
+
+        if (focusable.length === 0) {
+            event.preventDefault();
+            dialog.focus();
+            return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+
+        if (event.shiftKey && active === first) {
+            event.preventDefault();
+            last.focus();
+            return;
+        }
+
+        if (!event.shiftKey && active === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    };
 
     if (!isOpen) return null;
 
     return (
-        <ZPortal className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="relative w-[860px] h-[620px] max-w-[95vw] max-h-[90vh] bg-[var(--color-app-bg)] rounded-xl border border-[var(--color-app-border)] shadow-2xl flex overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-white/5">
+        <ZPortal className="absolute inset-0 z-[9999] bg-black/40 animate-in fade-in duration-200">
+            <div ref={dragConstraintsRef} className="absolute inset-0 flex items-center justify-center p-4">
+                <motion.div
+                    ref={dialogRef}
+                    drag
+                    dragControls={dragControls}
+                    dragListener={false}
+                    dragConstraints={dragConstraintsRef}
+                    dragElastic={0}
+                    dragMomentum={false}
+                    style={{ x, y }}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby={titleId}
+                    tabIndex={-1}
+                    onKeyDown={handleDialogKeyDown}
+                    className="relative w-[860px] h-[620px] max-w-[95vw] max-h-[90vh] bg-[var(--color-app-bg)] rounded-xl border border-[var(--color-app-border)] shadow-2xl flex overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-white/5"
+                >
 
                 {/* Sidebar */}
                 <div className="w-[180px] flex flex-col border-r border-[var(--color-app-border)]/40 bg-[var(--color-app-surface)]/20 p-2 space-y-0.5" role="tablist" aria-label="Settings sections">
@@ -461,14 +549,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {/* Content Area */}
                 <div className="flex-1 flex flex-col min-w-0 bg-[var(--color-app-bg)]">
                     {/* Header */}
-                    <div className="h-12 flex items-center justify-between px-4 border-b border-[var(--color-app-border)]/30 shrink-0">
-                        <h2 className="font-medium text-[var(--color-app-text)] text-sm tracking-tight">
+                    <div
+                        className="h-12 flex items-center justify-between px-4 border-b border-[var(--color-app-border)]/30 shrink-0 cursor-move active:cursor-grabbing select-none"
+                        onPointerDown={handleDragHandlePointerDown}
+                    >
+                        <h2 id={titleId} className="font-medium text-[var(--color-app-text)] text-sm tracking-tight">
                             {activeTab === 'fileManager'
                                 ? 'File Manager'
                                 : activeTab === 'ai'
                                     ? 'AI Assistant'
                                 : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
                         </h2>
+                        <GripHorizontal
+                            aria-hidden="true"
+                            className="ml-auto mr-2 h-4 w-4 shrink-0 text-app-muted/45"
+                        />
                         <button onClick={onClose} className="p-1.5 rounded-md text-[var(--color-app-muted)] hover:text-[var(--color-app-text)] hover:bg-[var(--color-app-surface)] transition-colors">
                             <X size={16} />
                         </button>
@@ -601,7 +696,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
                 {/* Restart Confirmation Overlay */}
                 {showRestartConfirm && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 animate-in fade-in duration-200">
                         <div className="bg-[var(--color-app-bg)] rounded-xl border border-[var(--color-app-border)] shadow-2xl p-6 w-[320px] animate-in zoom-in-95 text-center">
                             <div className="w-12 h-12 rounded-full bg-[var(--color-app-accent)]/10 text-[var(--color-app-accent)] flex items-center justify-center mx-auto mb-4">
                                 <RefreshCw size={24} />
@@ -627,7 +722,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         </div>
                     </div>
                 )}
-            </div >
+                </motion.div>
+            </div>
             <ToastContainer />
         </ZPortal>
     );

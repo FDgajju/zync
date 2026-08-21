@@ -21,7 +21,7 @@ export function GlobalConfirmDialog() {
     return (
         <Dialog.Root open={!!dialog} onOpenChange={handleOpenChange}>
             <Dialog.Portal container={document.getElementById('modal-portal-root') ?? undefined}>
-                <Dialog.Overlay className="absolute inset-0 z-[20000] bg-black/60 backdrop-blur-sm animate-in fade-in pointer-events-auto" />
+                <Dialog.Overlay className="absolute inset-0 z-[20000] bg-black/60 animate-in fade-in pointer-events-auto" />
                 <Dialog.Content
                     className={cn(
                         "absolute z-[20000] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",

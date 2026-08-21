@@ -137,6 +137,7 @@ const ipcRenderer = {
     // Map Electron IPC channels to Tauri commands
     const channelMap: Record<string, string> = {
       'ssh:connect': 'ssh_connect',
+      'ssh:cancelConnect': 'ssh_cancel_connect',
       'ssh:disconnect': 'ssh_disconnect',
       'ssh:transportLost': 'ssh_transport_lost',
       'ssh:agentSignatureRespond': 'ssh_agent_signature_respond',
@@ -319,6 +320,12 @@ const ipcRenderer = {
         payload = { config: args[0] };
       } else if (tauriCommand === 'ssh_disconnect' || tauriCommand === 'ssh_transport_lost') {
         payload = { id: args[0] };
+      } else if (tauriCommand === 'ssh_cancel_connect') {
+        if (args.length === 1 && typeof args[0] === 'object' && 'connectionId' in args[0]) {
+          payload = { id: args[0].connectionId, attemptId: args[0].attemptId ?? null };
+        } else {
+          payload = { id: args[0], attemptId: args[1] ?? null };
+        }
       } else if (tauriCommand === 'ssh_exec') {
         // Handle both object style {connectionId, command} and positional args
         if (args.length === 1 && typeof args[0] === 'object' && 'connectionId' in args[0]) {

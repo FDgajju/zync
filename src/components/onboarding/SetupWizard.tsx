@@ -142,7 +142,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-xl pointer-events-auto"
+                className="absolute inset-0 z-[99999] flex items-center justify-center bg-black/80 pointer-events-auto"
             >
                 <motion.div
                     layout

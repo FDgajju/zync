@@ -30,6 +30,7 @@ export interface ConnectionConfigPayload {
     };
     jump_host: ConnectionConfigPayload | null;
     host_key_approval?: HostKeyApprovalPayload;
+    connect_attempt_id?: string;
 }
 
 export interface HostKeyApprovalPayload {
@@ -119,6 +120,9 @@ export const connectIpc = async (config: ConnectionConfigPayload): Promise<Conne
 
 export const disconnectIpc = async (connectionId: string): Promise<void> =>
     window.ipcRenderer.invoke('ssh:disconnect', connectionId);
+
+export const cancelConnectIpc = async (connectionId: string, attemptId?: string): Promise<void> =>
+    window.ipcRenderer.invoke('ssh:cancelConnect', { connectionId, attemptId });
 
 export const transportLostIpc = async (connectionId: string): Promise<void> =>
     window.ipcRenderer.invoke('ssh:transportLost', connectionId);

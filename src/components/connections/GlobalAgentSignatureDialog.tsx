@@ -47,7 +47,7 @@ export function GlobalAgentSignatureDialog() {
             }}
         >
             <Dialog.Portal container={document.getElementById('modal-portal-root') ?? undefined}>
-                <Dialog.Overlay className="absolute inset-0 z-[21000] bg-black/65 backdrop-blur-sm animate-in fade-in pointer-events-auto" />
+                <Dialog.Overlay className="absolute inset-0 z-[21000] bg-black/65 animate-in fade-in pointer-events-auto" />
                 <Dialog.Content
                     className="absolute z-[21000] left-1/2 top-1/2 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl border border-app-border bg-app-bg shadow-2xl pointer-events-auto animate-in fade-in zoom-in-95 duration-200"
                 >

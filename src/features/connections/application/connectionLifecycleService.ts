@@ -85,6 +85,7 @@ export interface CloseTabStateResult {
 
 export interface CloseTabPreActions {
     disconnectConnectionId: string | null;
+    cancelConnectConnectionId: string | null;
     clearLocalTerminals: boolean;
 }
 
@@ -94,7 +95,7 @@ export const getCloseTabPreActions = (
     connections: Connection[],
 ): CloseTabPreActions => {
     if (!tab?.connectionId) {
-        return { disconnectConnectionId: null, clearLocalTerminals: false };
+        return { disconnectConnectionId: null, cancelConnectConnectionId: null, clearLocalTerminals: false };
     }
 
     if (tab.connectionId === 'local' && tab.view === 'terminal') {
@@ -103,6 +104,7 @@ export const getCloseTabPreActions = (
         );
         return {
             disconnectConnectionId: null,
+            cancelConnectConnectionId: null,
             clearLocalTerminals: !hasOtherLocalTerminalTabs,
         };
     }
@@ -111,15 +113,26 @@ export const getCloseTabPreActions = (
         (item) => item.id !== tab.id && item.connectionId === tab.connectionId,
     );
     if (hasOtherTabsForConnection) {
-        return { disconnectConnectionId: null, clearLocalTerminals: false };
+        return { disconnectConnectionId: null, cancelConnectConnectionId: null, clearLocalTerminals: false };
     }
 
     const connection = connections.find((item) => item.id === tab.connectionId);
     if (connection?.status === 'connected') {
-        return { disconnectConnectionId: connection.id, clearLocalTerminals: false };
+        return {
+            disconnectConnectionId: connection.id,
+            cancelConnectConnectionId: null,
+            clearLocalTerminals: false,
+        };
+    }
+    if (connection?.status === 'connecting') {
+        return {
+            disconnectConnectionId: null,
+            cancelConnectConnectionId: connection.id,
+            clearLocalTerminals: false,
+        };
     }
 
-    return { disconnectConnectionId: null, clearLocalTerminals: false };
+    return { disconnectConnectionId: null, cancelConnectConnectionId: null, clearLocalTerminals: false };
 };
 
 export const reduceTabCloseState = (

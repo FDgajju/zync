@@ -226,7 +226,7 @@ export function CommandPalette() {
         <div className="absolute inset-0 z-[10000] flex items-start justify-center pt-[20vh] px-4 pointer-events-auto">
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                className="absolute inset-0 bg-black/60 transition-opacity"
                 onClick={handleClose}
             />
 

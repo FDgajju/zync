@@ -43,6 +43,7 @@ export interface ConnectConfig {
         fingerprint: string;
         replace: boolean;
     };
+    connect_attempt_id?: string;
 }
 
 type ConnectionWithLegacyAuthFields = Connection & {

@@ -13,6 +13,8 @@ pub struct ConnectionConfig {
     pub jump_host: Option<Box<ConnectionConfig>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_key_approval: Option<HostKeyApproval>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connect_attempt_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

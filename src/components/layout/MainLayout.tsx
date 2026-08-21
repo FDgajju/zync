@@ -235,6 +235,7 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
 }) {
     const setTabView = useAppStore(state => state.setTabView);
     const connect = useAppStore(state => state.connect);
+    const cancelConnect = useAppStore(state => state.cancelConnect);
     const terminalTransparencyEnabled = useAppStore(
         state => state.settings.enableVibrancy && (state.settings.windowOpacity ?? 1) < 1
     );
@@ -516,6 +517,14 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
                 <div className="flex-1 flex flex-col items-center justify-center space-y-4 bg-app-bg">
                     <div className="w-8 h-8 border-4 border-[var(--color-app-accent)]/30 border-t-[var(--color-app-accent)] rounded-full animate-spin"></div>
                     <div className="text-[var(--color-app-muted)] animate-pulse">Connecting to server...</div>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => connection && void cancelConnect(connection.id)}
+                        className="border border-app-border/60 bg-app-surface/30 px-3 text-xs"
+                    >
+                        Cancel
+                    </Button>
                 </div>
             ) : isError ? (
                 <div className="flex-1 flex flex-col items-center justify-center space-y-4 bg-app-bg">
@@ -1008,7 +1017,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
         <div
             className={cn(
                 "relative flex flex-col h-screen text-app-text font-sans selection:bg-app-accent/30 overflow-hidden transition-all duration-300",
-                !isMaximized && "rounded-xl border border-app-border/20",
+                !isMaximized && "rounded-xl border border-app-border/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_0_0_1px_rgba(0,0,0,0.35)]",
                 terminalTransparencyEnabled ? "bg-transparent" : "bg-app-bg"
             )}
         >
