@@ -51,7 +51,12 @@ const DRAG_BLOCK_SELECTOR = 'button, a, input, textarea, select, [role="button"]
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const titleId = useId();
+    const restartConfirmTitleId = useId();
     const dialogRef = useRef<HTMLDivElement>(null);
+    const settingsContentRef = useRef<HTMLDivElement>(null);
+    const restartConfirmRef = useRef<HTMLDivElement>(null);
+    const restartCancelRef = useRef<HTMLButtonElement>(null);
+    const restartConfirmOpenerRef = useRef<HTMLElement | null>(null);
     const dragConstraintsRef = useRef<HTMLDivElement>(null);
     const dragControls = useDragControls();
     const x = useMotionValue(0);
@@ -345,15 +350,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 return;
             }
 
-            // Escape to close
+            // Escape: dismiss restart confirm first; otherwise close Settings.
             if (e.key === 'Escape') {
+                if (showRestartConfirm) {
+                    setShowRestartConfirm(false);
+                    return;
+                }
                 onClose();
                 return;
             }
 
-            // Arrow keys for tab navigation (skip when inner tablists already handled the key)
+            // Arrow keys for tab navigation (skip when restart confirm is open,
+            // or when inner tablists already handled the key)
             if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                if (e.defaultPrevented) {
+                if (showRestartConfirm || e.defaultPrevented) {
                     return;
                 }
                 e.preventDefault();
@@ -373,7 +383,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, activeTab, onClose]);
+    }, [isOpen, activeTab, onClose, showRestartConfirm, setShowRestartConfirm]);
 
     // Smooth Tab Transition Handler
     const handleTabChange = (newTab: Tab) => {
@@ -449,18 +459,56 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         if (target?.closest(DRAG_BLOCK_SELECTOR)) return;
         dragControls.start(event.nativeEvent);
     };
+    useEffect(() => {
+        if (!showRestartConfirm) return;
+
+        const opener = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        restartConfirmOpenerRef.current = opener;
+
+        const frame = window.requestAnimationFrame(() => {
+            restartCancelRef.current?.focus();
+        });
+
+        return () => {
+            window.cancelAnimationFrame(frame);
+            const restoreTarget = restartConfirmOpenerRef.current;
+            restartConfirmOpenerRef.current = null;
+            if (restoreTarget && document.contains(restoreTarget)) {
+                restoreTarget.focus();
+            }
+        };
+    }, [showRestartConfirm]);
+
     const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (showRestartConfirm) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                setShowRestartConfirm(false);
+                return;
+            }
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+        }
+
         if (event.key !== 'Tab') return;
 
-        const dialog = dialogRef.current;
-        if (!dialog) return;
+        const root = showRestartConfirm
+            ? restartConfirmRef.current
+            : dialogRef.current;
+        if (!root) return;
 
-        const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
             .filter((element) => element.offsetParent !== null);
 
         if (focusable.length === 0) {
             event.preventDefault();
-            dialog.focus();
+            root.focus();
             return;
         }
 
@@ -500,6 +548,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     tabIndex={-1}
                     onKeyDown={handleDialogKeyDown}
                     className="relative w-[860px] h-[620px] max-w-[95vw] max-h-[90vh] bg-[var(--color-app-bg)] rounded-xl border border-[var(--color-app-border)] shadow-2xl flex overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-white/5"
+                >
+                <div
+                    ref={settingsContentRef}
+                    className="flex flex-1 min-w-0 min-h-0 overflow-hidden"
+                    inert={showRestartConfirm || undefined}
                 >
 
                 {/* Sidebar */}
@@ -694,25 +747,36 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         )}
                     </div>
                 </div>
+                </div>
                 {/* Restart Confirmation Overlay */}
                 {showRestartConfirm && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 animate-in fade-in duration-200">
+                    <div
+                        ref={restartConfirmRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby={restartConfirmTitleId}
+                        tabIndex={-1}
+                        className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 animate-in fade-in duration-200"
+                    >
                         <div className="bg-[var(--color-app-bg)] rounded-xl border border-[var(--color-app-border)] shadow-2xl p-6 w-[320px] animate-in zoom-in-95 text-center">
                             <div className="w-12 h-12 rounded-full bg-[var(--color-app-accent)]/10 text-[var(--color-app-accent)] flex items-center justify-center mx-auto mb-4">
                                 <RefreshCw size={24} />
                             </div>
-                            <h3 className="text-lg font-bold text-[var(--color-app-text)] mb-2">Ready to Restart?</h3>
+                            <h3 id={restartConfirmTitleId} className="text-lg font-bold text-[var(--color-app-text)] mb-2">Ready to Restart?</h3>
                             <p className="text-xs text-[var(--color-app-muted)] mb-6 leading-relaxed">
                                 Zync will restart to install the update. Any active SSH sessions will be disconnected.
                             </p>
                             <div className="flex gap-3">
                                 <button
+                                    ref={restartCancelRef}
+                                    type="button"
                                     onClick={() => setShowRestartConfirm(false)}
                                     className="flex-1 py-2 rounded-lg bg-[var(--color-app-surface)] text-[var(--color-app-text)] text-sm font-medium hover:bg-[var(--color-app-border)] transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={handleConfirmRestart}
                                     className="flex-1 py-2 rounded-lg bg-[var(--color-app-accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity shadow-lg shadow-[var(--color-app-accent)]/20"
                                 >

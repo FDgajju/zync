@@ -60,7 +60,11 @@ import {
 import { vaultIpc } from '../vault/ipc';
 import { seedRemoteGhostHistory } from '../lib/ghostSuggestions/client';
 import { ghostDebug } from '../lib/ghostSuggestions/ghostDebug';
-import { runSerializedConnectionOp } from '../features/connections/infrastructure/connectionOpQueue';
+import {
+    hasSerializedConnectOp,
+    runSerializedConnectOp,
+    runSerializedConnectionOp,
+} from '../features/connections/infrastructure/connectionOpQueue';
 import {
     markConnectionBackendLive,
     markConnectionBackendOffline,
@@ -89,8 +93,10 @@ export type { Connection, Folder, Tab } from '../features/connections/domain/typ
 
 const activeConnectAttempts = new Map<string, string>();
 const cancelledConnectAttempts = new Set<string>();
+/** Cancel arrived while a connect op was queued but before attemptId was registered. */
+const pendingConnectCancellations = new Set<string>();
 const createConnectAttemptId = (connectionId: string): string =>
-    `${connectionId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+    `${connectionId}:${crypto.randomUUID()}`;
 
 export interface ConnectionSlice {
     connections: Connection[];
@@ -429,15 +435,20 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
     },
 
     connect: async (id, options) => {
-        return runSerializedConnectionOp(id, async () => {
+        return runSerializedConnectOp(id, async () => {
         const attemptId = createConnectAttemptId(id);
         activeConnectAttempts.set(id, attemptId);
-        cancelledConnectAttempts.delete(attemptId);
+        if (pendingConnectCancellations.delete(id)) {
+            cancelledConnectAttempts.add(attemptId);
+        } else {
+            cancelledConnectAttempts.delete(attemptId);
+        }
         const skipVaultPrompt = options?.skipVaultPrompt ?? false;
 
         const finishCancelledConnect = async (disconnectBackend = false): Promise<boolean> => {
             if (!cancelledConnectAttempts.has(attemptId)) return false;
             cancelledConnectAttempts.delete(attemptId);
+            pendingConnectCancellations.delete(id);
             if (activeConnectAttempts.get(id) === attemptId) {
                 activeConnectAttempts.delete(id);
             }
@@ -548,9 +559,13 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             } catch (e) {
                 console.error('[CONNECT] Failed to fetch home path:', e);
             }
+            // Final checkpoints around the success update so a late cancel is not lost to finally.
             if (await finishCancelledConnect(true)) return;
 
             set(state => {
+                if (cancelledConnectAttempts.has(attemptId)) {
+                    return state;
+                }
                 const connected = markConnectionConnected(state.connections, id, homePath, response?.detected_os);
                 const newConns = legacyLocalKeyPassphraseIds.size > 0
                     ? connected.map(connection => legacyLocalKeyPassphraseIds.has(connection.id)
@@ -560,6 +575,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 saveToMain(newConns, state.folders);
                 return { connections: newConns };
             });
+            if (await finishCancelledConnect(true)) return;
             if (legacyLocalKeyPassphraseIds.size > 0) {
                 get().showToast(
                     'info',
@@ -740,7 +756,19 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             if (activeConnectAttempts.get(id) === attemptId) {
                 activeConnectAttempts.delete(id);
             }
-            cancelledConnectAttempts.delete(attemptId);
+            if (cancelledConnectAttempts.has(attemptId)) {
+                cancelledConnectAttempts.delete(attemptId);
+                pendingConnectCancellations.delete(id);
+                markConnectionBackendOffline(id);
+                try {
+                    await disconnectIpc(id);
+                } catch (error) {
+                    console.error('Failed to cleanup cancelled connection:', error);
+                }
+                set(state => ({
+                    connections: markConnectionStatus(state.connections, id, 'disconnected'),
+                }));
+            }
         }
         });
     },
@@ -751,6 +779,10 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
         const attemptId = activeConnectAttempts.get(id);
         if (attemptId) {
             cancelledConnectAttempts.add(attemptId);
+        } else if (hasSerializedConnectOp(id)) {
+            // Connect is queued / about to register attemptId — keep cancel until it starts.
+            // Only track connect ops so a queued disconnect cannot leave a stale pending cancel.
+            pendingConnectCancellations.add(id);
         }
         markConnectionBackendOffline(id);
         set(state => ({

@@ -321,14 +321,24 @@ const ipcRenderer = {
       } else if (tauriCommand === 'ssh_disconnect' || tauriCommand === 'ssh_transport_lost') {
         payload = { id: args[0] };
       } else if (tauriCommand === 'ssh_cancel_connect') {
-        if (args.length === 1 && typeof args[0] === 'object' && 'connectionId' in args[0]) {
+        if (
+          args.length === 1
+          && args[0] !== null
+          && typeof args[0] === 'object'
+          && 'connectionId' in args[0]
+        ) {
           payload = { id: args[0].connectionId, attemptId: args[0].attemptId ?? null };
         } else {
           payload = { id: args[0], attemptId: args[1] ?? null };
         }
       } else if (tauriCommand === 'ssh_exec') {
         // Handle both object style {connectionId, command} and positional args
-        if (args.length === 1 && typeof args[0] === 'object' && 'connectionId' in args[0]) {
+        if (
+          args.length === 1
+          && args[0] !== null
+          && typeof args[0] === 'object'
+          && 'connectionId' in args[0]
+        ) {
           payload = { connectionId: args[0].connectionId, command: args[0].command };
         } else {
           payload = { connectionId: args[0], command: args[1] };

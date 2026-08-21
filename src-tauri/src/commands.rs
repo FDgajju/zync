@@ -653,7 +653,8 @@ pub struct ConnectionHandle {
 pub enum ConnectAttempt {
     Preparing {
         attempt_id: String,
-        cancelled: bool,
+        /// Set to true by `ssh_cancel_connect` so preparation can abort promptly.
+        cancel: tokio::sync::watch::Sender<bool>,
     },
     Connecting {
         attempt_id: String,
@@ -974,58 +975,65 @@ pub async fn ssh_connect(
                 .fetch_add(1, Ordering::Relaxed)
                 .to_string()
         });
-    {
+    let mut prepare_cancel_rx = {
+        let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
         let mut connect_tasks = state.connect_tasks.lock().await;
         if let Some(previous) = connect_tasks.insert(
             connection_id.clone(),
             ConnectAttempt::Preparing {
                 attempt_id: attempt_id.clone(),
-                cancelled: false,
+                cancel: cancel_tx,
             },
         ) {
             if let ConnectAttempt::Connecting { abort_handle, .. } = previous {
                 abort_handle.abort();
             }
         }
-    }
+        cancel_rx
+    };
 
     let uses_vault_auth = config_uses_vault_auth(&original_config);
-    let prepare_result = async {
-        let relinked = resolve_vault_refs(&mut config, &vault).await?;
-        inject_remembered_key_passphrases_blocking(&mut config).await?;
-        if relinked.is_empty() {
-            return Ok(());
+    let prepare_result = tokio::select! {
+        biased;
+        _ = prepare_cancel_rx.wait_for(|cancelled| *cancelled) => {
+            Err("Connection cancelled".to_string())
         }
-        let app_handle = app.clone();
-        let persist_result = tokio::task::spawn_blocking(move || {
-            persist_relinked_vault_refs(&app_handle, &relinked)
-        })
-        .await;
-        match persist_result {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
-                return Err(format!("Failed to persist relinked vault refs: {error}"))
+        result = async {
+            let relinked = resolve_vault_refs(&mut config, &vault).await?;
+            inject_remembered_key_passphrases_blocking(&mut config).await?;
+            if relinked.is_empty() {
+                return Ok(());
             }
-            Err(join_error) => {
-                return Err(format!(
-                    "Failed to persist relinked vault refs: task join error: {join_error}"
-                ))
+            let app_handle = app.clone();
+            let persist_result = tokio::task::spawn_blocking(move || {
+                persist_relinked_vault_refs(&app_handle, &relinked)
+            })
+            .await;
+            match persist_result {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    return Err(format!("Failed to persist relinked vault refs: {error}"))
+                }
+                Err(join_error) => {
+                    return Err(format!(
+                        "Failed to persist relinked vault refs: task join error: {join_error}"
+                    ))
+                }
             }
-        }
-        Ok::<(), String>(())
-    }
-    .await;
+            Ok::<(), String>(())
+        } => result,
+    };
 
     if let Err(error) = prepare_result {
         let mut connect_tasks = state.connect_tasks.lock().await;
         match connect_tasks.get(&connection_id) {
             Some(ConnectAttempt::Preparing {
                 attempt_id: active_attempt_id,
-                cancelled,
+                cancel,
             }) if active_attempt_id == &attempt_id => {
-                let cancelled = *cancelled;
+                let cancelled = *cancel.borrow();
                 connect_tasks.remove(&connection_id);
-                if cancelled {
+                if cancelled || error == "Connection cancelled" {
                     return Err("Connection cancelled".to_string());
                 }
                 return Err(error);
@@ -1041,15 +1049,15 @@ pub async fn ssh_connect(
         match connect_tasks.get(&connection_id) {
             Some(ConnectAttempt::Preparing {
                 attempt_id: active_attempt_id,
-                cancelled: true,
-            }) if active_attempt_id == &attempt_id => {
+                cancel,
+            }) if active_attempt_id == &attempt_id && *cancel.borrow() => {
                 connect_tasks.remove(&connection_id);
                 return Err("Connection cancelled".to_string());
             }
             Some(ConnectAttempt::Preparing {
                 attempt_id: active_attempt_id,
-                cancelled: false,
-            }) if active_attempt_id == &attempt_id => {}
+                cancel,
+            }) if active_attempt_id == &attempt_id && !*cancel.borrow() => {}
             _ => return Err("Connection superseded".to_string()),
         }
     }
@@ -1060,21 +1068,20 @@ pub async fn ssh_connect(
     let connect_task = tokio::spawn(async move {
         reconnect_connection(&task_config, &ssh_manager, &tunnel_manager).await
     });
-    {
+    let spawn_outcome = {
         let mut connect_tasks = state.connect_tasks.lock().await;
         match connect_tasks.get(&connection_id) {
             Some(ConnectAttempt::Preparing {
                 attempt_id: active_attempt_id,
-                cancelled: true,
-            }) if active_attempt_id == &attempt_id => {
+                cancel,
+            }) if active_attempt_id == &attempt_id && *cancel.borrow() => {
                 connect_tasks.remove(&connection_id);
-                connect_task.abort();
-                return Err("Connection cancelled".to_string());
+                Err("Connection cancelled")
             }
             Some(ConnectAttempt::Preparing {
                 attempt_id: active_attempt_id,
-                cancelled: false,
-            }) if active_attempt_id == &attempt_id => {
+                cancel,
+            }) if active_attempt_id == &attempt_id && !*cancel.borrow() => {
                 connect_tasks.insert(
                     connection_id.clone(),
                     ConnectAttempt::Connecting {
@@ -1082,12 +1089,40 @@ pub async fn ssh_connect(
                         abort_handle: connect_task.abort_handle(),
                     },
                 );
+                Ok(())
             }
             _ => {
-                connect_task.abort();
-                return Err("Connection superseded".to_string());
+                Err("Connection superseded")
             }
         }
+    };
+    if let Err(reason) = spawn_outcome {
+        connect_task.abort();
+        match connect_task.await {
+            Ok(Ok(mut handle)) => {
+                // Task finished before abort took effect — tear the session down explicitly.
+                handle.sftp_session = None;
+                if let Some(session) = handle.session.take() {
+                    let guard = session.lock().await;
+                    if let Err(error) = guard
+                        .disconnect(
+                            russh::Disconnect::ByApplication,
+                            reason,
+                            "",
+                        )
+                        .await
+                    {
+                        eprintln!(
+                            "[SSH] Failed to disconnect {} connection {}: {error}",
+                            reason.to_lowercase(),
+                            connection_id
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+        return Err(reason.to_string());
     }
 
     let connect_result = match connect_task.await {
@@ -1113,6 +1148,25 @@ pub async fn ssh_connect(
     match connect_result {
         Ok(mut handle) => {
             if !still_owns_attempt {
+                // Cancel raced past a completed connect task: tear the session down
+                // explicitly so we do not leave a live SSH handle to Drop cleanup alone.
+                handle.sftp_session = None;
+                if let Some(session) = handle.session.take() {
+                    let guard = session.lock().await;
+                    if let Err(error) = guard
+                        .disconnect(
+                            russh::Disconnect::ByApplication,
+                            "Connection cancelled",
+                            "",
+                        )
+                        .await
+                    {
+                        eprintln!(
+                            "[SSH] Failed to disconnect cancelled connection {}: {error}",
+                            connection_id
+                        );
+                    }
+                }
                 return Err("Connection cancelled".to_string());
             }
             let detected_os = handle.detected_os.clone();
@@ -1153,13 +1207,13 @@ pub async fn ssh_cancel_connect(
         match connect_tasks.get_mut(&id) {
             Some(ConnectAttempt::Preparing {
                 attempt_id: active_attempt_id,
-                cancelled,
+                cancel,
             }) if attempt_id
                 .as_deref()
                 .map(|attempt_id| attempt_id == active_attempt_id)
                 .unwrap_or(true) =>
             {
-                *cancelled = true;
+                let _ = cancel.send(true);
                 None
             }
             Some(ConnectAttempt::Connecting {
