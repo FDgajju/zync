@@ -57,7 +57,9 @@ Zync's main security surface is **encrypted local vaulting**, optional **remembe
 
 - Choose a **strong vault passphrase** (sync collection passphrases require at least 12 characters).
 - **Store the recovery key offline** before relying on the vault for production hosts.
-- Losing both passphrase and recovery key means **local vault data cannot be recovered**.
+- If you still have the recovery key, unlock with it and **set a new passphrase** — credentials are kept.
+- If you know the current passphrase, use **Change Passphrase** in Vault Security to rotate it without data loss.
+- Losing both passphrase and recovery key means **local vault credentials cannot be decrypted**. Use **Reset Vault** to wipe the local vault on this device, clear vault host links (`authRef`), and clear local sync-collection cache, then create a new vault. Remote provider sync data is not deleted.
 
 ### Remember unlock on this device
 

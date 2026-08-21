@@ -5,6 +5,8 @@ import { useVaultStore } from '../../vault/useVaultStore';
 import { isVaultInUseError, VAULT_IN_USE_USER_MESSAGE } from '../../vault/vaultLoading';
 import { UnlockModalShell } from './UnlockModalShell';
 import { SecretField } from './SecretField';
+import { ResetVaultModal } from './ResetVaultModal';
+import { ChangePassphraseModal } from './ChangePassphraseModal';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 
@@ -51,6 +53,10 @@ export function VaultUnlockModal({ isOpen, onClose }: Props) {
   const [localError, setLocalError] = useState('');
   const [unlockMode, setUnlockMode] = useState<'passphrase' | 'recovery'>('passphrase');
   const [rememberOnDevice, setRememberOnDevice] = useState(readRememberOnDevicePreference);
+  const [showResetVault, setShowResetVault] = useState(false);
+  const [showSetPassphraseAfterRecovery, setShowSetPassphraseAfterRecovery] = useState(false);
+  // After reset, unlockMode can still be 'recovery' even though create-vault has no recovery UI.
+  const effectiveUnlockMode = canUseRecoveryKey ? unlockMode : 'passphrase';
 
   const extractError = (error: unknown): { code?: string; message: string } => {
     if (error && typeof error === 'object') {
@@ -69,6 +75,8 @@ export function VaultUnlockModal({ isOpen, onClose }: Props) {
     setRecoveryKey('');
     setShowPass(false);
     setUnlockMode('passphrase');
+    setShowResetVault(false);
+    setShowSetPassphraseAfterRecovery(false);
     setLocalError('');
     clearError();
   };
@@ -105,7 +113,7 @@ export function VaultUnlockModal({ isOpen, onClose }: Props) {
         const { message } = extractError(e);
         setLocalError(message || 'Failed to create vault.');
       }
-    } else if (unlockMode === 'recovery') {
+    } else if (effectiveUnlockMode === 'recovery') {
       if (!recoveryKey.trim()) {
         setLocalError('Recovery key is required.');
         return;
@@ -113,7 +121,8 @@ export function VaultUnlockModal({ isOpen, onClose }: Props) {
       try {
         await unlockWithRecoveryKey(recoveryKey.trim(), rememberOnDevice);
         persistRememberOnDevicePreference(rememberOnDevice);
-        handleUnlocked();
+        // Offer setting a new passphrase so password unlock works again without wiping data.
+        setShowSetPassphraseAfterRecovery(true);
       } catch (e: unknown) {
         const { code, message } = extractError(e);
         const parts = [code, message].filter(Boolean);
@@ -194,98 +203,155 @@ export function VaultUnlockModal({ isOpen, onClose }: Props) {
   const title = isUninitialized ? 'Create Vault' : 'Unlock Vault';
   const subtitle = isUninitialized
     ? 'Set a strong passphrase to protect your credentials.'
-    : unlockMode === 'recovery'
+    : effectiveUnlockMode === 'recovery'
       ? 'Enter your recovery key to unlock the vault.'
       : 'Enter your vault passphrase to access credentials.';
 
   return (
-    <UnlockModalShell
-      isOpen={isOpen}
-      onClose={handleClose}
-      title={title}
-      subtitle={subtitle}
-      mode={canUseRecoveryKey ? unlockMode : undefined}
-      modeOptions={canUseRecoveryKey ? [
-        { value: 'passphrase', label: 'Passphrase' },
-        { value: 'recovery', label: 'Recovery Key' },
-      ] : undefined}
-      onModeChange={canUseRecoveryKey ? setUnlockMode : undefined}
-      hintText={
-        canUseRecoveryKey && unlockMode === 'passphrase'
-          ? <>Forgot passphrase? Switch to <span className="text-[var(--color-app-text)] font-medium">Recovery Key</span>.</>
-          : undefined
-      }
-      error={localError}
-      isSubmitting={isLoading}
-      submitDisabled={
-        isLoading ||
-        (unlockMode === 'recovery'
-          ? !recoveryKey.trim()
-          : !passphrase || (isUninitialized && !confirm))
-      }
-      submitLabel={
-        isLoading ? 'Please wait…' : isUninitialized ? 'Create Vault' : unlockMode === 'recovery' ? 'Unlock with Key' : 'Unlock'
-      }
-      onSubmit={handleSubmit}
-      details={!isUninitialized ? (
-        <div className="rounded-lg border border-[var(--color-app-border)]/50 bg-[var(--color-app-surface)]/20 p-3 text-[11px] text-[var(--color-app-muted)] leading-relaxed">
-          <div className="flex items-center gap-2 text-[var(--color-app-text)] mb-1">
-            <KeyRound size={12} />
-            Security note
+    <>
+      <UnlockModalShell
+        isOpen={isOpen}
+        onClose={handleClose}
+        title={title}
+        subtitle={subtitle}
+        mode={canUseRecoveryKey ? effectiveUnlockMode : undefined}
+        modeOptions={canUseRecoveryKey ? [
+          { value: 'passphrase', label: 'Passphrase' },
+          { value: 'recovery', label: 'Recovery Key' },
+        ] : undefined}
+        onModeChange={canUseRecoveryKey ? setUnlockMode : undefined}
+        error={localError}
+        isSubmitting={isLoading}
+        submitDisabled={
+          isLoading ||
+          (effectiveUnlockMode === 'recovery'
+            ? !recoveryKey.trim()
+            : !passphrase || (isUninitialized && !confirm))
+        }
+        submitLabel={
+          isLoading
+            ? 'Please wait…'
+            : isUninitialized
+              ? 'Create Vault'
+              : effectiveUnlockMode === 'recovery'
+                ? 'Unlock with Key'
+                : 'Unlock'
+        }
+        onSubmit={handleSubmit}
+        details={!isUninitialized ? (
+          <div className="rounded-lg border border-[var(--color-app-border)]/50 bg-[var(--color-app-surface)]/20 p-3 text-[11px] text-[var(--color-app-muted)] leading-relaxed">
+            <div className="flex items-center gap-2 text-[var(--color-app-text)] mb-1">
+              <KeyRound size={12} />
+              Security note
+            </div>
+            This unlocks your local vault on this device. Your passphrase or recovery key is never uploaded.
           </div>
-          This unlocks your local vault on this device. Your passphrase or recovery key is never uploaded.
-        </div>
-      ) : undefined}
-    >
-      {unlockMode === 'recovery' && canUseRecoveryKey ? (
-        <SecretField
-          label="Recovery Key"
-          value={recoveryKey}
-          onChange={setRecoveryKey}
-          showSecret={showPass}
-          onToggleShow={() => setShowPass((v) => !v)}
-          autoFocus
-          autoComplete="off"
-          placeholder="Enter recovery key"
-        />
-      ) : (
-        <SecretField
-          label="Passphrase"
-          value={passphrase}
-          onChange={setPassphrase}
-          showSecret={showPass}
-          onToggleShow={() => setShowPass((v) => !v)}
-          autoFocus
-          autoComplete={isUninitialized ? 'new-password' : 'current-password'}
-          placeholder={isUninitialized ? 'Create a strong passphrase' : 'Enter passphrase'}
-        />
-      )}
+        ) : undefined}
+        footer={
+          !isUninitialized && canUseRecoveryKey ? (
+            <div className="pt-1 text-center">
+              <button
+                type="button"
+                className="text-[11px] text-[var(--color-app-muted)] hover:text-red-400 underline-offset-2 hover:underline transition-colors"
+                onClick={() => setShowResetVault(true)}
+              >
+                Don&apos;t have your recovery key? Reset Vault…
+              </button>
+            </div>
+          ) : undefined
+        }
+      >
+        {effectiveUnlockMode === 'recovery' ? (
+          <SecretField
+            label="Recovery Key"
+            value={recoveryKey}
+            onChange={setRecoveryKey}
+            showSecret={showPass}
+            onToggleShow={() => setShowPass((v) => !v)}
+            autoFocus
+            autoComplete="off"
+            placeholder="Enter recovery key"
+          />
+        ) : (
+          <div className="space-y-1.5">
+            <SecretField
+              label="Passphrase"
+              value={passphrase}
+              onChange={setPassphrase}
+              showSecret={showPass}
+              onToggleShow={() => setShowPass((v) => !v)}
+              autoFocus
+              autoComplete={isUninitialized ? 'new-password' : 'current-password'}
+              placeholder={isUninitialized ? 'Create a strong passphrase' : 'Enter passphrase'}
+            />
+            {!isUninitialized && canUseRecoveryKey ? (
+              <div className="flex justify-end px-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPassphrase('');
+                    setLocalError('');
+                    setUnlockMode('recovery');
+                  }}
+                  className="text-[11px] font-medium text-app-accent underline-offset-2 hover:underline"
+                >
+                  Forgot passphrase?
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
 
-      {isUninitialized && unlockMode === 'passphrase' && (
-        <Input
-          label="Confirm Passphrase"
-          type={showPass ? 'text' : 'password'}
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          autoComplete="new-password"
-          placeholder="Repeat your passphrase"
-        />
-      )}
+        {isUninitialized && (
+          <Input
+            label="Confirm Passphrase"
+            type={showPass ? 'text' : 'password'}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
+            placeholder="Repeat your passphrase"
+          />
+        )}
 
-      <label className="flex items-start gap-2 text-[11px] text-[var(--color-app-muted)] cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={rememberOnDevice}
-          onChange={(e) => setRememberOnDevice(e.target.checked)}
-          className="mt-0.5 accent-[var(--color-app-accent)]"
-        />
-        <span>
-          Remember unlock on this device
-          <span className="block text-[10px] opacity-80 mt-0.5">
-            Stores a device-bound session key in the OS credential store. Lock now still works; use Forget this device to require a passphrase again after restart.
+        <label className="flex items-start gap-2 text-[11px] text-[var(--color-app-muted)] cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={rememberOnDevice}
+            onChange={(e) => setRememberOnDevice(e.target.checked)}
+            className="mt-0.5 accent-[var(--color-app-accent)]"
+          />
+          <span>
+            Remember unlock on this device
+            <span className="block text-[10px] opacity-80 mt-0.5">
+              Stores a device-bound session key in the OS credential store. Lock now still works; use Forget this device to require a passphrase again after restart.
+            </span>
           </span>
-        </span>
-      </label>
-    </UnlockModalShell>
+        </label>
+      </UnlockModalShell>
+
+      <ResetVaultModal
+        isOpen={showResetVault}
+        onClose={() => setShowResetVault(false)}
+        onReset={() => {
+          setShowResetVault(false);
+          setPassphrase('');
+          setConfirm('');
+          setRecoveryKey('');
+          setUnlockMode('passphrase');
+          setLocalError('');
+        }}
+      />
+
+      <ChangePassphraseModal
+        isOpen={showSetPassphraseAfterRecovery}
+        requireCurrent={false}
+        title="Set New Passphrase"
+        subtitle="Vault unlocked with your recovery key. Set a new passphrase to keep your credentials and unlock with a password again."
+        onClose={() => {
+          setShowSetPassphraseAfterRecovery(false);
+          handleUnlocked();
+        }}
+      />
+    </>
   );
 }

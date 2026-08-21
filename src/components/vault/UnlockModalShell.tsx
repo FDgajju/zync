@@ -20,6 +20,8 @@ interface UnlockModalShellProps<T extends string> {
   submitDisabled?: boolean;
   submitLabel: string;
   onSubmit: (event: React.FormEvent) => void;
+  /** Rendered after Cancel/Submit — e.g. Reset Vault link. */
+  footer?: ReactNode;
   contentClassName?: string;
   zIndexClassName?: string;
 }
@@ -40,6 +42,7 @@ export function UnlockModalShell<T extends string>({
   submitDisabled,
   submitLabel,
   onSubmit,
+  footer,
   contentClassName,
   zIndexClassName = 'z-[15000]',
 }: UnlockModalShellProps<T>) {
@@ -64,9 +67,9 @@ export function UnlockModalShell<T extends string>({
           <VaultModeSwitch value={mode} onChange={onModeChange} options={modeOptions} />
         )}
 
-        <div className="min-h-[20px]">
-          {hintText && <p className="text-xs text-[var(--color-app-muted)]">{hintText}</p>}
-        </div>
+        {hintText ? (
+          <p className="text-xs text-[var(--color-app-muted)]">{hintText}</p>
+        ) : null}
 
         {children}
 
@@ -84,6 +87,8 @@ export function UnlockModalShell<T extends string>({
             {submitLabel}
           </Button>
         </div>
+
+        {footer}
       </form>
     </Modal>
   );

@@ -5,6 +5,8 @@ import { isVaultInUseError, isVaultStatusPending } from '../../../vault/vaultLoa
 import { vaultIpc, type VaultItemDetail } from '../../../vault/ipc';
 
 import { RecoveryKeyModal } from '../../vault/RecoveryKeyModal';
+import { ResetVaultModal } from '../../vault/ResetVaultModal';
+import { ChangePassphraseModal } from '../../vault/ChangePassphraseModal';
 import { Button } from '../../ui/Button';
 import { useAppStore } from '../../../store/useAppStore';
 import { DEFAULT_VAULT_PROFILE_ID, type VaultProfileId } from '../../../vault/profileTypes';
@@ -43,6 +45,8 @@ export function VaultTab({ focusedProfileId = DEFAULT_VAULT_PROFILE_ID }: VaultT
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<VaultItemDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [showResetVault, setShowResetVault] = useState(false);
+  const [showChangePassphrase, setShowChangePassphrase] = useState(false);
   const detailRequestRef = useRef<string | null>(null);
 
   const localSectionRef = useRef<HTMLDivElement | null>(null);
@@ -279,24 +283,42 @@ export function VaultTab({ focusedProfileId = DEFAULT_VAULT_PROFILE_ID }: VaultT
   const handleForgetDevice = useCallback(async () => {
     const confirmed = await showConfirmDialog({
       title: 'Forget This Device?',
-      message: 'Zync will remove the remembered vault unlock key from this device. You will need your passphrase after the next restart.',
+      message: 'Zync will remove the remembered vault unlock key from this device. You will need your passphrase (or recovery key) the next time you unlock.',
       confirmText: 'Forget Device',
       variant: 'danger',
     });
     if (!confirmed) return;
     try {
       await forgetDevice();
+      await refresh();
       showToast('success', 'Remembered unlock removed from this device.');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       showToast('error', `Failed to forget device: ${message}`);
     }
-  }, [forgetDevice, showConfirmDialog, showToast]);
+  }, [forgetDevice, refresh, showConfirmDialog, showToast]);
 
   const canSyncItemsToGoogle = Boolean(
     panel.googleSync?.connected
     && panel.googleCollection?.configured
     && panel.googleCollection?.keyCached,
+  );
+  const resetVaultStrip = (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-app-border/50 bg-app-surface/20 px-3 py-2">
+      <p className="text-[11px] leading-relaxed text-app-muted">
+        Lost your passphrase and recovery key?{' '}
+        <span className="text-app-text/90">Reset Vault</span> removes the local vault on this device.
+        Cloud sync data is not deleted.
+      </p>
+      <button
+        type="button"
+        onClick={() => setShowResetVault(true)}
+        disabled={isVaultInUseError(error)}
+        className="shrink-0 text-[11px] font-medium text-[var(--color-app-danger)] underline-offset-2 hover:underline disabled:opacity-50 disabled:no-underline"
+      >
+        Reset Vault →
+      </button>
+    </div>
   );
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -314,6 +336,9 @@ export function VaultTab({ focusedProfileId = DEFAULT_VAULT_PROFILE_ID }: VaultT
           onForgetDevice={handleForgetDevice}
         />
       </div>
+
+      {/* Locked: keep Reset near the top so it is easy to find without scrolling. */}
+      {status?.status === 'locked' ? resetVaultStrip : null}
 
       {/* Secure-to-vault banner — app theme tokens (data-theme, not Tailwind dark:) */}
       {isUnlocked && securableCandidates.length > 0 && (
@@ -401,6 +426,23 @@ export function VaultTab({ focusedProfileId = DEFAULT_VAULT_PROFILE_ID }: VaultT
             </div>
             <div className="flex items-center justify-between px-4 py-3">
               <div>
+                <p className="text-sm text-[var(--color-app-text)] font-medium">Change Passphrase</p>
+                <p className="text-xs text-[var(--color-app-muted)] mt-0.5">
+                  Set a new vault password without deleting credentials
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowChangePassphrase(true)}
+                className="gap-1.5 shrink-0"
+              >
+                <KeyRound size={13} />
+                Change
+              </Button>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
                 <p className="text-sm text-[var(--color-app-text)] font-medium">Recovery Key</p>
                 <p className="text-xs text-[var(--color-app-muted)] mt-0.5">
                   {panel.hasRecoveryKey
@@ -453,6 +495,7 @@ export function VaultTab({ focusedProfileId = DEFAULT_VAULT_PROFILE_ID }: VaultT
               </Button>
             </div>
           </div>
+          {resetVaultStrip}
         </div>
       ) : null}
 
@@ -504,6 +547,21 @@ export function VaultTab({ focusedProfileId = DEFAULT_VAULT_PROFILE_ID }: VaultT
           actionLabel="Set Up Vault"
         />
       )}
+
+      <ResetVaultModal
+        isOpen={showResetVault}
+        onClose={() => setShowResetVault(false)}
+        onReset={() => {
+          setShowResetVault(false);
+          openUnlockModal();
+        }}
+      />
+
+      <ChangePassphraseModal
+        isOpen={showChangePassphrase}
+        onClose={() => setShowChangePassphrase(false)}
+        requireCurrent
+      />
 
       {/* ── Modals ── */}
       <RecoveryKeyModal

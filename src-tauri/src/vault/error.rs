@@ -8,6 +8,8 @@ pub enum VaultError {
     InUseByAnotherInstance,
     Locked,
     WrongPassphrase,
+    /// `change_passphrase` without current passphrase requires a prior recovery-key unlock.
+    RecoveryAuthorizationRequired,
     InvalidPassphraseLength {
         min: usize,
     },
@@ -29,6 +31,10 @@ impl std::fmt::Display for VaultError {
             ),
             Self::Locked => write!(f, "Vault is locked"),
             Self::WrongPassphrase => write!(f, "Incorrect passphrase"),
+            Self::RecoveryAuthorizationRequired => write!(
+                f,
+                "Setting a new passphrase without the current one requires unlocking with a recovery key first"
+            ),
             Self::InvalidPassphraseLength { min } => {
                 write!(f, "Passphrase must be at least {min} characters")
             }

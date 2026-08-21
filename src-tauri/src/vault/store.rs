@@ -53,6 +53,8 @@ pub struct VaultService {
     /// Avoid repeatedly triggering OS keychain prompts from passive status
     /// polling after a remember-device restore attempt fails or is denied.
     session_cache_unlock_attempted: bool,
+    /// Set only by recovery-key unlock; required for `change_passphrase(None, …)`.
+    recovery_passphrase_change_authorized: bool,
 }
 
 impl VaultService {
@@ -64,6 +66,7 @@ impl VaultService {
             data_dir,
             suppress_session_cache_unlock: false,
             session_cache_unlock_attempted: false,
+            recovery_passphrase_change_authorized: false,
         }
     }
 
@@ -231,10 +234,12 @@ impl VaultService {
 
         self.vek = Some(cached.vek);
         self.meta = Some(meta);
+        self.recovery_passphrase_change_authorized = false;
 
         if self.migrate_live_records_to_current_schema().is_err() {
             self.vek = None;
             self.meta = None;
+            self.recovery_passphrase_change_authorized = false;
             let _ = super::session_cache::clear_session_cache(&vault_id);
             return Ok(false);
         }
@@ -248,23 +253,31 @@ impl VaultService {
             return Ok(());
         };
 
-        let read_txn = db.begin_read()?;
-        let meta_table = match read_txn.open_table(VAULT_META) {
-            Ok(table) => table,
-            Err(redb::TableError::TableDoesNotExist(_)) => return Ok(()),
-            Err(error) => return Err(VaultError::from(error)),
+        // Drop the read transaction before clearing the verifier write — redb
+        // cannot start a write while a read txn on the same Database is live
+        // (otherwise Forget Device hangs and the UI looks like a no-op).
+        let vault_id = {
+            let read_txn = db.begin_read()?;
+            let meta_table = match read_txn.open_table(VAULT_META) {
+                Ok(table) => table,
+                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(()),
+                Err(error) => return Err(VaultError::from(error)),
+            };
+            meta_table
+                .get("vault_id")?
+                .map(|value| String::from_utf8_lossy(value.value()).into_owned())
+                .unwrap_or_default()
         };
-
-        let vault_id = meta_table
-            .get("vault_id")?
-            .map(|value| String::from_utf8_lossy(value.value()).into_owned())
-            .unwrap_or_default();
         if vault_id.is_empty() {
             return Ok(());
         }
 
         super::session_cache::clear_session_cache(&vault_id)?;
-        self.clear_session_cache_verifier()
+        self.clear_session_cache_verifier()?;
+        // Prevent an immediate silent restore on the next status()/refresh().
+        self.suppress_session_cache_unlock = true;
+        self.session_cache_unlock_attempted = true;
+        Ok(())
     }
 
     fn persist_session_cache_preference(&self, remember_on_device: bool) -> Result<(), VaultError> {
@@ -403,6 +416,7 @@ impl VaultService {
         self.meta = Some(meta);
         self.suppress_session_cache_unlock = false;
         self.session_cache_unlock_attempted = false;
+        self.recovery_passphrase_change_authorized = false;
         self.persist_session_cache_best_effort(remember_on_device);
 
         self.build_unlocked_status()
@@ -457,6 +471,7 @@ impl VaultService {
         self.meta = Some(meta);
         self.suppress_session_cache_unlock = false;
         self.session_cache_unlock_attempted = false;
+        self.recovery_passphrase_change_authorized = false;
         drop(ks);
         drop(vm);
         drop(read_txn);
@@ -466,6 +481,7 @@ impl VaultService {
         if let Err(error) = self.migrate_live_records_to_current_schema() {
             self.vek = None;
             self.meta = None;
+            self.recovery_passphrase_change_authorized = false;
             return Err(error);
         }
 
@@ -611,6 +627,7 @@ impl VaultService {
         self.meta = None;
         self.suppress_session_cache_unlock = true;
         self.session_cache_unlock_attempted = true;
+        self.recovery_passphrase_change_authorized = false;
     }
 
     /// Returns the vault ID if the vault is unlocked (meta is cached).
@@ -1321,6 +1338,87 @@ impl VaultService {
         )
     }
 
+    /// Change or set the vault passphrase without wiping credentials.
+    ///
+    /// - When `current_passphrase` is provided, it is verified first (normal change).
+    /// - When omitted, the vault must already be unlocked (e.g. after recovery-key unlock)
+    ///   and a new passphrase slot is written so password unlock works again.
+    ///
+    /// Recovery-key slot is unchanged (still wraps the same VEK). Vault items stay intact.
+    pub fn change_passphrase(
+        &mut self,
+        current_passphrase: Option<&str>,
+        new_passphrase: &str,
+        remember_on_device: bool,
+    ) -> Result<VaultStatus, VaultError> {
+        if new_passphrase.len() < PASSPHRASE_MIN_LENGTH {
+            return Err(VaultError::InvalidPassphraseLength {
+                min: PASSPHRASE_MIN_LENGTH,
+            });
+        }
+        if self.vek.is_none() {
+            return Err(VaultError::Locked);
+        }
+        if self.db.is_none() {
+            return Err(VaultError::NotInitialized);
+        }
+        if self.meta.is_none() {
+            return Err(VaultError::Locked);
+        }
+
+        if let Some(current) = current_passphrase {
+            self.verify_passphrase(current)?;
+        } else if !self.recovery_passphrase_change_authorized {
+            return Err(VaultError::RecoveryAuthorizationRequired);
+        }
+
+        let kdf_params = KdfParams::default_production();
+        let salt = generate_salt();
+        let kek = derive_kek(new_passphrase.as_bytes(), &salt, &kdf_params)?;
+        let (stored_slot, updated_meta) = {
+            let vek = self.vek.as_ref().ok_or(VaultError::Locked)?;
+            let meta = self.meta.as_ref().ok_or(VaultError::Locked)?;
+            let slot_aad = slot_aad_string(&meta.vault_id, SLOT_PASSPHRASE);
+            let slot_envelope = encrypt_record(&kek, vek.as_bytes(), slot_aad.as_bytes())?;
+            let stored_slot = StoredEnvelope {
+                id: SLOT_PASSPHRASE.into(),
+                kind: "key-slot".into(),
+                revision: 1,
+                deleted: false,
+                crypto_suite: CRYPTO_SUITE.into(),
+                aad_version: AAD_VERSION,
+                nonce: STANDARD.encode(slot_envelope.nonce),
+                ciphertext: STANDARD.encode(&slot_envelope.ciphertext),
+            };
+            let now = Self::now_secs();
+            let mut updated_meta = meta.clone();
+            updated_meta.salt = STANDARD.encode(salt);
+            updated_meta.kdf_m_cost = kdf_params.m_cost;
+            updated_meta.kdf_t_cost = kdf_params.t_cost;
+            updated_meta.kdf_p_cost = kdf_params.p_cost;
+            updated_meta.updated_at = now;
+            (stored_slot, updated_meta)
+        };
+
+        let db = self.db.as_ref().ok_or(VaultError::NotInitialized)?;
+        let write_txn = db.begin_write()?;
+        {
+            let mut ks = write_txn.open_table(KEY_SLOTS)?;
+            ks.insert(
+                SLOT_PASSPHRASE,
+                serde_json::to_vec(&stored_slot)?.as_slice(),
+            )?;
+            let mut vm = write_txn.open_table(VAULT_META)?;
+            vm.insert("meta", serde_json::to_vec(&updated_meta)?.as_slice())?;
+        }
+        write_txn.commit()?;
+
+        self.meta = Some(updated_meta);
+        self.recovery_passphrase_change_authorized = false;
+        self.persist_session_cache_best_effort(remember_on_device);
+        self.build_unlocked_status()
+    }
+
     // ── Recovery key ─────────────────────────────────────────────────────────
 
     /// Generates a new 32-byte random recovery key, stores it as a second key slot,
@@ -1413,6 +1511,7 @@ impl VaultService {
         self.meta = Some(meta);
         self.suppress_session_cache_unlock = false;
         self.session_cache_unlock_attempted = false;
+        self.recovery_passphrase_change_authorized = true;
 
         drop(slot_bytes);
         drop(ks);
@@ -1423,6 +1522,7 @@ impl VaultService {
         if let Err(error) = self.migrate_live_records_to_current_schema() {
             self.vek = None;
             self.meta = None;
+            self.recovery_passphrase_change_authorized = false;
             return Err(error);
         }
 
@@ -1522,6 +1622,71 @@ impl VaultService {
         }
         result?;
         Ok(())
+    }
+
+    /// Wipes the local vault on this device so the user can create a new one.
+    ///
+    /// Clears remembered unlock material, closes the DB, deletes vault files and
+    /// local sync-collection cache files. Does not touch remote provider data or
+    /// host records (callers should strip `authRef` separately).
+    pub fn reset_local(&mut self) -> Result<VaultStatus, VaultError> {
+        // Clear remember-unlock while vault_id is still readable. Failure aborts
+        // before deleting vault files so the user can retry a complete reset.
+        self.forget_device_session()?;
+
+        self.db = None;
+        self.vek = None;
+        self.meta = None;
+        self.suppress_session_cache_unlock = false;
+        self.session_cache_unlock_attempted = false;
+        self.recovery_passphrase_change_authorized = false;
+
+        const VAULT_FILES: &[&str] = &[
+            "vault.redb",
+            "vault.redb.pre-import",
+            "vault.redb.tmp-pre-import",
+            "vault.redb.sync-tmp",
+            "vault.redb.download-tmp",
+        ];
+        for name in VAULT_FILES {
+            let path = self.data_dir.join(name);
+            if !path.exists() {
+                continue;
+            }
+            std::fs::remove_file(&path).map_err(|error| {
+                VaultError::InvalidData(format!(
+                    "failed to remove {}: {error}",
+                    path.display()
+                ))
+            })?;
+        }
+
+        let entries = std::fs::read_dir(&self.data_dir).map_err(|error| {
+            VaultError::InvalidData(format!(
+                "failed to enumerate data dir for sync cache cleanup {}: {error}",
+                self.data_dir.display()
+            ))
+        })?;
+        for entry in entries {
+            let entry = entry.map_err(|error| {
+                VaultError::InvalidData(format!(
+                    "failed to read data dir entry during sync cache cleanup: {error}"
+                ))
+            })?;
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+            if name.starts_with("sync-collection-") && name.ends_with(".json") {
+                let path = entry.path();
+                std::fs::remove_file(&path).map_err(|error| {
+                    VaultError::InvalidData(format!(
+                        "failed to remove sync collection cache {}: {error}",
+                        path.display()
+                    ))
+                })?;
+            }
+        }
+
+        self.status()
     }
 
     /// Replaces the current vault.redb with the file at `src_path`.
@@ -1997,6 +2162,155 @@ mod tests {
             .initialize("correct horse battery staple", false)
             .expect("initialize vault");
         vault
+    }
+
+    #[test]
+    fn forget_device_session_clears_remembered_flag_while_locked() {
+        let mut vault = TestVault::new();
+        vault
+            .service
+            .initialize("correct horse battery staple", true)
+            .expect("initialize with remember-on-device");
+        let vault_id = match vault.service.status().expect("status") {
+            VaultStatus::Unlocked { vault_id, .. } => vault_id,
+            other => panic!("expected unlocked, got {other:?}"),
+        };
+        assert!(session_cache::has_session_cache(&vault_id).expect("has cache"));
+
+        vault.service.lock();
+        match vault.service.status().expect("locked status") {
+            VaultStatus::Locked {
+                remembered_on_device: true,
+                ..
+            } => {}
+            other => panic!("expected remembered locked status, got {other:?}"),
+        }
+
+        vault
+            .service
+            .forget_device_session()
+            .expect("forget device while locked");
+        assert!(!session_cache::has_session_cache(&vault_id).expect("cache cleared"));
+        match vault.service.status().expect("status after forget") {
+            VaultStatus::Locked {
+                remembered_on_device: false,
+                ..
+            } => {}
+            other => panic!("expected not-remembered locked status, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn change_passphrase_keeps_items_and_accepts_new_passphrase() {
+        let mut vault = initialized_test_vault();
+        vault
+            .service
+            .item_create("demo", "ssh-password", "secret-value", None)
+            .expect("create item");
+
+        vault
+            .service
+            .change_passphrase(
+                Some("correct horse battery staple"),
+                "brand-new-passphrase",
+                false,
+            )
+            .expect("change passphrase");
+
+        vault.service.lock();
+        vault
+            .service
+            .unlock("brand-new-passphrase", false)
+            .expect("unlock with new passphrase");
+        let items = vault.service.item_list().expect("list items");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label, "demo");
+
+        let err = vault
+            .service
+            .unlock("correct horse battery staple", false)
+            .expect_err("old passphrase must fail");
+        assert!(matches!(err, VaultError::WrongPassphrase | VaultError::Locked));
+    }
+
+    #[test]
+    fn change_passphrase_after_recovery_unlock_without_current() {
+        let mut vault = initialized_test_vault();
+        let recovery = vault
+            .service
+            .generate_recovery_key()
+            .expect("generate recovery key");
+        vault.service.lock();
+        vault
+            .service
+            .unlock_with_recovery_key(&recovery, false)
+            .expect("unlock with recovery");
+        vault
+            .service
+            .change_passphrase(None, "recovery-set-passphrase", false)
+            .expect("set passphrase after recovery");
+        vault.service.lock();
+        vault
+            .service
+            .unlock("recovery-set-passphrase", false)
+            .expect("unlock with set passphrase");
+    }
+
+    #[test]
+    fn change_passphrase_without_current_requires_recovery_authorization() {
+        let mut vault = initialized_test_vault();
+        let err = vault
+            .service
+            .change_passphrase(None, "should-not-be-allowed", false)
+            .expect_err("passphrase unlock must not authorize no-current change");
+        assert!(matches!(err, VaultError::RecoveryAuthorizationRequired));
+    }
+
+    #[test]
+    fn reset_local_propagates_sync_cache_delete_failure() {
+        let mut vault = initialized_test_vault();
+        let cache_path = vault.dir.join("sync-collection-demo.json");
+        std::fs::write(&cache_path, b"{}").expect("write sync collection cache");
+
+        // Replace the sync-collection file with a directory so remove_file fails.
+        std::fs::remove_file(&cache_path).expect("remove file");
+        std::fs::create_dir(&cache_path).expect("create blocking directory");
+
+        let err = vault
+            .service
+            .reset_local()
+            .expect_err("sync cache cleanup failure must abort reset success");
+        assert!(
+            err.to_string().contains("sync collection cache"),
+            "unexpected error: {err}"
+        );
+
+        // Clean up so Drop can remove the temp tree.
+        let _ = std::fs::remove_dir_all(&cache_path);
+    }
+
+    #[test]
+    fn reset_local_wipes_vault_files_and_returns_uninitialized() {
+        let mut vault = initialized_test_vault();
+        vault
+            .service
+            .item_create("demo", "ssh-password", "secret", None)
+            .expect("create item");
+        let vault_path = vault.dir.join("vault.redb");
+        let cache_path = vault.dir.join("sync-collection-demo.json");
+        std::fs::write(&cache_path, b"{}").expect("write sync collection cache");
+        assert!(vault_path.exists());
+
+        let status = vault.service.reset_local().expect("reset local vault");
+        assert!(matches!(status, VaultStatus::Uninitialized));
+        assert!(!vault_path.exists());
+        assert!(!cache_path.exists());
+
+        // A fresh vault can be created afterward.
+        vault
+            .service
+            .initialize("brand new passphrase!", false)
+            .expect("re-initialize after reset");
     }
 
     #[test]

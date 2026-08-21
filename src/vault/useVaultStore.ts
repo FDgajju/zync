@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { vaultIpc, type VaultStatus, type VaultItem } from './ipc';
+import { vaultIpc, type VaultStatus, type VaultItem, type VaultResetLocalResult } from './ipc';
 import { isVaultInUseError } from './vaultLoading';
 
 interface VaultStore {
@@ -16,6 +16,11 @@ interface VaultStore {
   unlock: (passphrase: string, rememberOnDevice?: boolean) => Promise<void>;
   unlockWithRecoveryKey: (recoveryKey: string, rememberOnDevice?: boolean) => Promise<void>;
   forgetDevice: () => Promise<void>;
+  changePassphrase: (
+    newPassphrase: string,
+    options?: { currentPassphrase?: string; rememberOnDevice?: boolean },
+  ) => Promise<void>;
+  resetLocal: () => Promise<VaultResetLocalResult>;
   lock: () => Promise<void>;
   deleteItem: (itemId: string) => Promise<void>;
   clearError: () => void;
@@ -156,6 +161,31 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     } catch (e: unknown) {
       const msg = extractErrorMessage(e);
       set({ error: msg });
+      throw e;
+    }
+  },
+
+  changePassphrase: async (newPassphrase, options) => {
+    set({ isLoading: true, error: null });
+    try {
+      const status = await vaultIpc.changePassphrase(newPassphrase, options);
+      set({ status, isLoading: false, error: null });
+    } catch (e: unknown) {
+      const msg = extractErrorMessage(e);
+      set({ isLoading: false, error: msg });
+      throw e;
+    }
+  },
+
+  resetLocal: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await vaultIpc.resetLocal();
+      set({ status: result.status, items: [], isLoading: false, error: null });
+      return result;
+    } catch (e: unknown) {
+      const msg = extractErrorMessage(e);
+      set({ isLoading: false, error: msg });
       throw e;
     }
   },

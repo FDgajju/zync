@@ -122,6 +122,10 @@ Lock (user action)
   -> clear in-memory vek only
 Forget this device
   -> delete OS keychain session cache for current vault_id
+Reset Vault (lost passphrase + recovery key)
+  -> wipe local vault.redb (+ temp vault files), clear remember-device,
+     clear local sync-collection cache, strip host authRef links,
+     return uninitialized so the user can Create Vault
 ```
 
 Host connect policy:
@@ -530,6 +534,8 @@ When the user opts in at unlock/create time:
   reporting `locked`.
 - **Lock** clears memory only; remembered device unlock still works on the next app start.
 - **Forget this device** removes the keychain entry and forces passphrase entry again.
+- **Change Passphrase** (Vault Security while unlocked, or after recovery-key unlock) rewraps the vault encryption key with a new passphrase. Credentials stay; the old passphrase stops working. Recovery-key unlock can then set a new passphrase without wiping data.
+- **Reset Vault** (unlock dialog or Vault settings) permanently deletes the local vault on this device when both passphrase and recovery key are lost. It clears remember-device material, strips host `authRef` links, clears local sync-collection cache, and leaves the vault uninitialized. Remote provider sync data is not deleted. Local key-file / on-host password hosts are kept.
 
 Security notes:
 

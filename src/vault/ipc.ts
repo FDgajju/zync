@@ -69,6 +69,11 @@ export interface VaultBackfillResult {
   skippedMissingItems: number;
 }
 
+export interface VaultResetLocalResult {
+  status: VaultStatus;
+  clearedAuthRefs: number;
+}
+
 export interface RevisionMeta {
   itemId: string;
   revision: number;
@@ -135,6 +140,50 @@ export const vaultIpc = {
 
   forgetDevice: (): Promise<void> =>
     invoke('vault_forget_device'),
+
+  changePassphrase: async (
+    newPassphrase: string,
+    options?: { currentPassphrase?: string; rememberOnDevice?: boolean },
+  ): Promise<VaultStatus> => {
+    const args: {
+      new_passphrase: string;
+      current_passphrase?: string;
+      remember_on_device?: boolean;
+    } = {
+      new_passphrase: newPassphrase,
+      remember_on_device: options?.rememberOnDevice ?? false,
+    };
+    if (options?.currentPassphrase !== undefined) {
+      args.current_passphrase = options.currentPassphrase;
+    }
+    const raw = await invoke<VaultStatus | Record<string, unknown>>('vault_change_passphrase', {
+      args,
+    });
+    const normalized = normalizeVaultStatus(raw);
+    if (!normalized || normalized.status !== 'unlocked') {
+      throw new Error('Vault passphrase change did not return an unlocked status.');
+    }
+    return normalized;
+  },
+
+  resetLocal: async (): Promise<VaultResetLocalResult> => {
+    const raw = await invoke<VaultResetLocalResult | Record<string, unknown>>('vault_reset_local');
+    const record = raw as Record<string, unknown>;
+    const status = normalizeVaultStatus(
+      (record.status as VaultStatus | Record<string, unknown> | undefined) ?? null,
+    );
+    if (!status || status.status !== 'uninitialized') {
+      throw new Error('Vault reset did not return an uninitialized status.');
+    }
+    const clearedRaw = record.clearedAuthRefs ?? record.cleared_auth_refs;
+    const clearedAuthRefs = typeof clearedRaw === 'number' ? clearedRaw : Number(clearedRaw);
+    return {
+      status,
+      clearedAuthRefs: Number.isFinite(clearedAuthRefs) && clearedAuthRefs >= 0
+        ? Math.floor(clearedAuthRefs)
+        : 0,
+    };
+  },
 
   lock: (): Promise<void> =>
     invoke('vault_lock'),

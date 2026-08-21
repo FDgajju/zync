@@ -29,6 +29,9 @@ impl From<VaultError> for VaultCommandError {
             VaultError::InUseByAnotherInstance => ("vault_in_use", e.to_string()),
             VaultError::Locked => ("locked", e.to_string()),
             VaultError::WrongPassphrase => ("wrong_passphrase", e.to_string()),
+            VaultError::RecoveryAuthorizationRequired => {
+                ("recovery_authorization_required", e.to_string())
+            }
             VaultError::InvalidPassphraseLength { .. } => {
                 ("invalid_passphrase_length", e.to_string())
             }
@@ -107,6 +110,34 @@ pub async fn vault_forget_device(vault: State<'_, Mutex<VaultService>>) -> Vault
         .await
         .forget_device_session()
         .map_err(Into::into)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultResetLocalResult {
+    pub status: VaultStatus,
+    pub cleared_auth_refs: u32,
+}
+
+/// Destructive local reset when the user lost passphrase and recovery key.
+/// Wipes vault files + local sync-collection cache, clears remember-device,
+/// and strips host `authRef` links. Does not delete remote provider data.
+#[tauri::command]
+pub async fn vault_reset_local(
+    app: tauri::AppHandle,
+    vault: State<'_, Mutex<VaultService>>,
+) -> VaultResult<VaultResetLocalResult> {
+    let data_dir = crate::commands::get_data_dir(&app);
+    // Strip host vault links before deleting vault files. If wipe fails afterward,
+    // credentials remain in the vault and hosts can be re-linked; the reverse order
+    // can leave a wiped vault with dangling authRef pointers.
+    let cleared_auth_refs = strip_connection_auth_refs(&data_dir).map_err(VaultCommandError::from)?;
+    let mut vault = vault.lock().await;
+    let status = vault.reset_local().map_err(VaultCommandError::from)?;
+    Ok(VaultResetLocalResult {
+        status,
+        cleared_auth_refs,
+    })
 }
 
 #[tauri::command]
@@ -357,6 +388,34 @@ pub async fn vault_item_restore_revision(
 
 // ── Recovery key commands ─────────────────────────────────────────────────────
 
+#[derive(Deserialize)]
+pub struct ChangePassphraseArgs {
+    #[serde(default)]
+    pub current_passphrase: Option<SecretString>,
+    pub new_passphrase: SecretString,
+    #[serde(default)]
+    pub remember_on_device: bool,
+}
+
+/// Change or set the vault passphrase without deleting credentials.
+#[tauri::command]
+pub async fn vault_change_passphrase(
+    vault: State<'_, Mutex<VaultService>>,
+    args: ChangePassphraseArgs,
+) -> VaultResult<VaultStatus> {
+    vault
+        .lock()
+        .await
+        .change_passphrase(
+            args.current_passphrase
+                .as_ref()
+                .map(|value| value.expose_secret()),
+            args.new_passphrase.expose_secret(),
+            args.remember_on_device,
+        )
+        .map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn vault_generate_recovery_key(
     vault: State<'_, Mutex<VaultService>>,
@@ -514,6 +573,28 @@ fn load_saved_connections(path: &std::path::Path) -> Result<SavedData, VaultErro
     let raw = std::fs::read_to_string(path)
         .map_err(|e| VaultError::InvalidData(format!("read connections file: {e}")))?;
     serde_json::from_str(&raw).map_err(VaultError::Serde)
+}
+
+/// Strip vault `authRef` links from local hosts after a vault wipe.
+/// Leaves `privateKeyPath` and non-vault passwords intact.
+fn strip_connection_auth_refs(data_dir: &std::path::Path) -> Result<u32, VaultError> {
+    let path = data_dir.join("connections.json");
+    let _connections_guard = crate::commands::CONNECTIONS_MUTATION_LOCK
+        .lock()
+        .map_err(|e| VaultError::InvalidData(format!("lock connections file: {e}")))?;
+    let mut saved = load_saved_connections(&path)?;
+    let mut cleared = 0u32;
+    let mut changed = false;
+    for connection in &mut saved.connections {
+        if connection.auth_ref.take().is_some() {
+            cleared = cleared.saturating_add(1);
+            changed = true;
+        }
+    }
+    if changed {
+        save_saved_connections(&path, &saved)?;
+    }
+    Ok(cleared)
 }
 
 fn save_saved_connections(path: &std::path::Path, saved: &SavedData) -> Result<(), VaultError> {
