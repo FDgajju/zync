@@ -4,19 +4,24 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.25.2] - 2026-08-22
+
 ### Added
-- **Reset Vault**: Destructive local vault wipe when both passphrase and recovery key are lost (unlock dialog + Vault settings). Clears remember-device unlock, local sync-collection cache, and host `authRef` links; does not delete remote provider data. Local key-file / on-host password hosts are kept. ([b8241b9])
-- **Change Passphrase**: Rotate the vault passphrase without deleting credentials (Vault → Security). After recovery-key unlock, prompts to set a new passphrase so password unlock works again. ([b8241b9])
+- **Reset Vault**: Destructive local vault wipe when both passphrase and recovery key are lost (unlock dialog + Vault settings). Clears remember-device unlock, local sync-collection cache, and host `authRef` links; does not delete remote provider data. Local key-file / on-host password hosts are kept. ([b8241b9], [c54859c], [9fc091c])
+- **Change Passphrase**: Rotate the vault passphrase without deleting credentials (Vault → Security). After recovery-key unlock, prompts to set a new passphrase so password unlock works again. Preserves the remember-on-device preference. ([b8241b9], [9fc091c])
 - **Forgot passphrase on unlock**: Unlock dialog offers **Forgot passphrase?** (switches to Recovery Key) and **Don't have your recovery key? Reset Vault…** at the bottom. ([b8241b9])
 
 ### Security
 - **Passphrase change without current passphrase**: Requires a prior recovery-key unlock authorization flag; cleared on lock, normal unlock, session unlock, and after a successful change. ([b8241b9])
-- **Reset Vault cleanup**: Propagates remember-device and sync-cache cleanup failures instead of reporting a successful uninitialized status after partial cleanup. Strips host `authRef`s before deleting vault files to avoid dangling links after a failed wipe. ([b8241b9])
+- **Reset Vault cleanup**: Propagates remember-device and sync-cache cleanup failures instead of reporting a successful uninitialized status after partial cleanup. Strips host `authRef`s before deleting vault files (vault mutex then connections lock, held across strip and wipe) to avoid dangling links after a failed wipe. ([b8241b9], [c54859c], [9fc091c])
 
 ### Fixed
 - **Forget Device hang**: Dropped the vault read transaction before clearing the session-cache verifier write so Forget Device no longer stalls under redb. ([b8241b9])
 - **Labeled inputs**: `Input` / `SecretField` associate labels with controls via stable `id` / `htmlFor` (including when no explicit `id` is passed). ([b8241b9])
 - **Create Vault after reset**: Confirm passphrase always shows when creating a vault; submit validation no longer depends on a stale Recovery Key mode. ([b8241b9])
+- **Reset leftover vault files**: Deletes leftover `vault.redb*` and export temp/backup artifacts during Reset Vault, and fails the reset if file metadata cannot be read. ([c54859c])
+- **Queued connect cancel**: A cancel while another connect is queued is kept until the queued attempt starts; vault-locked retries are scheduled after the serialized connect op. ([c54859c], [9fc091c])
+- **Late connect cancel**: Cancelling after SSH is up suspends terminal PTYs and restores `pendingRestore` the same way disconnect does. ([9fc091c])
 
 ## [2.25.1] - 2026-08-21
 
@@ -1228,7 +1233,9 @@ All notable changes to Zync are documented in this file. The format is based on 
 [b915006]: https://github.com/zync-sh/zync/commit/b915006
 [e6e9e3f]: https://github.com/zync-sh/zync/commit/e6e9e3f
 [d15f536]: https://github.com/zync-sh/zync/commit/d15f536
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.0...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.2...HEAD
+[2.25.2]: https://github.com/zync-sh/zync/compare/v2.25.1...v2.25.2
+[2.25.1]: https://github.com/zync-sh/zync/compare/v2.25.0...v2.25.1
 [2.25.0]: https://github.com/zync-sh/zync/compare/v2.24.0...v2.25.0
 [2.24.0]: https://github.com/zync-sh/zync/compare/v2.23.1...v2.24.0
 [2.23.1]: https://github.com/zync-sh/zync/compare/v2.23.0...v2.23.1
@@ -1297,3 +1304,5 @@ All notable changes to Zync are documented in this file. The format is based on 
 [7b8e5a6]: https://github.com/zync-sh/zync/commit/7b8e5a6
 [e3f1732]: https://github.com/zync-sh/zync/commit/e3f1732
 [b8241b9]: https://github.com/zync-sh/zync/commit/b8241b9
+[c54859c]: https://github.com/zync-sh/zync/commit/c54859c
+[9fc091c]: https://github.com/zync-sh/zync/commit/9fc091c
