@@ -11,7 +11,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Google Encryption Setup & Link Wizards**: Guided discovery, backup linking, and collection encryption configuration wizards (`CreateGoogleCollectionForm`, `LinkGoogleBackupForm`, `GoogleEncryptionScanPanel`). Scans Drive for existing encrypted backups and lets you choose which one to link when more than one is found. ([c625061])
 - **Global Connections Restore Orchestration**: Global restore job store (`useConnectionsRestoreJobStore`) and app-level mounted preview modal (`GlobalConnectionsRestorePreviewModal`) ensuring restore previews persist and operate cleanly across tab switches and tab closures. ([c625061], [6ed8f66])
 - **On-demand Connect-time Vault Credential Pulling**: Automatically fetches referenced vault credentials on connect when host definitions are restored without bundled secrets. ([c625061], [6ed8f66])
-- **Arch Linux pacman repository**: Release CI builds `zync-*-x86_64.pkg.tar.zst` and publishes to [`zync-sh/zync-arch`](https://github.com/zync-sh/zync-arch) (GitHub Pages at `arch.zync.thesudoer.in`) for `pacman -Syu zync`.
+- **Arch Linux pacman repository**: Release CI builds `zync-*-x86_64.pkg.tar.zst`, GPG-signs packages/DB with the APT packaging key, and publishes to [`zync-sh/zync-arch`](https://github.com/zync-sh/zync-arch) (GitHub Pages at `arch.zync.thesudoer.in`) for `pacman -Syu zync` with `SigLevel = Required TrustedOnly`.
 - **AppImage Wayland fix in CI**: Post-process release AppImages to strip bundled `libwayland-*` libraries, re-sign, and refresh `latest.json` so newer Mesa/Wayland hosts (Arch/Manjaro) avoid `EGL_BAD_PARAMETER`.
 
 ### Fixed

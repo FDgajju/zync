@@ -10,23 +10,36 @@
 ## What CI produces
 
 1. In **`zync` release**: `zync-<version>-1-x86_64.pkg.tar.zst` (from the `.deb`)
-2. Job **`pacman-repo`** pushes into **`zync-arch`** branch **`gh-pages`**:
-   - `CNAME` → `arch.zync.thesudoer.in`
-   - `x86_64/*.pkg.tar.zst`
-   - `x86_64/zync.db*` / `zync.files*`
+2. Job **`pacman-repo`**:
+   - Imports `GPG_PRIVATE_KEY` (same identity as APT: `releases@zync.thesudoer.in`)
+   - Detach-signs packages + DB
+   - Writes `key.gpg` for users
+   - Pushes to **`zync-arch`** `gh-pages`
 
-Public URL:
+Layout:
 
 ```text
-https://arch.zync.thesudoer.in/x86_64/
+CNAME
+key.gpg
+x86_64/
+  zync-<ver>-1-x86_64.pkg.tar.zst
+  zync-<ver>-1-x86_64.pkg.tar.zst.sig
+  zync.db.tar.zst
+  zync.db.tar.zst.sig
+  …
 ```
 
 ## User install
 
 ```bash
+curl -fsSL https://arch.zync.thesudoer.in/key.gpg -o /tmp/zync.gpg
+sudo pacman-key --add /tmp/zync.gpg
+FPR="$(gpg --show-keys --with-colons /tmp/zync.gpg 2>/dev/null | awk -F: '/^fpr:/ { print $10; exit }')"
+sudo pacman-key --lsign-key "$FPR"
+
 sudo tee /etc/pacman.d/zync.conf >/dev/null <<'EOF'
 [zync]
-SigLevel = Optional TrustAll
+SigLevel = Required TrustedOnly
 Server = https://arch.zync.thesudoer.in/$arch
 EOF
 
@@ -36,20 +49,14 @@ grep -q 'pacman.d/zync.conf' /etc/pacman.conf || \
 sudo pacman -Syu zync
 ```
 
-**Upgrade:** `sudo pacman -Syu`  
-**Remove:** `sudo pacman -R zync`
-
-Updates go through pacman, not the in-app Tauri updater.
-
 ## Operator checklist
 
-1. Bootstrap `gh-pages` once — see [`zync-arch/docs/PAGES.md`](https://github.com/zync-sh/zync-arch/blob/main/docs/PAGES.md)
-2. Pages custom domain: `arch.zync.thesudoer.in`
-3. DNS: `CNAME arch` → `gajendraxdev.github.io`
-4. `RELEASE_TOKEN` in `zync` must be able to **push** to `zync-arch`
-5. Package uses system WebKit (`webkit2gtk-4.1`) — avoids AppImage Wayland/Mesa conflicts
-6. Repo signing is currently `SigLevel = Optional TrustAll` (can add GPG later)
+1. Bootstrap `gh-pages` — [`zync-arch/docs/PAGES.md`](https://github.com/zync-sh/zync-arch/blob/main/docs/PAGES.md)
+2. Pages domain: `arch.zync.thesudoer.in`
+3. Secrets on `zync`: `RELEASE_TOKEN` (push to zync-arch), `GPG_PRIVATE_KEY` (signing)
+4. Package uses system WebKit (`webkit2gtk-4.1`)
 
-## PKGBUILD template
+## Scripts
 
-`packaging/arch/PKGBUILD.in` is filled by `scripts/ci/build-arch-pkg.sh` during release.
+- `scripts/ci/build-arch-pkg.sh` — build `.pkg.tar.zst` from `.deb`
+- `scripts/ci/publish-arch-repo.sh` — sign + `repo-add` + `key.gpg`

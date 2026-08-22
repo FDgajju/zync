@@ -272,8 +272,8 @@ jobs:
           git commit -m "APT repo update: ${{ needs.create-release.outputs.tag }}"
           git push
 
-  # Publishes to public repo zync-sh/zync-arch (GitHub Pages + arch.zync.thesudoer.in).
-  # Requires secrets.RELEASE_TOKEN with write access to zync-arch (GITHUB_TOKEN cannot push cross-repo).
+  # Publishes signed packages to zync-sh/zync-arch (Pages + arch.zync.thesudoer.in).
+  # Requires RELEASE_TOKEN (push to zync-arch) and GPG_PRIVATE_KEY (same APT packaging key).
   pacman-repo:
     name: Publish pacman repo (zync-arch)
     needs: [create-release, arch-pkg]
@@ -281,6 +281,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout zync (CI scripts)
+        uses: actions/checkout@v4
+
       - name: Download Arch package from release
         env:
           GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
@@ -301,31 +304,25 @@ jobs:
           token: ${{ secrets.RELEASE_TOKEN }}
           path: zync-arch-pages
 
-      - name: Rebuild x86_64 pacman repo
+      - name: Import packaging GPG key
         run: |
           set -euo pipefail
-          cd zync-arch-pages
-          mkdir -p x86_64
-          echo 'arch.zync.thesudoer.in' > CNAME
-          rm -f x86_64/zync-*.pkg.tar.zst x86_64/zync.db* x86_64/zync.files* x86_64/.gitkeep
-          cp /tmp/archpkgs/*.pkg.tar.zst x86_64/
-          docker run --rm \
-            -v "$PWD/x86_64:/repo" \
-            -w /repo \
-            archlinux:latest \
-            bash -lc '
-              set -euo pipefail
-              pacman -Syu --noconfirm
-              repo-add -n zync.db.tar.zst *.pkg.tar.zst
-              ls -la
-            '
+          sudo apt-get update
+          sudo apt-get install -y gnupg
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          gpg --list-secret-keys --keyid-format LONG
+
+      - name: Sign packages and rebuild pacman DB
+        run: |
+          chmod +x scripts/ci/publish-arch-repo.sh
+          scripts/ci/publish-arch-repo.sh "$PWD/zync-arch-pages" /tmp/archpkgs
 
       - name: Commit and push to zync-arch
         working-directory: zync-arch-pages
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add CNAME x86_64
+          git add CNAME key.gpg x86_64
           if git diff --staged --quiet; then
             echo "No pacman repo changes"
           else

@@ -186,13 +186,19 @@ sudo apt update && sudo apt install zync
 Uses system WebKit (same idea as the `.deb`). Updates with `pacman -Syu` — not the in-app AppImage updater.
 
 ```bash
+# 1. Import and locally sign the Zync packaging key (same key as APT)
+curl -fsSL https://arch.zync.thesudoer.in/key.gpg -o /tmp/zync.gpg
+sudo pacman-key --add /tmp/zync.gpg
+FPR="$(gpg --show-keys --with-colons /tmp/zync.gpg 2>/dev/null | awk -F: '/^fpr:/ { print $10; exit }')"
+sudo pacman-key --lsign-key "$FPR"
+
+# 2. Add the repo
 sudo tee /etc/pacman.d/zync.conf >/dev/null <<'EOF'
 [zync]
-SigLevel = Optional TrustAll
+SigLevel = Required TrustedOnly
 Server = https://arch.zync.thesudoer.in/$arch
 EOF
 
-# Include the drop-in from pacman.conf (once):
 grep -q 'pacman.d/zync.conf' /etc/pacman.conf || \
   echo 'Include = /etc/pacman.d/zync.conf' | sudo tee -a /etc/pacman.conf
 
