@@ -181,7 +181,7 @@ sudo apt update && sudo apt install zync
 
 **Minimal distros:** if Zync fails to start, install WebKit/GTK deps: `sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0`.
 
-#### Arch / Manjaro (pacman repository)
+#### Arch (pacman repository)
 
 Uses system WebKit (same idea as the `.deb`). Updates with `pacman -Syu` — not the in-app AppImage updater.
 

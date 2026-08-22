@@ -12,7 +12,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Global Connections Restore Orchestration**: Global restore job store (`useConnectionsRestoreJobStore`) and app-level mounted preview modal (`GlobalConnectionsRestorePreviewModal`) ensuring restore previews persist and operate cleanly across tab switches and tab closures. ([c625061], [6ed8f66])
 - **On-demand Connect-time Vault Credential Pulling**: Automatically fetches referenced vault credentials on connect when host definitions are restored without bundled secrets. ([c625061], [6ed8f66])
 - **Arch Linux pacman repository**: Release CI builds `zync-*-x86_64.pkg.tar.zst`, GPG-signs packages/DB with the APT packaging key, and publishes to [`zync-sh/zync-arch`](https://github.com/zync-sh/zync-arch) (GitHub Pages at `arch.zync.thesudoer.in`) for `pacman -Syu zync` with `SigLevel = Required TrustedOnly`.
-- **AppImage Wayland fix in CI**: Post-process release AppImages to strip bundled `libwayland-*` libraries, re-sign, and refresh `latest.json` so newer Mesa/Wayland hosts (Arch/Manjaro) avoid `EGL_BAD_PARAMETER`.
+- **AppImage Wayland fix in CI**: Post-process release AppImages to strip bundled `libwayland-*` libraries, re-sign, and refresh `latest.json` so newer Mesa/Wayland hosts (Arch) avoid `EGL_BAD_PARAMETER`.
 
 ### Fixed
 - **Modal Overlay Mouse Click Interception**: Fixed mouse clicks getting blocked across the application after vault creation or modal close by placing portals inside `AnimatePresence`, disabling pointer events immediately on exit, and preventing orphaned backdrop overlays. ([c625061])
