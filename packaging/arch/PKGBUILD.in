@@ -1,0 +1,43 @@
+# Maintainer: Zync Releases <releases@zync.thesudoer.in>
+# Official binary package built from the Debian release artifact (system WebKit).
+pkgname=zync
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="SSH workspace with terminal, files, vault, and tunnels"
+arch=('x86_64')
+url="https://github.com/zync-sh/zync"
+license=('MIT')
+depends=(
+  'webkit2gtk-4.1'
+  'gtk3'
+  'libappindicator-gtk3'
+  'librsvg'
+  'openssl'
+)
+provides=('zync')
+conflicts=('zync-bin' 'zync-git')
+options=('!strip' '!debug')
+source=("@DEB_URL@")
+sha256sums=('SKIP')
+
+package() {
+  cd "$srcdir"
+  local deb
+  deb="$(find . -maxdepth 1 -name 'zync_*.deb' -print -quit)"
+  [[ -n "$deb" ]] || { echo "zync .deb not found in srcdir" >&2; exit 1; }
+
+  mkdir -p "$srcdir/deb-extract"
+  bsdtar -xf "$deb" -C "$srcdir/deb-extract"
+  local data
+  data="$(find "$srcdir/deb-extract" -maxdepth 1 -name 'data.tar.*' -print -quit)"
+  [[ -n "$data" ]] || { echo "data.tar.* missing from deb" >&2; exit 1; }
+
+  mkdir -p "$pkgdir"
+  bsdtar -xf "$data" -C "$pkgdir"
+
+  # Arch desktop files expect /usr/share; Tauri deb already uses that layout.
+  if [[ -f "$pkgdir/usr/share/applications/zync.desktop" ]]; then
+    # Ensure Exec= uses the packaged binary path.
+    sed -i 's|^Exec=.*|Exec=/usr/bin/zync|' "$pkgdir/usr/share/applications/zync.desktop" || true
+  fi
+}

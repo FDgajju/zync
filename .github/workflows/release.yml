@@ -112,6 +112,97 @@ jobs:
           releaseDraft: true
           prerelease: false
 
+  # AppImage from ubuntu-22.04 bundles libwayland-* which breaks newer Mesa
+  # (Arch/Manjaro Wayland → EGL_BAD_PARAMETER). Strip, repack, re-sign, refresh latest.json.
+  fix-appimage:
+    name: Fix AppImage Wayland libs
+    needs: [create-release, release]
+    # Still run if a later matrix leg failed — Linux artifacts are usually already uploaded.
+    if: ${{ always() && needs.create-release.result == 'success' && needs.release.result != 'cancelled' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: meta
+        run: |
+          TAG="${{ needs.create-release.outputs.tag }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download AppImage + latest.json
+        env:
+          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/appimage-fix
+          cd /tmp/appimage-fix
+          gh release download "${{ steps.meta.outputs.tag }}" \
+            -p "zync_${{ steps.meta.outputs.version }}_amd64.AppImage" \
+            -p "latest.json" \
+            -R "${{ github.repository }}"
+
+      - name: Strip bundled Wayland libs and repack
+        run: |
+          chmod +x scripts/ci/fix-appimage-wayland.sh
+          scripts/ci/fix-appimage-wayland.sh \
+            "/tmp/appimage-fix/zync_${{ steps.meta.outputs.version }}_amd64.AppImage" \
+            "/tmp/appimage-fix/zync_${{ steps.meta.outputs.version }}_amd64.AppImage"
+
+      - name: Re-sign AppImage for updater
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          npx --yes @tauri-apps/cli@2 signer sign \
+            "/tmp/appimage-fix/zync_${{ steps.meta.outputs.version }}_amd64.AppImage"
+
+      - name: Patch latest.json AppImage signatures
+        run: |
+          chmod +x scripts/ci/update-latest-json-appimage-sig.sh
+          scripts/ci/update-latest-json-appimage-sig.sh \
+            /tmp/appimage-fix/latest.json \
+            "/tmp/appimage-fix/zync_${{ steps.meta.outputs.version }}_amd64.AppImage.sig"
+
+      - name: Upload fixed AppImage assets
+        env:
+          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
+        run: |
+          cd /tmp/appimage-fix
+          gh release upload "${{ steps.meta.outputs.tag }}" \
+            "zync_${{ steps.meta.outputs.version }}_amd64.AppImage" \
+            "zync_${{ steps.meta.outputs.version }}_amd64.AppImage.sig" \
+            latest.json \
+            -R "${{ github.repository }}" \
+            --clobber
+
+  arch-pkg:
+    name: Build Arch .pkg.tar.zst
+    needs: [create-release, release]
+    if: ${{ always() && needs.create-release.result == 'success' && needs.release.result != 'cancelled' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build package from release .deb
+        run: |
+          chmod +x scripts/ci/build-arch-pkg.sh
+          scripts/ci/build-arch-pkg.sh "${{ needs.create-release.outputs.tag }}" "$PWD/arch-dist"
+
+      - name: Upload Arch package to release
+        env:
+          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.create-release.outputs.tag }}" \
+            arch-dist/*.pkg.tar.zst \
+            -R "${{ github.repository }}" \
+            --clobber
+
   apt-repo:
     needs: [create-release, release]
     runs-on: ubuntu-22.04
@@ -133,9 +224,11 @@ jobs:
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
 
-      - name: Get version from tag
+      - name: Resolve version
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        run: |
+          TAG="${{ needs.create-release.outputs.tag }}"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Download .deb from release
         env:
@@ -178,3 +271,64 @@ jobs:
           git add .
           git commit -m "APT repo update: ${{ needs.create-release.outputs.tag }}"
           git push
+
+  # Publishes to public repo zync-sh/zync-arch (GitHub Pages + arch.zync.thesudoer.in).
+  # Requires secrets.RELEASE_TOKEN with write access to zync-arch (GITHUB_TOKEN cannot push cross-repo).
+  pacman-repo:
+    name: Publish pacman repo (zync-arch)
+    needs: [create-release, arch-pkg]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Download Arch package from release
+        env:
+          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/archpkgs
+          gh release download "${{ needs.create-release.outputs.tag }}" \
+            -p "*.pkg.tar.zst" \
+            -D /tmp/archpkgs \
+            -R "${{ github.repository }}"
+          ls -la /tmp/archpkgs
+
+      - name: Checkout zync-arch gh-pages
+        uses: actions/checkout@v4
+        with:
+          repository: zync-sh/zync-arch
+          ref: gh-pages
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+          path: zync-arch-pages
+
+      - name: Rebuild x86_64 pacman repo
+        run: |
+          set -euo pipefail
+          cd zync-arch-pages
+          mkdir -p x86_64
+          echo 'arch.zync.thesudoer.in' > CNAME
+          rm -f x86_64/zync-*.pkg.tar.zst x86_64/zync.db* x86_64/zync.files* x86_64/.gitkeep
+          cp /tmp/archpkgs/*.pkg.tar.zst x86_64/
+          docker run --rm \
+            -v "$PWD/x86_64:/repo" \
+            -w /repo \
+            archlinux:latest \
+            bash -lc '
+              set -euo pipefail
+              pacman -Syu --noconfirm
+              repo-add -n zync.db.tar.zst *.pkg.tar.zst
+              ls -la
+            '
+
+      - name: Commit and push to zync-arch
+        working-directory: zync-arch-pages
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add CNAME x86_64
+          if git diff --staged --quiet; then
+            echo "No pacman repo changes"
+          else
+            git commit -m "Pacman repo update: ${{ needs.create-release.outputs.tag }}"
+            git push
+          fi

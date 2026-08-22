@@ -134,7 +134,7 @@ Download the latest build from the [Releases page](https://github.com/zync-sh/zy
 
 | Platform | Format |
 |----------|--------|
-| Linux | `.deb`, `.rpm`, `.AppImage`, `.tar.gz` |
+| Linux | `.deb`, `.rpm`, `.AppImage`, `.pkg.tar.zst` (Arch), `.tar.gz` |
 | Windows | `.exe` |
 | macOS | `.dmg` |
 
@@ -180,6 +180,28 @@ sudo apt update && sudo apt install zync
 **Manual .deb:** `sudo dpkg -i zync_*.deb` then `sudo apt-get install -f` if dependencies are missing.
 
 **Minimal distros:** if Zync fails to start, install WebKit/GTK deps: `sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0`.
+
+#### Arch / Manjaro (pacman repository)
+
+Uses system WebKit (same idea as the `.deb`). Updates with `pacman -Syu` — not the in-app AppImage updater.
+
+```bash
+sudo tee /etc/pacman.d/zync.conf >/dev/null <<'EOF'
+[zync]
+SigLevel = Optional TrustAll
+Server = https://arch.zync.thesudoer.in/$arch
+EOF
+
+# Include the drop-in from pacman.conf (once):
+grep -q 'pacman.d/zync.conf' /etc/pacman.conf || \
+  echo 'Include = /etc/pacman.d/zync.conf' | sudo tee -a /etc/pacman.conf
+
+sudo pacman -Syu zync
+```
+
+**Manual package:** download `zync-*-x86_64.pkg.tar.zst` from [Releases](https://github.com/zync-sh/zync/releases) and run `sudo pacman -U ./zync-*-x86_64.pkg.tar.zst` (no auto-update unless the repo above is enabled).
+
+Operator details: [`packaging/arch/README.md`](packaging/arch/README.md).
 
 ### Windows & macOS
 

@@ -4,13 +4,15 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
-## [2.25.3] - 2026-08-22
+## [2.25.4] - 2026-08-22
 
 ### Added
 - **Google Drive Collection Crypto & Recovery Wrap**: Modularized sync collection crypto architecture into focused modules (`keyring`, `lifecycle`, `manifest`, `wrap`). Validates 24-byte nonces and recovery key wrap slots atomically before updating manifest state. ([c625061])
 - **Google Encryption Setup & Link Wizards**: Guided discovery, backup linking, and collection encryption configuration wizards (`CreateGoogleCollectionForm`, `LinkGoogleBackupForm`, `GoogleEncryptionScanPanel`). Scans Drive for existing encrypted backups and lets you choose which one to link when more than one is found. ([c625061])
 - **Global Connections Restore Orchestration**: Global restore job store (`useConnectionsRestoreJobStore`) and app-level mounted preview modal (`GlobalConnectionsRestorePreviewModal`) ensuring restore previews persist and operate cleanly across tab switches and tab closures. ([c625061], [6ed8f66])
 - **On-demand Connect-time Vault Credential Pulling**: Automatically fetches referenced vault credentials on connect when host definitions are restored without bundled secrets. ([c625061], [6ed8f66])
+- **Arch Linux pacman repository**: Release CI builds `zync-*-x86_64.pkg.tar.zst` and publishes to [`zync-sh/zync-arch`](https://github.com/zync-sh/zync-arch) (GitHub Pages at `arch.zync.thesudoer.in`) for `pacman -Syu zync`.
+- **AppImage Wayland fix in CI**: Post-process release AppImages to strip bundled `libwayland-*` libraries, re-sign, and refresh `latest.json` so newer Mesa/Wayland hosts (Arch/Manjaro) avoid `EGL_BAD_PARAMETER`.
 
 ### Fixed
 - **Modal Overlay Mouse Click Interception**: Fixed mouse clicks getting blocked across the application after vault creation or modal close by placing portals inside `AnimatePresence`, disabling pointer events immediately on exit, and preventing orphaned backdrop overlays. ([c625061])
@@ -19,6 +21,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Recovery-key regenerate upload failures**: Regenerating the Google encryption recovery key no longer returns a new key when the Drive wrap upload fails; the previous local recovery slot stays intact. ([db8442c])
 - **Recovery-key regenerate save rollback**: If Drive upload succeeds but local manifest save fails, Zync restores the previous Drive wrap so the old recovery key keeps working and the new key is never shown. ([7027a17])
 - **Vault unlock retry during host save/test**: Nested unlock retries await completion and skip a second preflight unlock so saving stays in progress until the retry finishes. ([db8442c])
+- **Linux AppImage EGL on Wayland**: Bundled AppImage `libwayland-*` copies no longer override the host graphics stack on modern Mesa (see [#39](https://github.com/zync-sh/zync/issues/39)).
 
 ## [2.25.2] - 2026-08-22
 
@@ -1252,7 +1255,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 [6ed8f66]: https://github.com/zync-sh/zync/commit/6ed8f66
 [db8442c]: https://github.com/zync-sh/zync/commit/db8442c
 [7027a17]: https://github.com/zync-sh/zync/commit/7027a17
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.3...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.4...HEAD
+[2.25.4]: https://github.com/zync-sh/zync/compare/v2.25.2...v2.25.4
 [2.25.3]: https://github.com/zync-sh/zync/compare/v2.25.2...v2.25.3
 [2.25.2]: https://github.com/zync-sh/zync/compare/v2.25.1...v2.25.2
 [2.25.1]: https://github.com/zync-sh/zync/compare/v2.25.0...v2.25.1
