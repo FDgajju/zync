@@ -3661,11 +3661,36 @@ pub async fn sync_collection_regenerate_recovery_key(
     let kind = parse_provider(&provider)?;
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let provider_data_dir = crate::commands::get_data_dir(&app);
-    // In-memory only until Drive upload succeeds — prior local recovery slot stays intact on failure.
+    // Keep the pre-rotation manifest so we can restore Drive if local save fails after upload.
+    let previous_manifest = load_manifest(&provider_data_dir, kind)
+        .map_err(|e| sync_error_to_string(&e))?
+        .ok_or_else(|| {
+            "[sync_collection_not_configured] Sync collection is not configured. Set up sync key first."
+                .to_string()
+        })?;
+    // In-memory only until Drive upload + local save succeed — prior local slot stays intact on failure.
     let outcome =
         regenerate_recovery_key(&provider_data_dir, kind).map_err(|e| sync_error_to_string(&e))?;
     upload_remote_collection_key_wrap(provider_impl.as_ref(), &app, &outcome.manifest).await?;
-    save_manifest(&provider_data_dir, &outcome.manifest).map_err(|e| sync_error_to_string(&e))?;
+    if let Err(error) = save_manifest(&provider_data_dir, &outcome.manifest) {
+        let save_error = sync_error_to_string(&error);
+        // Upload already replaced the remote wrap; put the previous one back so the old
+        // recovery key keeps working. Do not return the new key.
+        if let Err(rollback_error) =
+            upload_remote_collection_key_wrap(provider_impl.as_ref(), &app, &previous_manifest)
+                .await
+        {
+            eprintln!(
+                "[sync] Recovery-key rotation: local save failed ({save_error}) and remote rollback failed ({rollback_error})"
+            );
+            return Err(format!(
+                "[sync_collection_recovery_rotation_inconsistent] Local recovery key could not be saved ({save_error}), and restoring the previous Drive wrap also failed ({rollback_error}). Retry regenerate while online; keep your previous recovery key until rotation succeeds."
+            ));
+        }
+        return Err(format!(
+            "[sync_collection_recovery_rotation_save_failed] Local recovery key could not be saved after Drive upload ({save_error}). The previous Drive wrap was restored; your old recovery key still works. Retry regenerate."
+        ));
+    }
     let status = collection_status_from_manifest(kind, Some(outcome.manifest));
     Ok(SyncCollectionSetupResult {
         status,
