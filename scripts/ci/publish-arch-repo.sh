@@ -61,9 +61,18 @@ echo "==> Detach-signing pacman database"
         --detach-sign --local-user "$SIGN_UID" "$db"
     fi
   done
-  # pacman fetches repo.db.sig (not only repo.db.tar.zst.sig)
-  [[ -f zync.db.tar.zst.sig ]] && cp -f zync.db.tar.zst.sig zync.db.sig
-  [[ -f zync.files.tar.zst.sig ]] && cp -f zync.files.tar.zst.sig zync.files.sig
+  # GitHub Pages serves symlinks as text, which breaks pacman signature checks.
+  # Replace repo-add symlinks with real copies of the archives + matching sigs.
+  if [[ -f zync.db.tar.zst ]]; then
+    rm -f zync.db
+    cp -f zync.db.tar.zst zync.db
+    cp -f zync.db.tar.zst.sig zync.db.sig
+  fi
+  if [[ -f zync.files.tar.zst ]]; then
+    rm -f zync.files
+    cp -f zync.files.tar.zst zync.files
+    cp -f zync.files.tar.zst.sig zync.files.sig
+  fi
   ls -la
 )
 
