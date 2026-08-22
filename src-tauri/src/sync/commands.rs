@@ -3661,16 +3661,11 @@ pub async fn sync_collection_regenerate_recovery_key(
     let kind = parse_provider(&provider)?;
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let provider_data_dir = crate::commands::get_data_dir(&app);
+    // In-memory only until Drive upload succeeds — prior local recovery slot stays intact on failure.
     let outcome =
         regenerate_recovery_key(&provider_data_dir, kind).map_err(|e| sync_error_to_string(&e))?;
-    // Match setup: local regen succeeds even if Drive upload fails; still return the key.
-    if let Err(error) =
-        upload_remote_collection_key_wrap(provider_impl.as_ref(), &app, &outcome.manifest).await
-    {
-        eprintln!(
-            "[sync] Failed to upload regenerated recovery key wrap to provider: {error}"
-        );
-    }
+    upload_remote_collection_key_wrap(provider_impl.as_ref(), &app, &outcome.manifest).await?;
+    save_manifest(&provider_data_dir, &outcome.manifest).map_err(|e| sync_error_to_string(&e))?;
     let status = collection_status_from_manifest(kind, Some(outcome.manifest));
     Ok(SyncCollectionSetupResult {
         status,

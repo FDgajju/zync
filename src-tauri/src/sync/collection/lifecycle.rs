@@ -231,8 +231,9 @@ pub fn regenerate_recovery_key(
     manifest.has_recovery_key = true;
     manifest.updated_at = now_secs();
 
-    save_manifest(data_dir, &manifest)?;
-
+    // Do not save here — caller must upload the remote wrap first, then persist.
+    // That way a failed Drive upload leaves the previous local recovery slot intact.
+    let _ = data_dir;
     Ok(SyncCollectionSetupOutcome {
         manifest,
         recovery_key: Some(recovery_key),

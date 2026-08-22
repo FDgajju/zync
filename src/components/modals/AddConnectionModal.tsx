@@ -400,7 +400,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
         try {
             if (!validation.ok || !canSave) return null;
 
-            if (needsVaultUnlock || vaultNeedsMaterialize) {
+            if (!retryAfterUnlock && (needsVaultUnlock || vaultNeedsMaterialize)) {
                 const unlocked = await requestVaultUnlock();
                 if (!unlocked) {
                     notifyVaultBlocked();
@@ -529,7 +529,8 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             const message = error instanceof Error ? error.message : String(error);
             if (!retryAfterUnlock && isVaultAccessError(message)) {
                 const unlocked = await requestVaultUnlock();
-                if (unlocked) return performSave(true);
+                // Await so outer finally keeps isSaving true until the nested retry finishes.
+                if (unlocked) return await performSave(true);
             }
             throw error;
         } finally {
@@ -597,7 +598,8 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
         let ephemeralTestPath: string | null = null;
         try {
             // Existing vault credential still needs unlock; paste/import test uses ephemeral file (no vault write).
-            if (authMethod === 'vault' && vaultInputMode === 'existing') {
+            // Skip on retryAfterUnlock — requestUnlock already refreshed vault state.
+            if (!retryAfterUnlock && authMethod === 'vault' && vaultInputMode === 'existing') {
                 const unlocked = await requestVaultUnlock();
                 if (!unlocked) {
                     notifyVaultBlocked();
@@ -646,7 +648,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             if (!retryAfterUnlock && isVaultAccessError(message)) {
                 const unlocked = await requestVaultUnlock();
                 if (unlocked) {
-                    return handleTestConnection(true);
+                    return await handleTestConnection(true);
                 }
                 setTestStatus('idle');
                 return;
