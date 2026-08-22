@@ -61,6 +61,9 @@ echo "==> Detach-signing pacman database"
         --detach-sign --local-user "$SIGN_UID" "$db"
     fi
   done
+  # pacman fetches repo.db.sig (not only repo.db.tar.zst.sig)
+  [[ -f zync.db.tar.zst.sig ]] && cp -f zync.db.tar.zst.sig zync.db.sig
+  [[ -f zync.files.tar.zst.sig ]] && cp -f zync.files.tar.zst.sig zync.files.sig
   ls -la
 )
 
