@@ -4,7 +4,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
-## [2.25.6] - 2026-08-22
+## [2.25.7] - 2026-08-22
 
 ### Added
 - **Google Drive Collection Crypto & Recovery Wrap**: Modularized sync collection crypto architecture into focused modules (`keyring`, `lifecycle`, `manifest`, `wrap`). Validates 24-byte nonces and recovery key wrap slots atomically before updating manifest state. ([c625061])
@@ -23,15 +23,19 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Vault unlock retry during host save/test**: Nested unlock retries await completion and skip a second preflight unlock so saving stays in progress until the retry finishes. ([db8442c])
 - **Linux AppImage EGL on Wayland**: Bundled AppImage `libwayland-*` copies no longer override the host graphics stack on modern Mesa (see [#39](https://github.com/zync-sh/zync/issues/39)).
 - **Arch package CI deps**: `makepkg` uses `--nodeps` when repacking the release `.deb` so the container does not need WebKit/GTK installed ([2cb5071]).
-- **Arch package CI draft assets**: download the release `.deb` with authenticated `gh` before `makepkg` so draft GitHub release assets do not 404 ([0da67e4]).
+- **Arch package CI draft assets**: download the release `.deb` with authenticated `gh` (same pattern as apt-repo) before `makepkg` so draft GitHub release assets do not 404 ([0da67e4], [93d8609]).
+
+## [2.25.6] - 2026-08-22
+
+Partial draft: desktop builds / AppImage / APT likely published; Arch `.pkg` failed with `gh release not found` (missing `GH_TOKEN` on download). Prefer **2.25.7**.
 
 ## [2.25.5] - 2026-08-22
 
-Partial draft: desktop builds / AppImage / APT `2.25.5` published; Arch `.pkg` failed downloading draft `.deb` anonymously. Prefer **2.25.6**.
+Partial draft: desktop builds / AppImage / APT `2.25.5` published; Arch `.pkg` failed downloading draft `.deb` anonymously. Prefer **2.25.7**.
 
 ## [2.25.4] - 2026-08-22
 
-Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` published; Arch `.pkg` job failed on makepkg deps. Prefer **2.25.6**.
+Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` published; Arch `.pkg` job failed on makepkg deps. Prefer **2.25.7**.
 
 ## [2.25.2] - 2026-08-22
 
@@ -1265,7 +1269,8 @@ Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` publishe
 [6ed8f66]: https://github.com/zync-sh/zync/commit/6ed8f66
 [db8442c]: https://github.com/zync-sh/zync/commit/db8442c
 [7027a17]: https://github.com/zync-sh/zync/commit/7027a17
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.6...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.7...HEAD
+[2.25.7]: https://github.com/zync-sh/zync/compare/v2.25.6...v2.25.7
 [2.25.6]: https://github.com/zync-sh/zync/compare/v2.25.5...v2.25.6
 [2.25.5]: https://github.com/zync-sh/zync/compare/v2.25.4...v2.25.5
 [2.25.4]: https://github.com/zync-sh/zync/compare/v2.25.2...v2.25.4
