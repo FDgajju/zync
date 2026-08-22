@@ -4,16 +4,21 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.25.3] - 2026-08-22
+
 ### Added
-- **Google Drive Collection Crypto & Recovery Wrap**: Modularized sync collection crypto architecture into focused modules (`keyring`, `lifecycle`, `manifest`, `wrap`). Validates 24-byte nonces and recovery key wrap slots atomically before updating manifest state.
-- **Google Encryption Setup & Link Wizards**: Guided discovery, backup linking, and collection encryption configuration wizards (`CreateGoogleCollectionForm`, `LinkGoogleBackupForm`, `GoogleEncryptionScanPanel`).
-- **Global Connections Restore Orchestration**: Global restore job store (`useConnectionsRestoreJobStore`) and app-level mounted preview modal (`GlobalConnectionsRestorePreviewModal`) ensuring restore previews persist and operate cleanly across tab switches and tab closures.
-- **On-demand Connect-time Vault Credential Pulling**: Automatically fetches referenced vault credentials on connect when host definitions are restored without bundled secrets.
+- **Google Drive Collection Crypto & Recovery Wrap**: Modularized sync collection crypto architecture into focused modules (`keyring`, `lifecycle`, `manifest`, `wrap`). Validates 24-byte nonces and recovery key wrap slots atomically before updating manifest state. ([c625061])
+- **Google Encryption Setup & Link Wizards**: Guided discovery, backup linking, and collection encryption configuration wizards (`CreateGoogleCollectionForm`, `LinkGoogleBackupForm`, `GoogleEncryptionScanPanel`). Scans Drive for existing encrypted backups and lets you choose which one to link when more than one is found. ([c625061])
+- **Global Connections Restore Orchestration**: Global restore job store (`useConnectionsRestoreJobStore`) and app-level mounted preview modal (`GlobalConnectionsRestorePreviewModal`) ensuring restore previews persist and operate cleanly across tab switches and tab closures. ([c625061], [6ed8f66])
+- **On-demand Connect-time Vault Credential Pulling**: Automatically fetches referenced vault credentials on connect when host definitions are restored without bundled secrets. ([c625061], [6ed8f66])
 
 ### Fixed
-- **Modal Overlay Mouse Click Interception**: Fixed mouse clicks getting blocked across the application after vault creation or modal close by placing portals inside `AnimatePresence`, disabling pointer events immediately on exit, and preventing orphaned backdrop overlays.
-- **Global Confirm Dialog Cleanup**: Kept `Dialog.Root` permanently mounted in `GlobalConfirmDialog` to allow Radix UI to cleanly tear down overlays from `#modal-portal-root` on dismiss.
-- **Connections Restore Preview Persistence**: Prevented restore preview dialog from unmounting when navigating away from or closing the Sync & Backup tab.
+- **Modal Overlay Mouse Click Interception**: Fixed mouse clicks getting blocked across the application after vault creation or modal close by placing portals inside `AnimatePresence`, disabling pointer events immediately on exit, and preventing orphaned backdrop overlays. ([c625061])
+- **Global Confirm Dialog Cleanup**: Kept `Dialog.Root` permanently mounted in `GlobalConfirmDialog` to allow Radix UI to cleanly tear down overlays from `#modal-portal-root` on dismiss. ([c625061])
+- **Connections Restore Preview Persistence**: Prevented restore preview dialog from unmounting when navigating away from or closing the Sync & Backup tab. ([c625061], [6ed8f66])
+- **Recovery-key regenerate upload failures**: Regenerating the Google encryption recovery key no longer returns a new key when the Drive wrap upload fails; the previous local recovery slot stays intact. ([db8442c])
+- **Recovery-key regenerate save rollback**: If Drive upload succeeds but local manifest save fails, Zync restores the previous Drive wrap so the old recovery key keeps working and the new key is never shown. ([7027a17])
+- **Vault unlock retry during host save/test**: Nested unlock retries await completion and skip a second preflight unlock so saving stays in progress until the retry finishes. ([db8442c])
 
 ## [2.25.2] - 2026-08-22
 
@@ -1243,7 +1248,12 @@ All notable changes to Zync are documented in this file. The format is based on 
 [b915006]: https://github.com/zync-sh/zync/commit/b915006
 [e6e9e3f]: https://github.com/zync-sh/zync/commit/e6e9e3f
 [d15f536]: https://github.com/zync-sh/zync/commit/d15f536
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.2...HEAD
+[c625061]: https://github.com/zync-sh/zync/commit/c625061
+[6ed8f66]: https://github.com/zync-sh/zync/commit/6ed8f66
+[db8442c]: https://github.com/zync-sh/zync/commit/db8442c
+[7027a17]: https://github.com/zync-sh/zync/commit/7027a17
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.3...HEAD
+[2.25.3]: https://github.com/zync-sh/zync/compare/v2.25.2...v2.25.3
 [2.25.2]: https://github.com/zync-sh/zync/compare/v2.25.1...v2.25.2
 [2.25.1]: https://github.com/zync-sh/zync/compare/v2.25.0...v2.25.1
 [2.25.0]: https://github.com/zync-sh/zync/compare/v2.24.0...v2.25.0
