@@ -14,7 +14,9 @@ import { parseSyncInvokeError } from '../../../../../vault/syncError';
 import {
   formatDeferredVaultKeysMessage,
   hasDeferredVaultKeys,
+  localVaultRestoreState,
 } from '../../../../../vault/connectionsRestore';
+import { useVaultStore } from '../../../../../vault/useVaultStore';
 import {
   getProviderActionBlockedMessage,
   type ProviderSyncAction,
@@ -688,25 +690,12 @@ export function useVaultPanelActions({
     isPreviewingConnections,
     isRestoringConnections,
     isConnectionsRestoreBusy,
-    isPreparingVault,
-    isConnectionsRestorePreviewOpen,
-    connectionsRestorePreview,
-    pendingConnectionsRestoreArgs,
     handleRestoreConnections,
-    closeConnectionsRestorePreviewModal,
-    confirmConnectionsRestore,
-    confirmConnectionsRestoreHostsOnly,
-    previewVaultAction,
   } = useConnectionsRestore({
     hostsSyncEnabled,
     googleSync,
     googleCollection,
     showToast,
-    patchGoogleSync,
-    onLoadConnections,
-    loadGoogleSync,
-    onReloadTunnels,
-    onReloadSnippets,
   });
 
   const handleRestoreHosts = async () => {
@@ -752,7 +741,14 @@ export function useVaultPanelActions({
         );
       }
       if (hasDeferredVaultKeys(result)) {
-        showToast('info', formatDeferredVaultKeysMessage(result.credentialsSkipped));
+        const vaultStatus = useVaultStore.getState().status;
+        showToast(
+          'info',
+          formatDeferredVaultKeysMessage(
+            result.credentialsSkipped,
+            localVaultRestoreState(vaultStatus),
+          ),
+        );
       }
     } catch (error) {
       const msg = parseSyncInvokeError(error).message;
@@ -1073,7 +1069,6 @@ export function useVaultPanelActions({
     isPreviewingConnections,
     isRestoringConnections,
     isConnectionsRestoreBusy,
-    isPreparingVault,
     isSyncingTunnels,
     isRestoringTunnels,
     isSyncingSnippets,
@@ -1084,9 +1079,6 @@ export function useVaultPanelActions({
     restorePreview,
     restoreConflictItems,
     selectedConflictLogicalIds,
-    isConnectionsRestorePreviewOpen,
-    connectionsRestorePreview,
-    pendingConnectionsRestoreArgs,
     loadGoogleSync,
     loadGoogleCollection,
     loadDomainPolicies,
@@ -1103,10 +1095,6 @@ export function useVaultPanelActions({
     clearConflictLogicalIds,
     closeRestoreConflictModal,
     confirmRestoreWithConflictSelection,
-    closeConnectionsRestorePreviewModal,
-    confirmConnectionsRestore,
-    confirmConnectionsRestoreHostsOnly,
-    previewVaultAction,
     handleSyncCredentialItem,
     handleSyncHosts,
     handleRestoreHosts,

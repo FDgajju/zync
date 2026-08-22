@@ -60,7 +60,8 @@ export function hostsOnlyConnectionsRestoreArgs(
 export function localVaultRestoreState(
   status: { status: string } | null | undefined,
 ): LocalVaultRestoreState {
-  if (!status || status.status === 'uninitialized') return 'uninitialized';
+  if (!status) return 'unavailable';
+  if (status.status === 'uninitialized') return 'uninitialized';
   if (status.status === 'locked') return 'locked';
   if (status.status === 'unlocked') return 'unlocked';
   return 'unavailable';
@@ -78,9 +79,18 @@ export function restoreVaultAction(args: {
   return null;
 }
 
-export function formatDeferredVaultKeysMessage(count: number): string {
+export function formatDeferredVaultKeysMessage(
+  count: number,
+  vaultState?: LocalVaultRestoreState,
+): string {
   const keys = `${count} vault key${count === 1 ? '' : 's'}`;
-  return `${keys} stayed on Google. Create a Local Vault to pull them, or Zync will ask when you connect.`;
+  const vaultAction =
+    vaultState === 'locked'
+      ? 'Unlock your Local Vault'
+      : vaultState === 'uninitialized'
+        ? 'Create a Local Vault'
+        : 'Set up or unlock a Local Vault';
+  return `${keys} stayed on Google. ${vaultAction} to pull them, or Zync will ask when you connect.`;
 }
 
 export function vaultItemCoversAuthRef(

@@ -9,6 +9,7 @@ import {
   isConnectionsRestorePreviewOpen,
   localVaultRestoreState,
   normalizeConnectionsRestoreArgs,
+  reportConnectionsRestoreWarnings,
   restoreVaultAction,
   vaultItemCoversAuthRef,
 } from '../.tmp-agent-tests/src/vault/connectionsRestore.js';
@@ -184,7 +185,7 @@ test('restoreVaultAction stays quiet when vault is unlocked or creds are exclude
 });
 
 test('localVaultRestoreState maps vault status', () => {
-  assert.equal(localVaultRestoreState(null), 'uninitialized');
+  assert.equal(localVaultRestoreState(null), 'unavailable');
   assert.equal(localVaultRestoreState({ status: 'uninitialized' }), 'uninitialized');
   assert.equal(localVaultRestoreState({ status: 'locked' }), 'locked');
   assert.equal(localVaultRestoreState({ status: 'unlocked' }), 'unlocked');
@@ -193,6 +194,36 @@ test('localVaultRestoreState maps vault status', () => {
 test('formatDeferredVaultKeysMessage is explicit', () => {
   assert.match(formatDeferredVaultKeysMessage(69), /69 vault keys stayed on Google/);
   assert.match(formatDeferredVaultKeysMessage(1), /1 vault key stayed on Google/);
+  assert.match(formatDeferredVaultKeysMessage(2, 'locked'), /Unlock your Local Vault/);
+  assert.match(formatDeferredVaultKeysMessage(2, 'uninitialized'), /Create a Local Vault/);
+});
+
+test('reportConnectionsRestoreWarnings respects suppressDeferredKeyToast', () => {
+  const toasts = [];
+  const showToast = (type, message) => {
+    toasts.push({ type, message });
+  };
+  const result = {
+    syncedAt: 1,
+    hosts: {
+      scanned: 1,
+      restored: 1,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      syncedAt: 1,
+      credentialsRestored: 0,
+      credentialsUpdated: 0,
+      credentialsSkipped: 3,
+      credentialsFailed: 0,
+      credentialsConflicts: 0,
+    },
+  };
+  reportConnectionsRestoreWarnings(result, showToast, { suppressDeferredKeyToast: true });
+  assert.equal(toasts.some((toast) => /stayed on Google/.test(toast.message)), false);
+
+  reportConnectionsRestoreWarnings(result, showToast);
+  assert.equal(toasts.some((toast) => /stayed on Google/.test(toast.message)), true);
 });
 
 test('isConnectionsRestoreJobRunning is only true while a job is running', () => {

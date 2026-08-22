@@ -1025,14 +1025,48 @@ fn credential_objects_for_restore(
 }
 
 const DRIVE_READ_CONCURRENCY: usize = 8;
+const DRIVE_READ_MAX_ATTEMPTS: u32 = 3;
+
+fn is_retryable_drive_read_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("429")
+        || lower.contains("403")
+        || lower.contains("rate limit")
+        || lower.contains("timeout")
+        || lower.contains("temporar")
+        || lower.contains("connection reset")
+        || lower.contains("provider_http_failed")
+}
+
+async fn read_provider_object_with_retry(
+    provider: &dyn VaultProviderV1,
+    app: &tauri::AppHandle,
+    object: &ProviderCredentialObject,
+) -> Result<Vec<u8>, SyncError> {
+    let mut attempt = 0u32;
+    loop {
+        attempt = attempt.saturating_add(1);
+        match provider.read_credential_record(app, object).await {
+            Ok(bytes) => return Ok(bytes),
+            Err(error) => {
+                let message = sync_error_to_string(&error);
+                if attempt >= DRIVE_READ_MAX_ATTEMPTS || !is_retryable_drive_read_error(&message) {
+                    return Err(error);
+                }
+                let delay_ms = 200u64.saturating_mul(1u64 << (attempt.saturating_sub(1)));
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            }
+        }
+    }
+}
 
 async fn read_provider_objects_parallel(
     kind: SyncProviderKind,
     app: &tauri::AppHandle,
     objects: Vec<ProviderCredentialObject>,
 ) -> Vec<(ProviderCredentialObject, Result<Vec<u8>, String>)> {
-    let provider = match provider_for(kind) {
-        Ok(provider) => std::sync::Arc::new(provider),
+    let provider: std::sync::Arc<dyn VaultProviderV1> = match provider_for(kind) {
+        Ok(provider) => std::sync::Arc::from(provider),
         Err(error) => {
             let message = sync_error_to_string(&error);
             return objects
@@ -1049,8 +1083,7 @@ async fn read_provider_objects_parallel(
         let semaphore = semaphore.clone();
         join_set.spawn(async move {
             let _permit = semaphore.acquire_owned().await;
-            let result = provider
-                .read_credential_record(&app, &object)
+            let result = read_provider_object_with_retry(provider.as_ref(), &app, &object)
                 .await
                 .map_err(|error| sync_error_to_string(&error));
             (object, result)
@@ -3422,7 +3455,10 @@ pub async fn sync_collection_setup(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
-    if recovery_key.is_none() && passphrase.len() < SYNC_COLLECTION_PASSPHRASE_MIN_LENGTH {
+    // Recovery-key-only unlock may omit passphrase. Whenever a passphrase is
+    // supplied, always validate length and (for local-passphrase mode) the vault.
+    let recovery_only = recovery_key.is_some() && passphrase.is_empty();
+    if !recovery_only && passphrase.len() < SYNC_COLLECTION_PASSPHRASE_MIN_LENGTH {
         let label = if matches!(args.key_policy_mode, SyncKeyPolicyMode::LocalPassphrase) {
             "Local Vault passphrase"
         } else {
@@ -3433,7 +3469,7 @@ pub async fn sync_collection_setup(
             SYNC_COLLECTION_PASSPHRASE_MIN_LENGTH
         ));
     }
-    if recovery_key.is_none() && matches!(args.key_policy_mode, SyncKeyPolicyMode::LocalPassphrase) {
+    if !recovery_only && matches!(args.key_policy_mode, SyncKeyPolicyMode::LocalPassphrase) {
         let mut svc = vault.lock().await;
         match svc
             .status()
@@ -3542,7 +3578,7 @@ async fn download_remote_collection_key_wrap(
         object_name: object_name.clone(),
         object_id: None,
     };
-    let bytes = match provider_impl.read_credential_record(app, &object).await {
+    let bytes = match read_provider_object_with_retry(provider_impl, app, &object).await {
         Ok(bytes) => bytes,
         // Only the explicit missing-object code means "no wrap yet" (older backups).
         // Do not match substring "not found" — HTTP 404/401 messages can contain that
@@ -3627,7 +3663,14 @@ pub async fn sync_collection_regenerate_recovery_key(
     let provider_data_dir = crate::commands::get_data_dir(&app);
     let outcome =
         regenerate_recovery_key(&provider_data_dir, kind).map_err(|e| sync_error_to_string(&e))?;
-    upload_remote_collection_key_wrap(provider_impl.as_ref(), &app, &outcome.manifest).await?;
+    // Match setup: local regen succeeds even if Drive upload fails; still return the key.
+    if let Err(error) =
+        upload_remote_collection_key_wrap(provider_impl.as_ref(), &app, &outcome.manifest).await
+    {
+        eprintln!(
+            "[sync] Failed to upload regenerated recovery key wrap to provider: {error}"
+        );
+    }
     let status = collection_status_from_manifest(kind, Some(outcome.manifest));
     Ok(SyncCollectionSetupResult {
         status,

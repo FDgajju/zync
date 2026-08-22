@@ -1966,7 +1966,7 @@ On Windows, macOS, and Linux:
 ### Google encryption collection module (shipped / hardened)
 
 - Collection crypto/setup lives under `src-tauri/src/sync/collection/` (`lifecycle`, `wrap`, `keyring`, `manifest`).
-- Recovery-key unlock checks the **recovery slot**, not the passphrase wrap. Regenerate recovery key uploads the updated remote key-wrap. Passphrase unlock uses `unwrap_collection_key_trying_modes`. Cache TTL has min/max clamps; missing unlock anchor does not clear/save churn.
+- Recovery-key unlock checks the **recovery slot**, not the passphrase wrap. Unlocking with an existing recovery key preserves that slot unless rotation is requested. Prefixed recovery keys accept grouped or ungrouped Base64 bodies. Regenerate recovery key updates the remote key-wrap (best-effort upload). Passphrase unlock uses `unwrap_collection_key_trying_modes`. Cache TTL has min/max clamps; missing unlock anchor does not clear/save churn.
 
 ### Credential revision history (shipped)
 

@@ -632,6 +632,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                     8000,
                 );
             }
+            if (await finishCancelledConnect(true)) return;
 
             // Clear pendingRestore so SSH terminal tabs can now spawn their PTYs.
             get().clearPendingRestore(id);
@@ -679,6 +680,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                         get().showToast('error', `Tunnel "${label}" failed to start: ${message}`, 6000);
                     },
                 });
+                if (await finishCancelledConnect(true)) return;
 
                 if (restartedCount > 0) {
                     // 1. Pin 'port-forwarding' feature if not already pinned
@@ -765,7 +767,10 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                         // The credential and host are already saved; the Vault list can refresh later.
                     }
                     get().showToast('success', `Saved "${label}" to Vault. Connecting...`);
-                    queueMicrotask(() => { void get().connect(id); });
+                    if (await finishCancelledConnect()) return;
+                    queueMicrotask(() => {
+                        void get().connect(id, { skipVaultPrompt: true, skipCredentialPull });
+                    });
                 } catch (vaultError: unknown) {
                     clearVaultRequestedPassphrase(error.connectionId, error.keyPath);
                     if (createdVaultItemId) {
@@ -788,7 +793,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 const unlocked = await useVaultStore.getState().requestUnlock();
                 if (shouldScheduleUnlockRetry(unlocked, cancelledConnectAttempts, attemptId)) {
                     queueMicrotask(() => {
-                        void get().connect(id, { skipVaultPrompt: true });
+                        void get().connect(id, { skipVaultPrompt: true, skipCredentialPull });
                     });
                     return;
                 }

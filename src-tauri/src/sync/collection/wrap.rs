@@ -480,8 +480,8 @@ pub(super) fn generate_recovery_key() -> (String, [u8; 32]) {
 pub(super) fn parse_recovery_key(value: &str) -> Option<[u8; 32]> {
     let normalized = value.trim();
     let prefix = format!("{SYNC_RECOVERY_KEY_PREFIX}-");
-    if let Some(grouped) = normalized.strip_prefix(&prefix) {
-        return decode_grouped_recovery_key(grouped);
+    if let Some(body) = normalized.strip_prefix(&prefix) {
+        return decode_grouped_recovery_key(body).or_else(|| decode_recovery_key_bytes(body));
     }
 
     decode_recovery_key_bytes(normalized).or_else(|| decode_grouped_recovery_key(normalized))

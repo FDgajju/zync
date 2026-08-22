@@ -527,7 +527,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             return saved;
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
-            if (isVaultAccessError(message)) {
+            if (!retryAfterUnlock && isVaultAccessError(message)) {
                 const unlocked = await requestVaultUnlock();
                 if (unlocked) return performSave(true);
             }
@@ -568,7 +568,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             ? 'Select the one private key this connection may forward.'
         : '';
 
-    const handleTestConnection = async () => {
+    const handleTestConnection = async (retryAfterUnlock = false) => {
         setSubmitAttempted(true);
         if (!validation.ok) {
             setTestStatus('error');
@@ -643,10 +643,10 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             setTestMessage('Connection successful!');
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
-            if (isVaultAccessError(message)) {
+            if (!retryAfterUnlock && isVaultAccessError(message)) {
                 const unlocked = await requestVaultUnlock();
                 if (unlocked) {
-                    return handleTestConnection();
+                    return handleTestConnection(true);
                 }
                 setTestStatus('idle');
                 return;
@@ -1526,7 +1526,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={handleTestConnection}
+                                        onClick={() => { void handleTestConnection(); }}
                                         disabled={!canTest}
                                         className={cn(
                                             "gap-2 min-w-fit",

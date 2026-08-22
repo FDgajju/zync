@@ -73,7 +73,7 @@ runTest('cancel with no active attempt only records pending for serialized conne
   assert.equal(cancelledAttempts.size, 0);
 });
 
-runTest('cancel during pending requestUnlock does not schedule another connect', () => {
+runTest('shouldScheduleUnlockRetry rejects pre-cancelled attempt ids', () => {
   const cancelledAttempts = new Set();
   const attemptId = 'host-c:attempt-c';
 
@@ -86,6 +86,40 @@ runTest('cancel during pending requestUnlock does not schedule another connect',
     'unlock success must not retry a cancelled attempt',
   );
   assert.equal(shouldScheduleUnlockRetry(false, cancelledAttempts, attemptId), false);
+});
+
+runTest('cancel while unlock is pending does not schedule unlock retry', () => {
+  const pending = new Set();
+  const cancelledAttempts = new Set();
+  const connectionId = 'host-d';
+  const attemptId = 'host-d:attempt-d';
+
+  // Connect is active and waiting on requestUnlock.
+  registerConnectAttempt({
+    connectionId,
+    attemptId,
+    pending,
+    cancelledAttempts,
+  });
+  assert.equal(shouldScheduleUnlockRetry(true, cancelledAttempts, attemptId), true);
+
+  // User cancels while unlock is still pending.
+  recordConnectCancellation({
+    connectionId,
+    activeAttemptId: attemptId,
+    hasQueuedConnect: false,
+    hasSerializedConnect: true,
+    pending,
+    cancelledAttempts,
+  });
+  assert.equal(cancelledAttempts.has(attemptId), true);
+
+  // Unlock resolves successfully afterward — must not schedule another connect.
+  assert.equal(
+    shouldScheduleUnlockRetry(true, cancelledAttempts, attemptId),
+    false,
+    'cancel during pending unlock must block unlock retry',
+  );
 });
 
 console.log('Connect cancel state tests passed.');

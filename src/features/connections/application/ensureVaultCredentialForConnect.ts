@@ -56,7 +56,8 @@ export async function ensureVaultCredentialForConnect(args: {
       includeHostSnippets: false,
     });
     await useVaultStore.getState().refreshItems();
-  } catch {
+  } catch (error) {
+    console.warn('[Vault] Failed to pull referenced credential for connect:', error);
     return 'missing';
   }
 

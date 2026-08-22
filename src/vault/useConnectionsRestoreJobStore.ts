@@ -88,11 +88,13 @@ export const useConnectionsRestoreJobStore = create<ConnectionsRestoreJobState>(
       preview: null,
       pendingArgs: null,
     });
+
+    let result;
     try {
       const { useAppStore } = await import('../store/useAppStore');
       const app = useAppStore.getState();
       app.showToast('info', 'Restoring from Google… You can leave this page.');
-      const result = await syncIpc.connectionsRestore(
+      result = await syncIpc.connectionsRestore(
         'google',
         normalizeConnectionsRestoreArgs(args),
       );
@@ -102,11 +104,38 @@ export const useConnectionsRestoreJobStore = create<ConnectionsRestoreJobState>(
         lastError: undefined,
         lastErrorCode: undefined,
       });
+    } catch (error) {
+      const msg = parseSyncInvokeError(error).message;
+      set({ lastError: msg, phase: 'idle', startedAt: undefined, preview: null, pendingArgs: null });
+      const { useAppStore } = await import('../store/useAppStore');
+      useAppStore.getState().showToast('error', `Connection restore failed: ${msg}`);
+      return false;
+    }
 
-      await app.loadConnections();
-      await useSyncReadinessStore.getState().refresh('google');
-      await app.loadAllTunnels();
-      await app.loadSnippets();
+    // Restore IPC succeeded — reloads are best-effort and must not flip to failure.
+    try {
+      const { useAppStore } = await import('../store/useAppStore');
+      const app = useAppStore.getState();
+      try {
+        await app.loadConnections();
+      } catch (error) {
+        console.warn('[Sync] loadConnections after restore failed:', error);
+      }
+      try {
+        await useSyncReadinessStore.getState().refresh('google');
+      } catch (error) {
+        console.warn('[Sync] readiness refresh after restore failed:', error);
+      }
+      try {
+        await app.loadAllTunnels();
+      } catch (error) {
+        console.warn('[Sync] loadAllTunnels after restore failed:', error);
+      }
+      try {
+        await app.loadSnippets();
+      } catch (error) {
+        console.warn('[Sync] loadSnippets after restore failed:', error);
+      }
 
       const hostChanged = result.hosts.restored + result.hosts.updated;
       const tunnelChanged = (result.tunnels?.restored ?? 0) + (result.tunnels?.updated ?? 0);
@@ -122,17 +151,19 @@ export const useConnectionsRestoreJobStore = create<ConnectionsRestoreJobState>(
         suppressDeferredKeyToast: deferredFromArgs,
       });
       if (deferredFromArgs) {
-        app.showToast('info', formatDeferredVaultKeysMessage(options?.deferredKeyCount ?? 0));
+        const { useVaultStore } = await import('./useVaultStore');
+        const { localVaultRestoreState } = await import('./connectionsRestore');
+        app.showToast(
+          'info',
+          formatDeferredVaultKeysMessage(
+            options?.deferredKeyCount ?? 0,
+            localVaultRestoreState(useVaultStore.getState().status),
+          ),
+        );
       }
-      return true;
-    } catch (error) {
-      const msg = parseSyncInvokeError(error).message;
-      set({ lastError: msg });
-      const { useAppStore } = await import('../store/useAppStore');
-      useAppStore.getState().showToast('error', `Connection restore failed: ${msg}`);
-      return false;
     } finally {
       set({ phase: 'idle', startedAt: undefined, preview: null, pendingArgs: null });
     }
+    return true;
   },
 }));

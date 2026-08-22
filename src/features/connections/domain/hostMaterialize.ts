@@ -24,7 +24,9 @@ export interface MaterializeHostOptions {
 
 /**
  * Materialize one or more provider hosts onto this device (local working set).
- * Host + referenced credentials by default; tunnels/snippets optional (includeBundle).
+ * Host definitions always restore. Referenced credentials are included only when
+ * Local Vault is unlocked (`useVaultStore.status === 'unlocked'`).
+ * Tunnels/snippets are optional via includeBundle.
  * Identity remains logicalId — no re-keying.
  */
 export async function materializeHostsOnDevice(

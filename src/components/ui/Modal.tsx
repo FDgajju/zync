@@ -184,14 +184,18 @@ export function Modal({
               zIndexClassName ?? "z-[9999]"
             )}
           >
-            <div
+            <motion.div
+              aria-hidden
+              initial={false}
+              animate={{ pointerEvents: 'auto' }}
+              exit={{ pointerEvents: 'none' }}
               onClick={effectiveCloseOnOverlayClick ? onClose : undefined}
-              className="absolute inset-0 bg-black/70 pointer-events-auto"
+              className="absolute inset-0 bg-black/70"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8, pointerEvents: 'none' }}
               transition={{ duration: 0.15, ease: 'easeOut' }}
               drag
               dragControls={dragControls}

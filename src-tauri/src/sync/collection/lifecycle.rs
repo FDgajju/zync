@@ -159,7 +159,12 @@ Enter the original passphrase, or recover from a device that still has the key."
         manifest.key_wrap_nonce = Some(base64_data(key_wrap_nonce)?);
         manifest.key_wrap_ciphertext = Some(base64_data(key_wrap_ciphertext)?);
     }
+    let unlocked_with_existing_recovery = recovery_secret.is_some();
+    let recovery_slot_present = manifest.recovery_key_wrap_salt.is_some()
+        && manifest.recovery_key_wrap_nonce.is_some()
+        && manifest.recovery_key_wrap_ciphertext.is_some();
     let recovery_key = if has_recovery_key {
+        // Explicit rotation / first-time recovery generation.
         let (recovery_key, recovery_key_bytes) = generate_recovery_key();
         let (salt, nonce, ciphertext) = wrap_collection_key_with_secret(
             &collection_key,
@@ -171,12 +176,12 @@ Enter the original passphrase, or recover from a device that still has the key."
         manifest.recovery_key_wrap_ciphertext = Some(base64_data(ciphertext)?);
         manifest.has_recovery_key = true;
         Some(recovery_key)
-    } else if linking_existing_backup
-        && manifest.recovery_key_wrap_salt.is_some()
-        && manifest.recovery_key_wrap_nonce.is_some()
-        && manifest.recovery_key_wrap_ciphertext.is_some()
+    } else if recovery_slot_present
+        && (linking_existing_backup || unlocked_with_existing_recovery)
     {
-        // Relink: keep the Drive recovery slot unless the user asked to rotate it.
+        // Keep the existing recovery slot unless the user asked to rotate it.
+        // This covers Drive relink and recovery-key unlock even when the UI
+        // did not pass has_recovery_key=true.
         manifest.has_recovery_key = true;
         None
     } else {
