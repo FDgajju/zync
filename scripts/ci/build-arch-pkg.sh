@@ -31,7 +31,9 @@ docker run --rm \
     pacman -S --noconfirm base-devel libarchive
     useradd -m builder
     chown -R builder:builder /work
-    su - builder -c "cd /work && makepkg -f --skipchecksums --noconfirm"
+    # --nodeps: runtime depends (webkit2gtk, gtk3, …) are for end-user Arch
+    # machines, not this packaging container. We only repack the release .deb.
+    su - builder -c "cd /work && makepkg -f -d --skipchecksums --noconfirm"
     cp -v /work/*.pkg.tar.zst /out/
   '
 
