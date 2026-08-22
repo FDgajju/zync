@@ -126,7 +126,7 @@ export function SyncDomainsGrouped(props: SyncDomainsGroupedProps) {
               || props.isRestoringConnections
             }
             isSyncing={props.isSyncingHosts}
-            isRestoring={props.isRestoringConnections}
+            isRestoring={props.isPreviewingConnections || props.isRestoringConnections}
             gateMessage={props.providerGateReason ?? undefined}
             extraActions={(
               <Button

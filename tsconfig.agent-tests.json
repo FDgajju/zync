@@ -127,6 +127,7 @@
         "src/vault/profileTypes.ts",
         "src/vault/syncError.ts",
         "src/vault/syncPassphrase.ts",
-        "src/vault/connectionsRestore.ts"
+        "src/vault/connectionsRestore.ts",
+        "src/vault/vaultUnlockPrompt.ts"
     ]
 }

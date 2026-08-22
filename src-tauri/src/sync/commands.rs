@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use tauri::State;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 fn sync_error_to_string(error: &SyncError) -> String {
     if error.code.eq_ignore_ascii_case("LOCAL_DISCONNECT_ONLY") {
@@ -840,6 +840,7 @@ async fn upload_domain_record<T: serde::Serialize>(
         })
 }
 
+#[derive(Clone)]
 struct DomainCollectResult<T> {
     scanned: u64,
     skipped: u64,
@@ -858,10 +859,19 @@ async fn collect_domain_records<T>(
 where
     T: serde::de::DeserializeOwned,
 {
-    let remote_objects = provider_impl
-        .list_collection_records(app, &manifest.sync_collection_id)
-        .await
-        .map_err(|e| sync_error_to_string(&e))?;
+    let kind = SyncProviderKind::parse(&manifest.provider).ok_or_else(|| {
+        format!(
+            "[unknown_provider] Unknown provider in sync collection manifest: {}",
+            manifest.provider
+        )
+    })?;
+    let remote_objects = list_collection_objects_cached(
+        provider_impl,
+        app,
+        kind,
+        &manifest.sync_collection_id,
+    )
+    .await?;
 
     let mut scanned = 0u64;
     let mut skipped = 0u64;
@@ -990,21 +1000,76 @@ fn credential_objects_for_restore(
     requested_logical_ids: Option<&HashSet<String>>,
     listed: Vec<ProviderCredentialObject>,
 ) -> Vec<ProviderCredentialObject> {
+    let mut by_name: HashMap<String, ProviderCredentialObject> = HashMap::new();
+    for object in listed {
+        by_name.insert(object.object_name.clone(), object);
+    }
     if let Some(filter) = requested_logical_ids {
         if !filter.is_empty() {
             return filter
                 .iter()
-                .map(|logical_id| ProviderCredentialObject {
-                    object_name: credential_object_name(collection_id, logical_id),
-                    object_id: None,
+                .map(|logical_id| {
+                    let object_name = credential_object_name(collection_id, logical_id);
+                    by_name.get(&object_name).cloned().unwrap_or(ProviderCredentialObject {
+                        object_name,
+                        object_id: None,
+                    })
                 })
                 .collect();
         }
     }
-    listed
-        .into_iter()
+    by_name
+        .into_values()
         .filter(|object| is_credential_object_name(&object.object_name))
         .collect()
+}
+
+const DRIVE_READ_CONCURRENCY: usize = 8;
+
+async fn read_provider_objects_parallel(
+    kind: SyncProviderKind,
+    app: &tauri::AppHandle,
+    objects: Vec<ProviderCredentialObject>,
+) -> Vec<(ProviderCredentialObject, Result<Vec<u8>, String>)> {
+    let provider = match provider_for(kind) {
+        Ok(provider) => std::sync::Arc::new(provider),
+        Err(error) => {
+            let message = sync_error_to_string(&error);
+            return objects
+                .into_iter()
+                .map(|object| (object, Err(message.clone())))
+                .collect();
+        }
+    };
+    let semaphore = std::sync::Arc::new(Semaphore::new(DRIVE_READ_CONCURRENCY));
+    let mut join_set = tokio::task::JoinSet::new();
+    for object in objects {
+        let app = app.clone();
+        let provider = provider.clone();
+        let semaphore = semaphore.clone();
+        join_set.spawn(async move {
+            let _permit = semaphore.acquire_owned().await;
+            let result = provider
+                .read_credential_record(&app, &object)
+                .await
+                .map_err(|error| sync_error_to_string(&error));
+            (object, result)
+        });
+    }
+    let mut results = Vec::new();
+    while let Some(joined) = join_set.join_next().await {
+        match joined {
+            Ok(item) => results.push(item),
+            Err(error) => results.push((
+                ProviderCredentialObject {
+                    object_name: "unknown".to_string(),
+                    object_id: None,
+                },
+                Err(format!("[sync_drive_read_task_failed] {error}")),
+            )),
+        }
+    }
+    results
 }
 
 async fn collect_remote_host_records(
@@ -1018,12 +1083,15 @@ async fn collect_remote_host_records(
     // Full listing only when we need every host (inventory / unfiltered restore).
     // Filtered restore constructs object names and downloads those files only.
     let listed = if logical_id_filter.map(|f| !f.is_empty()).unwrap_or(false) {
-        Vec::new()
+        cached_listing(&manifest.sync_collection_id, provider).unwrap_or_default()
     } else {
-        provider_impl
-            .list_collection_records(app, &manifest.sync_collection_id)
-            .await
-            .map_err(|e| sync_error_to_string(&e))?
+        list_collection_objects_cached(
+            provider_impl,
+            app,
+            provider,
+            &manifest.sync_collection_id,
+        )
+        .await?
     };
 
     let remote_objects =
@@ -1521,9 +1589,15 @@ async fn execute_hosts_restore_step(
     apply_host_records: bool,
 ) -> Result<SyncHostsRestoreResult, String> {
     let credential_ids = host_auth_credential_ids(&records);
+    let vault_ready_for_credentials = if include_referenced_credentials && !credential_ids.is_empty()
+    {
+        local_vault_ready_for_credential_restore(vault).await?
+    } else {
+        false
+    };
     let credential_stats = if !include_referenced_credentials || credential_ids.is_empty() {
         CredentialRestoreStats::default()
-    } else {
+    } else if vault_ready_for_credentials {
         restore_credentials_from_provider_records(
             app,
             vault,
@@ -1536,6 +1610,12 @@ async fn execute_hosts_restore_step(
             &HashSet::new(),
         )
         .await?
+    } else {
+        // Hosts/tunnels can still land. Keys stay on Drive until Local Vault exists.
+        CredentialRestoreStats {
+            skipped: credential_ids.len() as u64,
+            ..CredentialRestoreStats::default()
+        }
     };
 
     let (restored, updated) = if apply_host_records {
@@ -1544,7 +1624,10 @@ async fn execute_hosts_restore_step(
     } else {
         (0, 0)
     };
-    let credential_refs_relinked = if include_referenced_credentials && !credential_ids.is_empty() {
+    let credential_refs_relinked = if include_referenced_credentials
+        && !credential_ids.is_empty()
+        && vault_ready_for_credentials
+    {
         let svc = vault.lock().await;
         crate::vault::commands::repair_connection_refs(provider_data_dir, &svc)
             .map(|result| result.relinked_item_ids as u64)
@@ -1574,6 +1657,19 @@ async fn execute_hosts_restore_step(
         failed,
         synced_at,
     })
+}
+
+async fn local_vault_ready_for_credential_restore(
+    vault: &Mutex<VaultService>,
+) -> Result<bool, String> {
+    let mut svc = vault.lock().await;
+    match svc
+        .status()
+        .map_err(|e| sync_local_error("vault_status_failed", e.to_string()))?
+    {
+        VaultStatus::Unlocked { .. } => Ok(true),
+        VaultStatus::Locked { .. } | VaultStatus::Uninitialized => Ok(false),
+    }
 }
 
 async fn ensure_unlocked_vault_for_credential_restore(
@@ -1608,38 +1704,40 @@ async fn restore_credentials_from_provider_records(
 ) -> Result<CredentialRestoreStats, String> {
     ensure_unlocked_vault_for_credential_restore(vault, "provider credentials").await?;
 
-    // When restoring specific credential ids (e.g. Keep-and-open), skip full Drive
-    // listing + download of every .zcred — fetch only the named objects.
-    let listed = if requested_logical_ids
-        .map(|f| !f.is_empty())
-        .unwrap_or(false)
-    {
-        Vec::new()
-    } else {
-        provider_impl
-            .list_credential_records(app, &manifest.sync_collection_id)
-            .await
-            .map_err(|error| {
-                record_sync_error(provider_data_dir, kind, error.code, error.message.clone());
-                sync_error_to_string(&error)
-            })?
-    };
+    let listed = list_collection_objects_cached(
+        provider_impl,
+        app,
+        kind,
+        &manifest.sync_collection_id,
+    )
+    .await
+    .map_err(|message| {
+        record_sync_error(
+            provider_data_dir,
+            kind,
+            "sync_credentials_list_failed",
+            message.clone(),
+        );
+        message
+    })?;
 
     let remote_objects =
         credential_objects_for_restore(&manifest.sync_collection_id, requested_logical_ids, listed);
 
-    let mut stats = CredentialRestoreStats::default();
+    let mut stats = CredentialRestoreStats {
+        scanned: remote_objects.len() as u64,
+        ..CredentialRestoreStats::default()
+    };
+    let downloaded = read_provider_objects_parallel(kind, app, remote_objects).await;
 
-    for object in remote_objects {
-        stats.scanned = stats.scanned.saturating_add(1);
-
-        let payload = match provider_impl.read_credential_record(app, &object).await {
+    for (object, payload_result) in downloaded {
+        let payload = match payload_result {
             Ok(bytes) => bytes,
             Err(error) => {
                 stats.failed = stats.failed.saturating_add(1);
                 eprintln!(
-                    "[sync] Failed to read provider object '{}': [{}] {}",
-                    object.object_name, error.code, error.message
+                    "[sync] Failed to read provider object '{}': {error}",
+                    object.object_name
                 );
                 continue;
             }
@@ -1991,6 +2089,7 @@ pub async fn sync_hosts_upload(
     };
     record_domain_sync_success(&provider_data_dir, kind, SyncDomain::Hosts, profile_sync_at)
         .map_err(|e| sync_error_to_string(&e))?;
+    clear_connections_drive_snapshot();
 
     Ok(SyncHostsUploadResult {
         domain: "hosts".to_string(),
@@ -2159,11 +2258,328 @@ pub async fn sync_hosts_restore(
     .await
 }
 
+#[derive(Clone)]
 struct ConnectionsRestoreScope {
     records: Vec<HostSyncRecord>,
     scanned: u64,
     skipped: u64,
     failed: u64,
+}
+
+#[derive(Clone)]
+struct ConnectionsDriveSnapshot {
+    collection_id: String,
+    provider: SyncProviderKind,
+    host_filter: Option<HashSet<String>>,
+    hosts: ConnectionsRestoreScope,
+    hosts_ready: bool,
+    listed_objects: Vec<ProviderCredentialObject>,
+    tunnels: Option<DomainCollectResult<TunnelSyncRecord>>,
+    snippets: Option<DomainCollectResult<SnippetSyncRecord>>,
+}
+
+static CONNECTIONS_DRIVE_SNAPSHOT: std::sync::Mutex<Option<ConnectionsDriveSnapshot>> =
+    std::sync::Mutex::new(None);
+
+fn clear_connections_drive_snapshot() {
+    if let Ok(mut guard) = CONNECTIONS_DRIVE_SNAPSHOT.lock() {
+        *guard = None;
+    }
+}
+
+fn snapshot_collection_matches(
+    snap: &ConnectionsDriveSnapshot,
+    collection_id: &str,
+    provider: SyncProviderKind,
+) -> bool {
+    snap.collection_id == collection_id && snap.provider == provider
+}
+
+fn cached_hosts_scope(
+    collection_id: &str,
+    provider: SyncProviderKind,
+    filter: Option<&HashSet<String>>,
+) -> Option<ConnectionsRestoreScope> {
+    let guard = CONNECTIONS_DRIVE_SNAPSHOT.lock().ok()?;
+    let snap = guard.as_ref()?;
+    if !snapshot_collection_matches(snap, collection_id, provider) || !snap.hosts_ready {
+        return None;
+    }
+    match (&snap.host_filter, filter) {
+        (None, None) => Some(snap.hosts.clone()),
+        (None, Some(want)) => Some(filter_cached_host_scope(&snap.hosts, want)),
+        (Some(cached), Some(want)) if want.iter().all(|id| cached.contains(id)) => {
+            Some(filter_cached_host_scope(&snap.hosts, want))
+        }
+        _ => None,
+    }
+}
+
+fn filter_cached_host_scope(
+    scope: &ConnectionsRestoreScope,
+    want: &HashSet<String>,
+) -> ConnectionsRestoreScope {
+    let by_id: HashMap<String, &HostSyncRecord> = scope
+        .records
+        .iter()
+        .map(|record| (normalize_host_connection_id(&record.logical_id), record))
+        .collect();
+    let mut keep: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = want.iter().cloned().collect();
+    while let Some(id) = stack.pop() {
+        let norm = normalize_host_connection_id(&id);
+        if !keep.insert(norm.clone()) {
+            continue;
+        }
+        if let Some(record) = by_id.get(&norm) {
+            if let Some(jump_id) = record.jump_server_id.as_ref() {
+                stack.push(jump_id.clone());
+            }
+        }
+    }
+    let records: Vec<HostSyncRecord> = scope
+        .records
+        .iter()
+        .filter(|record| keep.contains(&normalize_host_connection_id(&record.logical_id)))
+        .cloned()
+        .collect();
+    let retained = records.len() as u64;
+    ConnectionsRestoreScope {
+        scanned: retained,
+        // Filtered cache hits are exact subsets of a successful full fetch.
+        skipped: 0,
+        failed: 0,
+        records,
+    }
+}
+
+fn remember_hosts_scope(
+    collection_id: &str,
+    provider: SyncProviderKind,
+    filter: Option<HashSet<String>>,
+    scope: &ConnectionsRestoreScope,
+) {
+    let Ok(mut guard) = CONNECTIONS_DRIVE_SNAPSHOT.lock() else {
+        return;
+    };
+    match guard.as_mut() {
+        Some(snap) if snapshot_collection_matches(snap, collection_id, provider) => {
+            if filter.is_none() {
+                snap.host_filter = None;
+                snap.hosts = scope.clone();
+                snap.hosts_ready = true;
+            } else if snap.host_filter.is_some() || !snap.hosts_ready {
+                snap.host_filter = filter;
+                snap.hosts = scope.clone();
+                snap.hosts_ready = true;
+            }
+        }
+        _ => {
+            *guard = Some(ConnectionsDriveSnapshot {
+                collection_id: collection_id.to_string(),
+                provider,
+                host_filter: filter,
+                hosts: scope.clone(),
+                hosts_ready: true,
+                listed_objects: Vec::new(),
+                tunnels: None,
+                snippets: None,
+            });
+        }
+    }
+}
+
+fn cached_tunnels(
+    collection_id: &str,
+    provider: SyncProviderKind,
+) -> Option<DomainCollectResult<TunnelSyncRecord>> {
+    let guard = CONNECTIONS_DRIVE_SNAPSHOT.lock().ok()?;
+    let snap = guard.as_ref()?;
+    if !snapshot_collection_matches(snap, collection_id, provider) {
+        return None;
+    }
+    snap.tunnels.clone()
+}
+
+fn cached_snippets(
+    collection_id: &str,
+    provider: SyncProviderKind,
+) -> Option<DomainCollectResult<SnippetSyncRecord>> {
+    let guard = CONNECTIONS_DRIVE_SNAPSHOT.lock().ok()?;
+    let snap = guard.as_ref()?;
+    if !snapshot_collection_matches(snap, collection_id, provider) {
+        return None;
+    }
+    snap.snippets.clone()
+}
+
+fn remember_tunnels(
+    collection_id: &str,
+    provider: SyncProviderKind,
+    collected: &DomainCollectResult<TunnelSyncRecord>,
+) {
+    let Ok(mut guard) = CONNECTIONS_DRIVE_SNAPSHOT.lock() else {
+        return;
+    };
+    if let Some(snap) = guard.as_mut() {
+        if snapshot_collection_matches(snap, collection_id, provider) {
+            snap.tunnels = Some(collected.clone());
+        }
+    }
+}
+
+fn cached_listing(
+    collection_id: &str,
+    provider: SyncProviderKind,
+) -> Option<Vec<ProviderCredentialObject>> {
+    let guard = CONNECTIONS_DRIVE_SNAPSHOT.lock().ok()?;
+    let snap = guard.as_ref()?;
+    if !snapshot_collection_matches(snap, collection_id, provider) {
+        return None;
+    }
+    if snap.listed_objects.is_empty() {
+        return None;
+    }
+    Some(snap.listed_objects.clone())
+}
+
+fn remember_listing(
+    collection_id: &str,
+    provider: SyncProviderKind,
+    listed: &[ProviderCredentialObject],
+) {
+    let Ok(mut guard) = CONNECTIONS_DRIVE_SNAPSHOT.lock() else {
+        return;
+    };
+    match guard.as_mut() {
+        Some(snap) if snapshot_collection_matches(snap, collection_id, provider) => {
+            snap.listed_objects = listed.to_vec();
+        }
+        _ => {
+            *guard = Some(ConnectionsDriveSnapshot {
+                collection_id: collection_id.to_string(),
+                provider,
+                host_filter: None,
+                hosts: ConnectionsRestoreScope {
+                    records: Vec::new(),
+                    scanned: 0,
+                    skipped: 0,
+                    failed: 0,
+                },
+                hosts_ready: false,
+                listed_objects: listed.to_vec(),
+                tunnels: None,
+                snippets: None,
+            });
+        }
+    }
+}
+
+async fn list_collection_objects_cached(
+    provider_impl: &dyn VaultProviderV1,
+    app: &tauri::AppHandle,
+    kind: SyncProviderKind,
+    collection_id: &str,
+) -> Result<Vec<ProviderCredentialObject>, String> {
+    if let Some(listed) = cached_listing(collection_id, kind) {
+        return Ok(listed);
+    }
+    let listed = provider_impl
+        .list_collection_records(app, collection_id)
+        .await
+        .map_err(|e| sync_error_to_string(&e))?;
+    remember_listing(collection_id, kind, &listed);
+    Ok(listed)
+}
+
+fn remember_snippets(
+    collection_id: &str,
+    provider: SyncProviderKind,
+    collected: &DomainCollectResult<SnippetSyncRecord>,
+) {
+    let Ok(mut guard) = CONNECTIONS_DRIVE_SNAPSHOT.lock() else {
+        return;
+    };
+    if let Some(snap) = guard.as_mut() {
+        if snapshot_collection_matches(snap, collection_id, provider) {
+            snap.snippets = Some(collected.clone());
+        }
+    }
+}
+
+async fn load_hosts_scope_for_connections_restore(
+    provider_impl: &dyn VaultProviderV1,
+    app: &tauri::AppHandle,
+    kind: SyncProviderKind,
+    provider_data_dir: &Path,
+    manifest: &super::types::SyncCollectionManifest,
+    secret_key: &SecretKey,
+    host_logical_ids: Option<Vec<String>>,
+    error_code: &'static str,
+) -> Result<ConnectionsRestoreScope, String> {
+    let filter = normalize_host_logical_id_filter(host_logical_ids.clone());
+    if let Some(scope) = cached_hosts_scope(&manifest.sync_collection_id, kind, filter.as_ref()) {
+        return Ok(scope);
+    }
+    let scope = prepare_connections_restore_scope(
+        provider_impl,
+        app,
+        kind,
+        provider_data_dir,
+        manifest,
+        secret_key,
+        host_logical_ids,
+        error_code,
+    )
+    .await?;
+    remember_hosts_scope(&manifest.sync_collection_id, kind, filter, &scope);
+    Ok(scope)
+}
+
+async fn load_tunnels_for_connections_restore(
+    provider_impl: &dyn VaultProviderV1,
+    app: &tauri::AppHandle,
+    kind: SyncProviderKind,
+    manifest: &super::types::SyncCollectionManifest,
+    secret_key: &SecretKey,
+) -> Result<DomainCollectResult<TunnelSyncRecord>, String> {
+    if let Some(cached) = cached_tunnels(&manifest.sync_collection_id, kind) {
+        return Ok(cached);
+    }
+    let collected = collect_domain_records::<TunnelSyncRecord>(
+        provider_impl,
+        app,
+        manifest,
+        secret_key,
+        "tunnels",
+        ".ztun",
+    )
+    .await?;
+    remember_tunnels(&manifest.sync_collection_id, kind, &collected);
+    Ok(collected)
+}
+
+async fn load_snippets_for_connections_restore(
+    provider_impl: &dyn VaultProviderV1,
+    app: &tauri::AppHandle,
+    kind: SyncProviderKind,
+    manifest: &super::types::SyncCollectionManifest,
+    secret_key: &SecretKey,
+) -> Result<DomainCollectResult<SnippetSyncRecord>, String> {
+    if let Some(cached) = cached_snippets(&manifest.sync_collection_id, kind) {
+        return Ok(cached);
+    }
+    let collected = collect_domain_records::<SnippetSyncRecord>(
+        provider_impl,
+        app,
+        manifest,
+        secret_key,
+        "snippets",
+        ".zsnp",
+    )
+    .await?;
+    remember_snippets(&manifest.sync_collection_id, kind, &collected);
+    Ok(collected)
 }
 
 /// Trim-only filter for object-name construction (preserves original casing).
@@ -2305,17 +2721,17 @@ struct BundledDomainRestoreCounts {
 async fn preview_bundled_tunnel_counts_for_hosts(
     provider_impl: &dyn VaultProviderV1,
     app: &tauri::AppHandle,
+    kind: SyncProviderKind,
     manifest: &super::types::SyncCollectionManifest,
     secret_key: &SecretKey,
     eligible_host_ids: &HashSet<String>,
 ) -> Result<BundledDomainRestoreCounts, String> {
-    let collected = collect_domain_records::<TunnelSyncRecord>(
+    let collected = load_tunnels_for_connections_restore(
         provider_impl,
         app,
+        kind,
         manifest,
         secret_key,
-        "tunnels",
-        ".ztun",
     )
     .await?;
     let normalized = normalize_tunnel_records(collected.records);
@@ -2331,17 +2747,17 @@ async fn preview_bundled_tunnel_counts_for_hosts(
 async fn preview_bundled_host_snippet_counts_for_hosts(
     provider_impl: &dyn VaultProviderV1,
     app: &tauri::AppHandle,
+    kind: SyncProviderKind,
     manifest: &super::types::SyncCollectionManifest,
     secret_key: &SecretKey,
     eligible_host_ids: &HashSet<String>,
 ) -> Result<BundledDomainRestoreCounts, String> {
-    let collected = collect_domain_records::<SnippetSyncRecord>(
+    let collected = load_snippets_for_connections_restore(
         provider_impl,
         app,
+        kind,
         manifest,
         secret_key,
-        "snippets",
-        ".zsnp",
     )
     .await?;
     let normalized = normalize_snippet_records(collected.records);
@@ -2373,7 +2789,7 @@ pub async fn sync_connections_restore(
         })?;
     let collection_key = load_collection_key(&manifest).map_err(|e| sync_error_to_string(&e))?;
     let secret_key = SecretKey::from_bytes(collection_key);
-    let scope = prepare_connections_restore_scope(
+    let scope = load_hosts_scope_for_connections_restore(
         provider_impl.as_ref(),
         &app,
         kind,
@@ -2411,13 +2827,12 @@ pub async fn sync_connections_restore(
 
     let tunnels = if args.include_tunnels {
         ensure_domain_enabled_for_provider(&provider_data_dir, kind, SyncDomain::Tunnels)?;
-        let collected = collect_domain_records::<TunnelSyncRecord>(
+        let collected = load_tunnels_for_connections_restore(
             provider_impl.as_ref(),
             &app,
+            kind,
             &manifest,
             &secret_key,
-            "tunnels",
-            ".ztun",
         )
         .await?;
         let normalized = normalize_tunnel_records(collected.records);
@@ -2445,13 +2860,12 @@ pub async fn sync_connections_restore(
 
     let host_snippets = if args.include_host_snippets {
         ensure_domain_enabled_for_provider(&provider_data_dir, kind, SyncDomain::Snippets)?;
-        let collected = collect_domain_records::<SnippetSyncRecord>(
+        let collected = load_snippets_for_connections_restore(
             provider_impl.as_ref(),
             &app,
+            kind,
             &manifest,
             &secret_key,
-            "snippets",
-            ".zsnp",
         )
         .await?;
         let normalized = normalize_snippet_records(collected.records);
@@ -2504,7 +2918,7 @@ pub async fn sync_connections_restore_preview(
     let collection_key = load_collection_key(&manifest).map_err(|e| sync_error_to_string(&e))?;
     let secret_key = SecretKey::from_bytes(collection_key);
     let local_host_ids = local_host_connection_id_set(&provider_data_dir)?;
-    let scope = prepare_connections_restore_scope(
+    let scope = load_hosts_scope_for_connections_restore(
         provider_impl.as_ref(),
         &app,
         kind,
@@ -2549,6 +2963,7 @@ pub async fn sync_connections_restore_preview(
         let counts = preview_bundled_tunnel_counts_for_hosts(
             provider_impl.as_ref(),
             &app,
+            kind,
             &manifest,
             &secret_key,
             &eligible_host_ids,
@@ -2569,6 +2984,7 @@ pub async fn sync_connections_restore_preview(
             let counts = preview_bundled_host_snippet_counts_for_hosts(
                 provider_impl.as_ref(),
                 &app,
+                kind,
                 &manifest,
                 &secret_key,
                 &eligible_host_ids,
@@ -2671,6 +3087,7 @@ pub async fn sync_tunnels_upload(
     };
     record_domain_sync_success(&data_dir, kind, SyncDomain::Tunnels, synced_at)
         .map_err(|e| sync_error_to_string(&e))?;
+    clear_connections_drive_snapshot();
     Ok(SyncDomainUploadResult {
         domain: "tunnels".to_string(),
         uploaded,
@@ -2725,6 +3142,7 @@ pub async fn sync_snippets_upload(
     };
     record_domain_sync_success(&data_dir, kind, SyncDomain::Snippets, synced_at)
         .map_err(|e| sync_error_to_string(&e))?;
+    clear_connections_drive_snapshot();
     Ok(SyncDomainUploadResult {
         domain: "snippets".to_string(),
         uploaded,
@@ -2987,6 +3405,7 @@ pub async fn sync_collection_setup(
     provider: String,
     args: SyncCollectionSetupArgs,
 ) -> Result<SyncCollectionSetupResult, String> {
+    clear_connections_drive_snapshot();
     let kind = parse_provider(&provider)?;
     let provider_data_dir = crate::commands::get_data_dir(&app);
     let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
@@ -2997,7 +3416,13 @@ pub async fn sync_collection_setup(
         .map(str::trim)
         .unwrap_or_default()
         .to_string();
-    if passphrase.len() < SYNC_COLLECTION_PASSPHRASE_MIN_LENGTH {
+    let recovery_key = args
+        .recovery_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    if recovery_key.is_none() && passphrase.len() < SYNC_COLLECTION_PASSPHRASE_MIN_LENGTH {
         let label = if matches!(args.key_policy_mode, SyncKeyPolicyMode::LocalPassphrase) {
             "Local Vault passphrase"
         } else {
@@ -3008,7 +3433,7 @@ pub async fn sync_collection_setup(
             SYNC_COLLECTION_PASSPHRASE_MIN_LENGTH
         ));
     }
-    if matches!(args.key_policy_mode, SyncKeyPolicyMode::LocalPassphrase) {
+    if recovery_key.is_none() && matches!(args.key_policy_mode, SyncKeyPolicyMode::LocalPassphrase) {
         let mut svc = vault.lock().await;
         match svc
             .status()
@@ -3071,6 +3496,7 @@ pub async fn sync_collection_setup(
     } else {
         None
     };
+    let linking_existing_backup = remote_key_wrap.is_some();
 
     let outcome = setup_manifest(
         &provider_data_dir,
@@ -3080,17 +3506,23 @@ pub async fn sync_collection_setup(
         args.has_recovery_key,
         discovered_sync_collection_id,
         remote_key_wrap,
+        recovery_key.as_deref(),
     )
     .map_err(|e| sync_error_to_string(&e))?;
 
-    // Always push wrap to Drive so future devices/resets can recover with passphrase.
-    if let Err(error) =
-        upload_remote_collection_key_wrap(provider_impl.as_ref(), &app, &outcome.manifest).await
-    {
-        eprintln!(
-            "[sync] Failed to upload collection key wrap to provider (passphrase recovery may not work after wipe): {}",
-            error
-        );
+    // Relink must not rewrite the Drive wrap. A previous bug re-wrapped with a
+    // mistyped passphrase and uploaded it, locking the user out of the original.
+    // Recovery-key unlock with an empty passphrase also preserves the existing wrap.
+    let unlocked_with_recovery_only = recovery_key.is_some() && passphrase.is_empty();
+    if !linking_existing_backup && !unlocked_with_recovery_only {
+        if let Err(error) =
+            upload_remote_collection_key_wrap(provider_impl.as_ref(), &app, &outcome.manifest).await
+        {
+            eprintln!(
+                "[sync] Failed to upload collection key wrap to provider (passphrase recovery may not work after wipe): {}",
+                error
+            );
+        }
     }
 
     let status = collection_status_from_manifest(kind, Some(outcome.manifest));
@@ -3191,9 +3623,11 @@ pub async fn sync_collection_regenerate_recovery_key(
     provider: String,
 ) -> Result<SyncCollectionSetupResult, String> {
     let kind = parse_provider(&provider)?;
+    let provider_impl = provider_for(kind).map_err(|e| sync_error_to_string(&e))?;
     let provider_data_dir = crate::commands::get_data_dir(&app);
     let outcome =
         regenerate_recovery_key(&provider_data_dir, kind).map_err(|e| sync_error_to_string(&e))?;
+    upload_remote_collection_key_wrap(provider_impl.as_ref(), &app, &outcome.manifest).await?;
     let status = collection_status_from_manifest(kind, Some(outcome.manifest));
     Ok(SyncCollectionSetupResult {
         status,
@@ -3415,6 +3849,7 @@ pub async fn sync_disconnect(app: tauri::AppHandle, provider: String) -> Result<
                 profile
             });
             clear_sync_error(&provider_data_dir, kind);
+            clear_connections_drive_snapshot();
             Ok(())
         }
         Err(error) => {

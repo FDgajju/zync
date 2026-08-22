@@ -39,6 +39,7 @@
     "test:sync-error-parser": "npm run compile:agent-tests && node tests/syncErrorParser.test.mjs",
     "test:sync-passphrase": "npm run compile:agent-tests && node tests/syncPassphrase.test.mjs",
     "test:connections-restore": "npm run compile:agent-tests && node tests/connectionsRestore.test.mjs",
+    "test:vault-unlock-prompt": "npm run compile:agent-tests && node tests/vaultUnlockPrompt.test.mjs",
     "test:vault-focus": "npm run compile:agent-tests && node tests/vaultFocus.test.mjs",
     "test:unlock-modal-consistency": "node tests/unlockModalConsistency.test.mjs",
     "test:ghost-helpers": "npm run compile:agent-tests && node tests/ghostSuggestionsHelpers.test.mjs",

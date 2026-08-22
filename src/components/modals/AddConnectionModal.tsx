@@ -34,7 +34,7 @@ import { useConnectionForm } from './useConnectionForm';
 import { useAutoVault } from './useAutoVault';
 import { useVaultStore } from '../../vault/useVaultStore';
 import { isVaultInUseError, VAULT_IN_USE_USER_MESSAGE } from '../../vault/vaultLoading';
-import { isVaultLockedError } from '../../vault/vaultUnlockPrompt';
+import { isVaultAccessError } from '../../vault/vaultUnlockPrompt';
 import {
     usePrivateKeyInspection,
     type PrivateKeyInspectionState,
@@ -527,7 +527,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             return saved;
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
-            if (isVaultLockedError(message)) {
+            if (isVaultAccessError(message)) {
                 const unlocked = await requestVaultUnlock();
                 if (unlocked) return performSave(true);
             }
@@ -643,7 +643,7 @@ export function AddConnectionModal({ isOpen, onClose, editingConnectionId }: Add
             setTestMessage('Connection successful!');
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
-            if (isVaultLockedError(message)) {
+            if (isVaultAccessError(message)) {
                 const unlocked = await requestVaultUnlock();
                 if (unlocked) {
                     return handleTestConnection();

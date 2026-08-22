@@ -52,7 +52,7 @@ export function formatSyncCollectionSetupError(error: unknown): string {
   const { code, message } = parseSyncInvokeError(error);
 
   if (code === 'sync_collection_passphrase_mismatch') {
-    return message || 'Local Vault passphrase did not unlock this vault.';
+    return message || 'That passphrase did not unlock this Google encryption backup.';
   }
   if (code === 'vault_uninitialized') {
     return message || 'Initialize the local vault before setting up Google encryption.';

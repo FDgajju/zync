@@ -282,6 +282,8 @@ pub struct SyncCollectionSetupArgs {
     #[serde(default)]
     pub passphrase: Option<String>,
     #[serde(default)]
+    pub recovery_key: Option<String>,
+    #[serde(default)]
     pub has_recovery_key: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sync_collection_id: Option<String>,

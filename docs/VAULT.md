@@ -1,6 +1,6 @@
 # Zync Vault & Sync — Current Documentation
 
-**Last updated:** 2026-06-15  
+**Last updated:** 2026-08-22  
 **Roadmap / future work:** [VAULT_ROADMAP.md](./VAULT_ROADMAP.md)  
 **Host add/edit & auth UX:** [CONNECTIONS.md](./CONNECTIONS.md)
 
@@ -1956,6 +1956,17 @@ On Windows, macOS, and Linux:
 - ``sync_connections_restore`` orchestrator: credentials → hosts → tunnels → host-scoped snippets.
 - Preview/options modals, eligible-host filtering, global-snippet scope rules.
 - Shared ``syncPassphrase`` validation + frontend/backend tests.
+- If Drive has referenced vault keys and Local Vault is missing or locked, Review restore asks to **Create / Unlock Vault** or **Restore hosts only**. Hosts still restore without a vault; keys stay on Google. Connecting a vault-backed host opens Create/Unlock, then pulls that host’s key from Drive (`ensureVaultCredentialForConnect`).
+- Connection restore runs as an app-level job (`useConnectionsRestoreJobStore`): Review restore closes when the job starts; `isRestoringConnections` is job-only (modal submit); row busy uses `isConnectionsRestoreBusy` (preview / vault prep / job). Restore button uses the same spinning arrow as Upload. Sync tab stays mounted after first open so switching away does not tear down preview/job UI.
+- Preview **does** download host/tunnel/snippet objects from Drive to build counts. Confirm reuses the in-memory Drive snapshot (listing + hosts/tunnels/snippets) until app exit, Google disconnect, encryption setup, or those domains are uploaded. Referenced vault keys (`.zcred`) download on confirm only, using cached Drive file IDs and up to 8 parallel downloads. “Restoring from Google…” toast fires only on confirm, not on preview.
+- Deferred-key messaging is centralized (`hasDeferredVaultKeys` / `formatDeferredVaultKeysMessage`) so hosts-only restore does not double-toast.
+
+**Primary files:** `src/vault/useConnectionsRestoreJobStore.ts`, `src/vault/connectionsRestore.ts`, `src/components/settings/tabs/vault/hooks/useConnectionsRestore.ts`, `src-tauri/src/sync/commands.rs` (session snapshot + parallel reads), `src/features/connections/application/ensureVaultCredentialForConnect.ts`.
+
+### Google encryption collection module (shipped / hardened)
+
+- Collection crypto/setup lives under `src-tauri/src/sync/collection/` (`lifecycle`, `wrap`, `keyring`, `manifest`).
+- Recovery-key unlock checks the **recovery slot**, not the passphrase wrap. Regenerate recovery key uploads the updated remote key-wrap. Passphrase unlock uses `unwrap_collection_key_trying_modes`. Cache TTL has min/max clamps; missing unlock anchor does not clear/save churn.
 
 ### Credential revision history (shipped)
 

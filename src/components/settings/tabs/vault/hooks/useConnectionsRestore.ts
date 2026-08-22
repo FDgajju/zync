@@ -1,21 +1,25 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   syncIpc,
   type SyncCollectionStatus,
   type SyncConnectionsRestoreArgs,
-  type SyncConnectionsRestorePreviewResult,
   type SyncProviderStatus,
 } from '../../../../../vault/syncIpc';
 import {
-  formatConnectionsRestoreSuccessMessage,
+  hostsOnlyConnectionsRestoreArgs,
+  isConnectionsRestoreJobRunning,
+  isConnectionsRestorePreviewOpen,
+  localVaultRestoreState,
   normalizeConnectionsRestoreArgs,
-  reportConnectionsRestoreWarnings,
+  restoreVaultAction,
 } from '../../../../../vault/connectionsRestore';
 import {
   getProviderActionBlockedMessage,
   getProviderReadiness,
 } from '../../../../../vault/syncProviderGate';
 import { parseSyncInvokeError } from '../../../../../vault/syncError';
+import { useVaultStore } from '../../../../../vault/useVaultStore';
+import { useConnectionsRestoreJobStore } from '../../../../../vault/useConnectionsRestoreJobStore';
 import type { ToastType } from '../../../../../store/toastSlice';
 
 interface UseConnectionsRestoreOptions {
@@ -36,21 +40,40 @@ export function useConnectionsRestore({
   googleSync,
   googleCollection,
   showToast,
-  patchGoogleSync,
-  onLoadConnections,
-  loadGoogleSync,
-  onReloadTunnels,
-  onReloadSnippets,
 }: UseConnectionsRestoreOptions) {
-  const [isPreviewingConnections, setIsPreviewingConnections] = useState(false);
-  const [isRestoringConnections, setIsRestoringConnections] = useState(false);
-  const [isConnectionsRestorePreviewOpen, setIsConnectionsRestorePreviewOpen] = useState(false);
-  const [connectionsRestorePreview, setConnectionsRestorePreview] =
-    useState<SyncConnectionsRestorePreviewResult | null>(null);
-  const [pendingConnectionsRestoreArgs, setPendingConnectionsRestoreArgs] =
-    useState<SyncConnectionsRestoreArgs | null>(null);
+  const [isPreparingVault, setIsPreparingVault] = useState(false);
+  const phase = useConnectionsRestoreJobStore(state => state.phase);
+  const connectionsRestorePreview = useConnectionsRestoreJobStore(state => state.preview);
+  const pendingConnectionsRestoreArgs = useConnectionsRestoreJobStore(state => state.pendingArgs);
+  const beginPreview = useConnectionsRestoreJobStore(state => state.beginPreview);
+  const showPreview = useConnectionsRestoreJobStore(state => state.showPreview);
+  const failPreview = useConnectionsRestoreJobStore(state => state.failPreview);
+  const closePreview = useConnectionsRestoreJobStore(state => state.closePreview);
+  const startRestoreJob = useConnectionsRestoreJobStore(state => state.start);
+  const isPreviewingConnections = phase === 'previewing';
+  const isRestoringConnections = isConnectionsRestoreJobRunning(phase);
+  const previewModalOpen = isConnectionsRestorePreviewOpen(phase);
+  const vaultStatus = useVaultStore(state => state.status);
+  const requestUnlock = useVaultStore(state => state.requestUnlock);
+  const previewVaultAction = useMemo(
+    () => restoreVaultAction({
+      referencedCredentials: connectionsRestorePreview?.referencedCredentials ?? 0,
+      includeReferencedCredentials:
+        pendingConnectionsRestoreArgs?.includeReferencedCredentials ?? true,
+      vaultState: localVaultRestoreState(vaultStatus),
+    }),
+    [
+      connectionsRestorePreview?.referencedCredentials,
+      pendingConnectionsRestoreArgs?.includeReferencedCredentials,
+      vaultStatus,
+    ],
+  );
 
   const ensureConnectionsRestoreReady = useCallback((): boolean => {
+    if (isRestoringConnections) {
+      showToast('info', 'A connection restore is already running.');
+      return false;
+    }
     if (!hostsSyncEnabled) {
       showToast('error', 'Hosts sync is disabled. Enable hosts domain sync first.');
       return false;
@@ -65,93 +88,97 @@ export function useConnectionsRestore({
       return false;
     }
     return true;
-  }, [googleCollection, googleSync, hostsSyncEnabled, showToast]);
+  }, [googleCollection, googleSync, hostsSyncEnabled, isRestoringConnections, showToast]);
 
-  const runConnectionsRestore = useCallback(async (args: SyncConnectionsRestoreArgs) => {
-    const normalizedArgs = normalizeConnectionsRestoreArgs(args);
-    setIsRestoringConnections(true);
-    try {
-      const result = await syncIpc.connectionsRestore('google', normalizedArgs);
-      patchGoogleSync({
-        lastSync: result.syncedAt,
-        lastError: undefined,
-        lastErrorCode: undefined,
-      });
-      await onLoadConnections();
-      await loadGoogleSync();
-      await onReloadTunnels?.();
-      await onReloadSnippets?.();
-
-      const hostChanged = result.hosts.restored + result.hosts.updated;
-      const tunnelChanged = (result.tunnels?.restored ?? 0) + (result.tunnels?.updated ?? 0);
-      const snippetChanged =
-        (result.hostSnippets?.restored ?? 0) + (result.hostSnippets?.updated ?? 0);
-
-      showToast(
-        hostChanged + tunnelChanged + snippetChanged > 0 ? 'success' : 'info',
-        formatConnectionsRestoreSuccessMessage(result),
-      );
-      reportConnectionsRestoreWarnings(result, showToast);
-      return true;
-    } catch (error) {
-      const msg = parseSyncInvokeError(error).message;
-      showToast('error', `Connection restore failed: ${msg}`);
+  const runConnectionsRestore = useCallback(async (
+    args: SyncConnectionsRestoreArgs,
+    deferredKeyCount = 0,
+  ) => {
+    if (isRestoringConnections) {
+      showToast('info', 'A connection restore is already running.');
       return false;
-    } finally {
-      setIsRestoringConnections(false);
     }
-  }, [
-    loadGoogleSync,
-    onLoadConnections,
-    onReloadSnippets,
-    onReloadTunnels,
-    patchGoogleSync,
-    showToast,
-  ]);
+    return startRestoreJob(args, { deferredKeyCount });
+  }, [isRestoringConnections, showToast, startRestoreJob]);
 
   const closeConnectionsRestorePreviewModal = useCallback(() => {
-    if (isRestoringConnections || isPreviewingConnections) return;
-    setIsConnectionsRestorePreviewOpen(false);
-    setConnectionsRestorePreview(null);
-    setPendingConnectionsRestoreArgs(null);
-  }, [isPreviewingConnections, isRestoringConnections]);
+    if (isPreviewingConnections || isPreparingVault) return;
+    closePreview();
+  }, [closePreview, isPreparingVault, isPreviewingConnections]);
 
   const confirmConnectionsRestore = useCallback(async () => {
     if (!pendingConnectionsRestoreArgs) return;
-    const ok = await runConnectionsRestore(pendingConnectionsRestoreArgs);
-    if (ok) {
-      setIsConnectionsRestorePreviewOpen(false);
-      setConnectionsRestorePreview(null);
-      setPendingConnectionsRestoreArgs(null);
+    if (previewVaultAction) {
+      setIsPreparingVault(true);
+      try {
+        const unlocked = await requestUnlock();
+        if (!unlocked) return;
+      } finally {
+        setIsPreparingVault(false);
+      }
     }
-  }, [pendingConnectionsRestoreArgs, runConnectionsRestore]);
+    await runConnectionsRestore(pendingConnectionsRestoreArgs);
+  }, [
+    pendingConnectionsRestoreArgs,
+    previewVaultAction,
+    requestUnlock,
+    runConnectionsRestore,
+  ]);
+
+  const confirmConnectionsRestoreHostsOnly = useCallback(async () => {
+    if (!pendingConnectionsRestoreArgs) return;
+    const referenced = connectionsRestorePreview?.referencedCredentials ?? 0;
+    await runConnectionsRestore(
+      hostsOnlyConnectionsRestoreArgs(pendingConnectionsRestoreArgs),
+      referenced,
+    );
+  }, [
+    connectionsRestorePreview?.referencedCredentials,
+    pendingConnectionsRestoreArgs,
+    runConnectionsRestore,
+  ]);
 
   const handleRestoreConnections = useCallback(async (args: SyncConnectionsRestoreArgs = {}) => {
     if (!ensureConnectionsRestoreReady()) return;
+    if (previewModalOpen) return;
+    if (!beginPreview()) {
+      showToast('info', 'A connection restore is already running.');
+      return;
+    }
 
     const normalizedArgs = normalizeConnectionsRestoreArgs(args);
-    setIsPreviewingConnections(true);
     try {
       const preview = await syncIpc.connectionsRestorePreview('google', normalizedArgs);
-      setConnectionsRestorePreview(preview);
-      setPendingConnectionsRestoreArgs(normalizedArgs);
-      setIsConnectionsRestorePreviewOpen(true);
+      showPreview(preview, normalizedArgs);
     } catch (error) {
+      failPreview();
       const msg = parseSyncInvokeError(error).message;
       showToast('error', `Connection restore preview failed: ${msg}`);
-    } finally {
-      setIsPreviewingConnections(false);
     }
-  }, [ensureConnectionsRestoreReady, showToast]);
+  }, [
+    beginPreview,
+    ensureConnectionsRestoreReady,
+    failPreview,
+    previewModalOpen,
+    showPreview,
+    showToast,
+  ]);
 
   return {
     isPreviewingConnections,
+    /** True only while the restore IPC job is running (modal submitting). */
     isRestoringConnections,
-    isConnectionsRestorePreviewOpen,
+    /** Row/button busy: preview scan, vault create/unlock, or restore job. */
+    isConnectionsRestoreBusy:
+      isRestoringConnections || isPreparingVault || isPreviewingConnections,
+    isPreparingVault,
+    isConnectionsRestorePreviewOpen: previewModalOpen,
     connectionsRestorePreview,
     pendingConnectionsRestoreArgs,
+    previewVaultAction,
     handleRestoreConnections,
     closeConnectionsRestorePreviewModal,
     confirmConnectionsRestore,
+    confirmConnectionsRestoreHostsOnly,
   };
 }

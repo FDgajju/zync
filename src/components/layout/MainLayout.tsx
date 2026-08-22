@@ -665,6 +665,11 @@ export function MainLayout({ children }: { children: ReactNode }) {
         () => (activeTabId !== null ? tabs.find((t: Tab) => t.id === activeTabId) : undefined),
         [tabs, activeTabId],
     );
+    /** Sync stays mounted after first open so restore/upload spinners and in-flight IPC survive tab switches. */
+    const stickySyncTabs = useMemo(
+        () => tabs.filter((tab: Tab) => tab.type === 'sync'),
+        [tabs],
+    );
     const suspendIdleHostPtys = useAppStore(
         state => state.settings.terminal.suspendIdleHostPtys ?? false,
     );
@@ -1046,11 +1051,22 @@ export function MainLayout({ children }: { children: ReactNode }) {
                     {/* Main Content Area */}
                     <div className="flex-1 overflow-hidden relative flex flex-col">
                         {tabs.length > 0 && !showWelcomeScreen && activeWorkspaceTab ? (
-                            <TabContent
-                                key={activeWorkspaceTab.id}
-                                tab={activeWorkspaceTab}
-                                isActive
-                            />
+                            <>
+                                {stickySyncTabs.map((tab: Tab) => (
+                                    <TabContent
+                                        key={tab.id}
+                                        tab={tab}
+                                        isActive={tab.id === activeWorkspaceTab.id}
+                                    />
+                                ))}
+                                {activeWorkspaceTab.type !== 'sync' && (
+                                    <TabContent
+                                        key={activeWorkspaceTab.id}
+                                        tab={activeWorkspaceTab}
+                                        isActive
+                                    />
+                                )}
+                            </>
                         ) : (
                             <div className="flex-1 bg-app-bg">{children}</div>
                         )}

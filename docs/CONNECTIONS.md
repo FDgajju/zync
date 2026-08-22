@@ -1,7 +1,7 @@
 # Hosts & Connections — Architecture & Auth Reference
 
-**Last updated:** 2026-08-13
-**Applies to:** main after Zync v2.23.0
+**Last updated:** 2026-08-22
+**Applies to:** main after Zync v2.25.2
 **User-facing guide:** [zync.thesudoer.in/docs/connections](https://zync.thesudoer.in/docs/connections)  
 **Related:** [VAULT.md](./VAULT.md) (credential identity / vault secrets), [VAULT_ROADMAP.md](./VAULT_ROADMAP.md)
 
@@ -81,7 +81,7 @@ Other flows: Import from SSH config, quick-connect / paste SSH command (welcome)
 
 Frontend builds a connect config (`buildConnectConfig` / form transforms):
 
-- `authRef` → `VaultRef` → backend resolves to password or key material (+ stored passphrase if present).
+- `authRef` → `VaultRef` → backend resolves to password or key material (+ stored passphrase if present). If Local Vault is missing/locked, connect opens **Create / Unlock Vault**; after unlock, `ensureVaultCredentialForConnect` pulls that host’s referenced key from Drive when Google encryption is ready (cancel is re-checked after that pull).
 - Else `privateKeyPath` → `PrivateKey { key_path, passphrase }` — optional passphrase comes from the host `password` field when auth is key-based (same overloaded field used for login password vs `ssh-keygen` passphrase).
 - Else password → `Password`.
 

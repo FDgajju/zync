@@ -48,7 +48,8 @@ import { connectionErrorMessage } from '../features/connections/domain/errorSani
 import { connectWithHostKeyVerification } from '../features/connections/application/hostKeyVerification';
 import { useVaultStore } from '../vault/useVaultStore';
 import { isVaultInUseError, VAULT_IN_USE_USER_MESSAGE } from '../vault/vaultLoading';
-import { isVaultLockedError } from '../vault/vaultUnlockPrompt';
+import { isVaultAccessError } from '../vault/vaultUnlockPrompt';
+import { ensureVaultCredentialForConnect } from '../features/connections/application/ensureVaultCredentialForConnect';
 import {
     cancelConnectIpc,
     connectIpc,
@@ -129,7 +130,7 @@ export interface ConnectionSlice {
     clearConnections: () => void;
 
     // Connection Actions
-    connect: (id: string, options?: { skipVaultPrompt?: boolean }) => Promise<void>;
+    connect: (id: string, options?: { skipVaultPrompt?: boolean; skipCredentialPull?: boolean }) => Promise<void>;
     cancelConnect: (id: string) => Promise<void>;
     disconnect: (id: string) => Promise<void>;
     /** WiFi drop / SSH EOF — stop active tunnels, keep terminal tabs and scrollback. */
@@ -452,6 +453,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             cancelledAttempts: cancelledConnectAttempts,
         });
         const skipVaultPrompt = options?.skipVaultPrompt ?? false;
+        const skipCredentialPull = options?.skipCredentialPull ?? false;
 
         const finishCancelledConnect = async (disconnectBackend = false): Promise<boolean> => {
             if (!clearCancelledConnectAttempt(cancelledConnectAttempts, attemptId)) return false;
@@ -560,6 +562,25 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                     if (isVaultInUseError(useVaultStore.getState().error)) {
                         get().showToast('error', VAULT_IN_USE_USER_MESSAGE, 8000);
                     }
+                    set(state => ({
+                        connections: markConnectionStatus(state.connections, id, 'disconnected'),
+                    }));
+                    return;
+                }
+            }
+
+            if (!skipCredentialPull && connectConfigUsesVaultAuth(fullConfig)) {
+                const credentialState = await ensureVaultCredentialForConnect({
+                    connectionId: id,
+                    connections: get().connections,
+                });
+                if (await finishCancelledConnect()) return;
+                if (credentialState === 'missing') {
+                    get().showToast(
+                        'info',
+                        'This host uses a vault key that is not on this device yet. Create or unlock Local Vault, then connect Google Drive to pull it — or add the key in Vault.',
+                        8000,
+                    );
                     set(state => ({
                         connections: markConnectionStatus(state.connections, id, 'disconnected'),
                     }));
@@ -763,7 +784,7 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
                 return;
             }
             const message = connectionErrorMessage(error);
-            if (!skipVaultPrompt && isVaultLockedError(message)) {
+            if (!skipVaultPrompt && isVaultAccessError(message)) {
                 const unlocked = await useVaultStore.getState().requestUnlock();
                 if (shouldScheduleUnlockRetry(unlocked, cancelledConnectAttempts, attemptId)) {
                     queueMicrotask(() => {

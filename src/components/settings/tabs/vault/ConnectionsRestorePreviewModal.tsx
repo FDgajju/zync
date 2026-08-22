@@ -3,6 +3,7 @@ import type {
   SyncConnectionsRestoreArgs,
   SyncConnectionsRestorePreviewResult,
 } from '../../../../vault/syncIpc';
+import type { RestoreVaultAction } from '../../../../vault/connectionsRestore';
 import { Button } from '../../../ui/Button';
 import { Modal } from '../../../ui/Modal';
 import { cn } from '../../../../lib/utils';
@@ -10,10 +11,13 @@ import { cn } from '../../../../lib/utils';
 interface ConnectionsRestorePreviewModalProps {
   isOpen: boolean;
   isSubmitting: boolean;
+  isPreparingVault?: boolean;
   preview: SyncConnectionsRestorePreviewResult | null;
   args: SyncConnectionsRestoreArgs | null;
+  vaultAction?: RestoreVaultAction | null;
   onClose: () => void;
   onConfirmRestore: () => void;
+  onConfirmHostsOnly?: () => void;
 }
 
 function formatPreviewSummary(
@@ -75,10 +79,13 @@ function previewMetricRow(label: string, value: number | undefined) {
 export function ConnectionsRestorePreviewModal({
   isOpen,
   isSubmitting,
+  isPreparingVault = false,
   preview,
   args,
+  vaultAction = null,
   onClose,
   onConfirmRestore,
+  onConfirmHostsOnly,
 }: ConnectionsRestorePreviewModalProps) {
   const includeTunnels = args?.includeTunnels ?? true;
   const includeHostSnippets = args?.includeHostSnippets ?? true;
@@ -96,6 +103,16 @@ export function ConnectionsRestorePreviewModal({
     && (includeReferencedCredentials ? preview.referencedCredentials === 0 : true);
   const summary =
     preview && args ? formatPreviewSummary(preview, args) : null;
+  const referencedCount = preview?.referencedCredentials ?? 0;
+  const needsVault = vaultAction != null && referencedCount > 0 && !hasNothingToRestore;
+  const busy = isSubmitting || isPreparingVault;
+  const primaryLabel = isSubmitting
+    ? 'Restoring...'
+    : needsVault
+      ? vaultAction === 'create'
+        ? 'Create Vault'
+        : 'Unlock Vault'
+      : 'Restore';
 
   return (
     <Modal
@@ -147,15 +164,13 @@ export function ConnectionsRestorePreviewModal({
 
         <div
           className={
-            hasNothingToRestore || hasFailures
+            hasNothingToRestore || hasFailures || needsVault || hasSkipped
               ? 'rounded-lg border border-amber-400/35 bg-amber-500/10 px-3 py-2.5'
-              : hasSkipped
-                ? 'rounded-lg border border-amber-400/35 bg-amber-500/10 px-3 py-2.5'
-                : 'rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2.5'
+              : 'rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2.5'
           }
         >
           <div className="flex items-start gap-2">
-            {hasNothingToRestore || hasFailures || hasSkipped ? (
+            {hasNothingToRestore || hasFailures || hasSkipped || needsVault ? (
               <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-300" />
             ) : (
               <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-300" />
@@ -165,6 +180,10 @@ export function ConnectionsRestorePreviewModal({
                 ? 'Nothing in Drive matches this restore bundle for this device.'
                 : hasFailures
                   ? `${preview?.hostsFailed ?? 0} host record(s) could not be decrypted and will be skipped.`
+                  : needsVault
+                    ? vaultAction === 'create'
+                      ? `${referencedCount} vault key${referencedCount === 1 ? '' : 's'} are on Google. Create a Local Vault to restore them, or restore hosts only and Zync will ask when you connect.`
+                      : `${referencedCount} vault key${referencedCount === 1 ? '' : 's'} need an unlocked Local Vault. Unlock to restore them, or restore hosts only for now.`
                   : hasSkipped
                     ? 'Some tunnel or snippet records have no matching host on this device and will be skipped.'
                     : 'Hosts restore first, then tunnels, snippets, and any referenced credentials you selected.'}
@@ -173,15 +192,25 @@ export function ConnectionsRestorePreviewModal({
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-1">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={isSubmitting}>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
+          {needsVault && onConfirmHostsOnly && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onConfirmHostsOnly}
+              disabled={busy}
+            >
+              {isSubmitting ? 'Restoring...' : 'Restore hosts only'}
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={onConfirmRestore}
-            disabled={isSubmitting || hasNothingToRestore}
+            disabled={busy || hasNothingToRestore}
           >
-            {isSubmitting ? 'Restoring...' : 'Restore'}
+            {primaryLabel}
           </Button>
         </div>
       </div>

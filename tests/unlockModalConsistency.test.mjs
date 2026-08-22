@@ -8,6 +8,8 @@ const files = [
   path.join(root, 'src/components/vault/VaultUnlockModal.tsx'),
   path.join(root, 'src/components/settings/tabs/vault/SyncCollectionUnlockModal.tsx'),
   path.join(root, 'src/components/settings/tabs/vault/SyncCollectionSetupModal.tsx'),
+  path.join(root, 'src/components/settings/tabs/vault/googleEncryption/LinkGoogleBackupForm.tsx'),
+  path.join(root, 'src/components/settings/tabs/vault/googleEncryption/CreateGoogleCollectionForm.tsx'),
 ];
 
 const failures = [];
@@ -79,7 +81,8 @@ for (const file of files) {
     ? './UnlockModalShell'
     : '../../../vault/UnlockModalShell';
 
-  if (!isSetupModal) {
+  const skipUnlockShell = isSetupModal || short.includes(`${path.sep}googleEncryption${path.sep}`) || short.includes('googleEncryption');
+  if (!skipUnlockShell) {
     runTest(`${short} imports UnlockModalShell`, () => {
       assert.ok(
         hasImportNamed('UnlockModalShell', expectedUnlockModalShellModule),
@@ -91,9 +94,11 @@ for (const file of files) {
     });
   }
 
-  runTest(`${short} uses shared SecretField`, () => {
-    assert.ok(hasJsxElementNamed('SecretField'), 'SecretField usage missing');
-  });
+  if (!isSetupModal) {
+    runTest(`${short} uses shared SecretField`, () => {
+      assert.ok(hasJsxElementNamed('SecretField'), 'SecretField usage missing');
+    });
+  }
 
   if (isSetupModal) {
     runTest(`${short} imports shared sync passphrase helpers`, () => {

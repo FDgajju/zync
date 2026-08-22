@@ -1,6 +1,6 @@
 # Zync Vault & Sync — Roadmap & Future Plans
 
-**Last updated:** 2026-08-10  
+**Last updated:** 2026-08-22  
 **Current implementation reference:** [VAULT.md](./VAULT.md)  
 **Host auth / add-connection plan:** [CONNECTIONS.md](./CONNECTIONS.md)
 
@@ -57,6 +57,9 @@ Connection bundle restore + grouped Sync UI are **implemented** in v2.16.0. See 
 - Second provider implementation.
 - Team/shared vault + org policy controls.
 - Full bi-directional live sync scheduling across providers.
+- **Cold-start restore snapshot pack** (single Drive object for first-device / Review restore), while keeping per-item files for daily incremental sync. Per-item architecture stays; first restore UX is the weak spot.
+- Google encryption **Change Passphrase / Reset** for the Drive collection wrap (local vault Change/Reset already exist). Recovery-key regenerate now uploads the remote wrap; full passphrase rotate/reset for Google encryption remains deferred.
+- Optional: raise Drive parallel download concurrency above 8 after measuring rate-limit behavior.
 ---
 
 ## 3. Connection Bundle Restore (reference)

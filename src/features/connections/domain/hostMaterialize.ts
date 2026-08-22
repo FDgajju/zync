@@ -5,6 +5,7 @@ import {
 } from '../../../vault/connectionsRestore';
 import { parseSyncInvokeError } from '../../../vault/syncError';
 import { syncIpc, type SyncProvider } from '../../../vault/syncIpc';
+import { useVaultStore } from '../../../vault/useVaultStore';
 import type { ToastType } from '../../../store/toastSlice';
 
 export interface MaterializeHostOptions {
@@ -39,7 +40,7 @@ export async function materializeHostsOnDevice(
   const args = normalizeConnectionsRestoreArgs({
     hostLogicalIds: logicalIds,
     includeHostDefinitions: true,
-    includeReferencedCredentials: true,
+    includeReferencedCredentials: useVaultStore.getState().status?.status === 'unlocked',
     includeTunnels: includeBundle,
     includeHostSnippets: includeBundle,
   });

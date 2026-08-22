@@ -125,7 +125,9 @@ export function Modal({
 
     return () => {
       window.cancelAnimationFrame(frame);
-      previouslyFocused?.focus();
+      if (previouslyFocused && previouslyFocused.isConnected) {
+        previouslyFocused.focus();
+      }
     };
   }, [isOpen, x, y]);
 
@@ -168,32 +170,29 @@ export function Modal({
   };
 
   return (
-    <ZPortal>
-      <AnimatePresence>
-        {isOpen && (
-          <div
+    <AnimatePresence>
+      {isOpen && (
+        <ZPortal passive key={titleId}>
+          <motion.div
             ref={dragConstraintsRef}
-            className={cn("absolute inset-0 flex items-center justify-center p-4", zIndexClassName ?? "z-[9999]")}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, pointerEvents: 'none' }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className={cn(
+              "absolute inset-0 flex items-center justify-center p-4 pointer-events-none",
+              zIndexClassName ?? "z-[9999]"
+            )}
           >
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
+            <div
               onClick={effectiveCloseOnOverlayClick ? onClose : undefined}
-              className="absolute inset-0 bg-black/70"
+              className="absolute inset-0 bg-black/70 pointer-events-auto"
             />
             <motion.div
-              layout
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{
-                type: 'spring',
-                duration: 0.2,
-                bounce: 0.2,
-                layout: { duration: 0.35, ease: [0.32, 0.72, 0, 1] },
-              }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
               drag
               dragControls={dragControls}
               dragListener={false}
@@ -202,7 +201,7 @@ export function Modal({
               dragMomentum={false}
               style={{ x, y }}
               className={cn(
-                'relative w-full bg-app-panel backdrop-blur-xl border border-app-border rounded-xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden ring-1 ring-black/5 dark:ring-white/5 transition-[max-width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                'relative w-full bg-app-panel backdrop-blur-xl border border-app-border rounded-xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden ring-1 ring-black/5 dark:ring-white/5 transition-[max-width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] pointer-events-auto',
                 width,
                 className
               )}
@@ -243,9 +242,9 @@ export function Modal({
               </div>
               <div className={cn("p-6 overflow-y-auto custom-scrollbar flex-1", contentClassName)}>{children}</div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </ZPortal>
+          </motion.div>
+        </ZPortal>
+      )}
+    </AnimatePresence>
   );
 }

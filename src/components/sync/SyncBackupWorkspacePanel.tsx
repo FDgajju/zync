@@ -8,7 +8,6 @@ import { VaultSyncCard } from '../settings/tabs/vault/VaultSyncCard';
 import { SyncCollectionSetupModal } from '../settings/tabs/vault/SyncCollectionSetupModal';
 import { SyncCollectionUnlockModal } from '../settings/tabs/vault/SyncCollectionUnlockModal';
 import { RestoreConflictModal } from '../settings/tabs/vault/RestoreConflictModal';
-import { ConnectionsRestorePreviewModal } from '../settings/tabs/vault/ConnectionsRestorePreviewModal';
 
 import { RecoveryKeyModal } from '../vault/RecoveryKeyModal';
 import { useVaultPanelActions } from '../settings/tabs/vault/hooks/useVaultPanelActions';
@@ -121,7 +120,7 @@ export default function SyncBackupWorkspacePanel() {
           isSyncingHosts={panel.isSyncingHosts}
           isRestoringHosts={panel.isRestoringHosts}
           isPreviewingConnections={panel.isPreviewingConnections}
-          isRestoringConnections={panel.isRestoringConnections}
+          isRestoringConnections={panel.isConnectionsRestoreBusy}
           isSyncingTunnels={panel.isSyncingTunnels}
           isRestoringTunnels={panel.isRestoringTunnels}
           isSyncingSnippets={panel.isSyncingSnippets}
@@ -203,14 +202,6 @@ export default function SyncBackupWorkspacePanel() {
         onConfirmRestore={panel.confirmRestoreWithConflictSelection}
       />
 
-      <ConnectionsRestorePreviewModal
-        isOpen={panel.isConnectionsRestorePreviewOpen}
-        isSubmitting={panel.isRestoringConnections}
-        preview={panel.connectionsRestorePreview}
-        args={panel.pendingConnectionsRestoreArgs}
-        onClose={panel.closeConnectionsRestorePreviewModal}
-        onConfirmRestore={() => void panel.confirmConnectionsRestore()}
-      />
     </div>
   );
 }

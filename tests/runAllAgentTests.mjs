@@ -85,6 +85,8 @@ const tests = [
   'tests/tunnelAutoStartService.test.mjs',
   'tests/tunnelReconnectService.test.mjs',
   'tests/syncPassphrase.test.mjs',
+  'tests/connectionsRestore.test.mjs',
+  'tests/vaultUnlockPrompt.test.mjs',
   'tests/updateNotificationAutoUpdateFlow.test.mjs',
   'tests/updaterFlow.test.mjs',
 ];

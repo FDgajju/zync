@@ -93,8 +93,8 @@ function CollectionManagementSection({
             Google encryption is not set up
           </p>
           <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-app-muted)]">
-            Set this up once before syncing or restoring hosts, tunnels, snippets,
-            settings, or vault credentials. This is separate from Local Vault setup.
+            We&apos;ll check Google Drive for an existing backup first, then either
+            unlock it or set up encryption. This is separate from Local Vault.
           </p>
         </div>
         <Button
@@ -109,7 +109,7 @@ function CollectionManagementSection({
           ) : (
             <Shield size={13} />
           )}
-          Set up Google Encryption
+          Set up or restore
         </Button>
       </div>
     );

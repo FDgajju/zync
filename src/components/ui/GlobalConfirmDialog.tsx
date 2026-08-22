@@ -6,20 +6,26 @@ import { AlertCircle, HelpCircle } from 'lucide-react';
 export function GlobalConfirmDialog() {
     const dialog = useAppStore(state => state.confirmDialog);
 
-    if (!dialog) return null;
-
-    const isDanger = dialog.variant === 'danger';
+    // IMPORTANT: do NOT return null early when dialog is null.
+    // Radix Dialog.Portal mounts its Overlay directly into modal-portal-root.
+    // If we unmount Dialog.Root while open={true} (i.e. by returning null when
+    // dialog transitions to null before Radix can close), the Overlay element
+    // remains permanently in the DOM with `pointer-events-auto absolute inset-0`,
+    // blocking every mouse click for the lifetime of the app.
+    // Solution: keep Dialog.Root always mounted and drive visibility via the open
+    // prop so Radix handles its own portal cleanup correctly.
+    const isDanger = dialog?.variant === 'danger';
     const Icon = isDanger ? AlertCircle : HelpCircle;
 
     const handleOpenChange = (open: boolean) => {
-        if (!open) {
-            // If closed via ESC or outside click, treat as cancel
+        if (!open && dialog) {
+            // Closed via ESC or outside click — treat as cancel.
             dialog.onCancel();
         }
     };
 
     return (
-        <Dialog.Root open={!!dialog} onOpenChange={handleOpenChange}>
+        <Dialog.Root open={Boolean(dialog)} onOpenChange={handleOpenChange}>
             <Dialog.Portal container={document.getElementById('modal-portal-root') ?? undefined}>
                 <Dialog.Overlay className="absolute inset-0 z-[20000] bg-black/60 animate-in fade-in pointer-events-auto" />
                 <Dialog.Content
@@ -30,48 +36,52 @@ export function GlobalConfirmDialog() {
                         "animate-in fade-in zoom-in-95 duration-200"
                     )}
                 >
-                    <div className="p-6 flex">
-                        <div className="flex max-w-full gap-4">
-                            <div className={cn(
-                                "shrink-0 w-10 h-10 rounded-full flex items-center justify-center",
-                                isDanger ? "bg-red-500/10 text-red-500" : "bg-app-accent/10 text-app-accent"
-                            )}>
-                                <Icon className="w-5 h-5" />
+                    {dialog && (
+                        <>
+                            <div className="p-6 flex">
+                                <div className="flex max-w-full gap-4">
+                                    <div className={cn(
+                                        "shrink-0 w-10 h-10 rounded-full flex items-center justify-center",
+                                        isDanger ? "bg-red-500/10 text-red-500" : "bg-app-accent/10 text-app-accent"
+                                    )}>
+                                        <Icon className="w-5 h-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1 space-y-2 pt-1">
+                                        <Dialog.Title className="text-lg font-semibold text-app-text">
+                                            {dialog.title}
+                                        </Dialog.Title>
+                                        <Dialog.Description className="wrap-break-word text-sm leading-relaxed text-app-muted">
+                                            {dialog.message}
+                                        </Dialog.Description>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="min-w-0 flex-1 space-y-2 pt-1">
-                                <Dialog.Title className="text-lg font-semibold text-app-text">
-                                    {dialog.title}
-                                </Dialog.Title>
-                                <Dialog.Description className="wrap-break-word text-sm leading-relaxed text-app-muted">
-                                    {dialog.message}
-                                </Dialog.Description>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div className="p-4 bg-[var(--color-app-bg-secondary)] border-t border-[var(--color-app-border)] flex justify-end gap-3">
-                        <button
-                            onClick={() => {
-                                dialog.onCancel();
-                            }}
-                            className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--color-app-text)] hover:bg-[var(--color-app-bg-hover)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-app-accent)]"
-                        >
-                            {dialog.cancelText || 'Cancel'}
-                        </button>
-                        <button
-                            onClick={() => {
-                                dialog.onConfirm();
-                            }}
-                            className={cn(
-                                "px-4 py-2 rounded-lg text-sm font-medium text-white transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--color-app-bg)]",
-                                isDanger
-                                    ? "bg-red-500 hover:bg-red-600 focus:ring-red-500"
-                                    : "bg-[var(--color-app-accent)] hover:brightness-110 focus:ring-[var(--color-app-accent)]"
-                            )}
-                        >
-                            {dialog.confirmText || 'Confirm'}
-                        </button>
-                    </div>
+                            <div className="p-4 bg-[var(--color-app-bg-secondary)] border-t border-[var(--color-app-border)] flex justify-end gap-3">
+                                <button
+                                    onClick={() => {
+                                        dialog.onCancel();
+                                    }}
+                                    className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--color-app-text)] hover:bg-[var(--color-app-bg-hover)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-app-accent)]"
+                                >
+                                    {dialog.cancelText || 'Cancel'}
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        dialog.onConfirm();
+                                    }}
+                                    className={cn(
+                                        "px-4 py-2 rounded-lg text-sm font-medium text-white transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--color-app-bg)]",
+                                        isDanger
+                                            ? "bg-red-500 hover:bg-red-600 focus:ring-red-500"
+                                            : "bg-[var(--color-app-accent)] hover:brightness-110 focus:ring-[var(--color-app-accent)]"
+                                    )}
+                                >
+                                    {dialog.confirmText || 'Confirm'}
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </Dialog.Content>
             </Dialog.Portal>
         </Dialog.Root>

@@ -12,6 +12,10 @@ import {
 } from '../../../../../vault/syncIpc';
 import { parseSyncInvokeError } from '../../../../../vault/syncError';
 import {
+  formatDeferredVaultKeysMessage,
+  hasDeferredVaultKeys,
+} from '../../../../../vault/connectionsRestore';
+import {
   getProviderActionBlockedMessage,
   type ProviderSyncAction,
 } from '../../../../../vault/syncProviderGate';
@@ -378,9 +382,11 @@ export function useVaultPanelActions({
       }
       showToast(
         'success',
-        args.keyPolicyMode === 'local-passphrase'
-          ? 'Google encryption configured (Local Vault passphrase policy).'
-          : 'Google encryption configured (custom passphrase policy).',
+        args.syncCollectionId
+          ? 'Google backup linked on this device. Restore hosts and keys from Sync next.'
+          : args.keyPolicyMode === 'local-passphrase'
+            ? 'Google encryption configured (Local Vault passphrase policy).'
+            : 'Google encryption configured (custom passphrase policy).',
       );
     } catch (e: unknown) {
       const msg = extractErrorMessage(e);
@@ -681,12 +687,16 @@ export function useVaultPanelActions({
   const {
     isPreviewingConnections,
     isRestoringConnections,
+    isConnectionsRestoreBusy,
+    isPreparingVault,
     isConnectionsRestorePreviewOpen,
     connectionsRestorePreview,
     pendingConnectionsRestoreArgs,
     handleRestoreConnections,
     closeConnectionsRestorePreviewModal,
     confirmConnectionsRestore,
+    confirmConnectionsRestoreHostsOnly,
+    previewVaultAction,
   } = useConnectionsRestore({
     hostsSyncEnabled,
     googleSync,
@@ -740,6 +750,9 @@ export function useVaultPanelActions({
           'error',
           `${result.credentialsFailed + result.credentialsConflicts} referenced credential record(s) need attention before some hosts can connect.`,
         );
+      }
+      if (hasDeferredVaultKeys(result)) {
+        showToast('info', formatDeferredVaultKeysMessage(result.credentialsSkipped));
       }
     } catch (error) {
       const msg = parseSyncInvokeError(error).message;
@@ -1059,6 +1072,8 @@ export function useVaultPanelActions({
     isRestoringHosts,
     isPreviewingConnections,
     isRestoringConnections,
+    isConnectionsRestoreBusy,
+    isPreparingVault,
     isSyncingTunnels,
     isRestoringTunnels,
     isSyncingSnippets,
@@ -1090,6 +1105,8 @@ export function useVaultPanelActions({
     confirmRestoreWithConflictSelection,
     closeConnectionsRestorePreviewModal,
     confirmConnectionsRestore,
+    confirmConnectionsRestoreHostsOnly,
+    previewVaultAction,
     handleSyncCredentialItem,
     handleSyncHosts,
     handleRestoreHosts,
