@@ -1,5 +1,7 @@
 # Maintainer: Zync Releases <releases@zync.thesudoer.in>
 # Official binary package built from the Debian release artifact (system WebKit).
+# CI places zync_${pkgver}_amd64.deb next to this PKGBUILD (draft releases are not
+# publicly downloadable, so makepkg must not curl GitHub Releases anonymously).
 pkgname=zync
 pkgver=@VERSION@
 pkgrel=1
@@ -17,7 +19,7 @@ depends=(
 provides=('zync')
 conflicts=('zync-bin' 'zync-git')
 options=('!strip' '!debug')
-source=("@DEB_URL@")
+source=("zync_${pkgver}_amd64.deb")
 sha256sums=('SKIP')
 
 package() {
