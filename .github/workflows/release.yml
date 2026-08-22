@@ -189,10 +189,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Same pattern as apt-repo: authenticated gh download (draft assets are not public).
+      - name: Download .deb from release
+        env:
+          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/archdebs
+          gh release download "${{ needs.create-release.outputs.tag }}" \
+            -p "*.deb" \
+            -D /tmp/archdebs/
+          ls -la /tmp/archdebs
+
       - name: Build package from release .deb
+        env:
+          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
         run: |
           chmod +x scripts/ci/build-arch-pkg.sh
-          scripts/ci/build-arch-pkg.sh "${{ needs.create-release.outputs.tag }}" "$PWD/arch-dist"
+          scripts/ci/build-arch-pkg.sh \
+            "${{ needs.create-release.outputs.tag }}" \
+            "$PWD/arch-dist" \
+            /tmp/archdebs
 
       - name: Upload Arch package to release
         env:
