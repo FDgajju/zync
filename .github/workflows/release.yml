@@ -333,6 +333,15 @@ jobs:
           chmod +x scripts/ci/publish-arch-repo.sh
           scripts/ci/publish-arch-repo.sh "$PWD/zync-arch-pages" /tmp/archpkgs
 
+      - name: Upload Arch GPG signatures to the GitHub release
+        env:
+          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.create-release.outputs.tag }}" \
+            zync-arch-pages/x86_64/*.pkg.tar.zst.sig \
+            -R "${{ github.repository }}" \
+            --clobber
+
       - name: Commit and push to zync-arch
         working-directory: zync-arch-pages
         run: |

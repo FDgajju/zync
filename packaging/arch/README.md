@@ -9,7 +9,7 @@
 
 ## What CI produces
 
-1. In **`zync` release**: `zync-<version>-1-x86_64.pkg.tar.zst` (from the `.deb`)
+1. In **`zync` release**: `zync-<version>-1-x86_64.pkg.tar.zst` (from the `.deb`) plus GPG `*.pkg.tar.zst.sig` after the pacman-repo job signs (for `pacman -U` from GitHub Releases)
 2. Job **`pacman-repo`**:
    - Imports `GPG_PRIVATE_KEY` (same identity as APT: `releases@zync.thesudoer.in`)
    - Detach-signs packages + DB
