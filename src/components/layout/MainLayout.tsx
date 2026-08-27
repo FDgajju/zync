@@ -16,6 +16,7 @@ import { listen } from '@tauri-apps/api/event';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { ShieldAlert, Loader2 } from 'lucide-react';
+import { ConnectStagePanel, PanelLoader, useConnectionStageOverlay } from '../loaders';
 import ReleaseNotesTab from '../tabs/ReleaseNotesTab';
 import { SnippetSidebar } from '../snippets/SnippetSidebar';
 import { SetupWizard } from '../onboarding/SetupWizard';
@@ -73,12 +74,7 @@ const SyncBackupWorkspacePanel = lazy(() =>
     import('../sync/SyncBackupWorkspacePanel').then(module => ({ default: module.default }))
 );
 
-// Loading Component
-const TabLoading = () => (
-    <div className="absolute inset-0 flex items-center justify-center bg-app-bg">
-        <div className="w-6 h-6 border-2 border-app-accent/30 border-t-app-accent rounded-full animate-spin" />
-    </div>
-);
+const TabLoading = () => <PanelLoader />;
 
 /**
  * Fallback splash only if boot splash is gone early.
@@ -405,7 +401,11 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
 
     const isConnecting = connection?.status === 'connecting';
     const isError = connection?.status === 'error';
-    const forceOpaqueShell = isConnecting || isError;
+    const { stage, visible: stageVisible, showWorkspace } = useConnectionStageOverlay(
+        Boolean(isConnecting),
+        Boolean(isError),
+    );
+    const forceOpaqueShell = isConnecting || isError || Boolean(stage);
 
     /**
      * Handles selection from the combined tab bar.
@@ -513,44 +513,7 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
             !isActive && "hidden",
             isActive && !forceOpaqueShell && "animate-in fade-in duration-150 ease-out fill-mode-forwards"
         )}>
-            {isConnecting ? (
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4 bg-app-bg">
-                    <div className="w-8 h-8 border-4 border-[var(--color-app-accent)]/30 border-t-[var(--color-app-accent)] rounded-full animate-spin"></div>
-                    <div className="text-[var(--color-app-muted)] animate-pulse">Connecting to server...</div>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => connection && void cancelConnect(connection.id)}
-                        className="border border-app-border/60 bg-app-surface/30 px-3 text-xs"
-                    >
-                        Cancel
-                    </Button>
-                </div>
-            ) : isError ? (
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4 bg-app-bg">
-                    <div className="text-[var(--color-app-danger)] text-4xl mb-4">&#9888;</div>
-                    <div className="text-xl font-medium text-[var(--color-app-text)]">Connection Failed</div>
-                    <div className="text-[var(--color-app-muted)] text-sm max-w-md text-center">
-                        Could not establish a connection to <span className="font-mono text-[var(--color-app-text)]">{connection?.host}</span>.
-                    </div>
-                    {connection?.lastError && (
-                        <div className="max-w-xl rounded-lg border border-[var(--color-app-border)]/70 bg-[var(--color-app-surface)]/45 px-3 py-2 text-center text-xs leading-relaxed text-[var(--color-app-muted)]">
-                            {connection.lastError}
-                        </div>
-                    )}
-                    {connection?.authRef && (
-                        <div className="text-[11px] text-[var(--color-app-muted)]">
-                            Vault credential: {connection.authRef.credentialId?.slice(0, 8) ?? connection.authRef.itemId?.slice(0, 8) ?? '<no-id>'}
-                        </div>
-                    )}
-                    <button
-                        onClick={() => connection && connect(connection.id)}
-                        className="px-4 py-2 bg-[var(--color-app-accent)] text-white rounded-lg hover:brightness-110 transition-all font-medium text-sm mt-4"
-                    >
-                        Retry Connection
-                    </button>
-                </div>
-            ) : (
+            {showWorkspace && (
                 <>
                     {/* Unified Tab Bar — not shown for the standalone global snippets tab */}
                     {tab.connectionId !== GLOBAL_SNIPPETS_CONNECTION_ID && (
@@ -651,6 +614,28 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
                         </Suspense>
                     </div>
                 </>
+            )}
+            {stage && (
+                <div
+                    className={cn(
+                        'absolute inset-0 z-40 flex flex-col bg-app-bg transition-opacity duration-200 ease-out',
+                        stageVisible ? 'opacity-100' : 'opacity-0 pointer-events-none',
+                    )}
+                >
+                    <ConnectStagePanel
+                        status={stage}
+                        name={connection?.name ?? tab.title}
+                        host={connection?.host}
+                        icon={connection?.icon}
+                        lastError={connection?.lastError}
+                        onCancel={() => {
+                            if (connection) void cancelConnect(connection.id);
+                        }}
+                        onRetry={() => {
+                            if (connection) void connect(connection.id);
+                        }}
+                    />
+                </div>
             )}
         </div>
     );
