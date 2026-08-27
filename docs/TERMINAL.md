@@ -376,13 +376,16 @@ Historical scrollback **does not reflow** when the window is resized. Lines writ
 
 **Scheduler:** `createResizeScheduler` — 60ms trailing edge in `terminalFit.ts`.
 
+**Desired-size flush (issue #101):** `syncTerminalResize` always records `desiredResize` from xterm. While the PTY is `starting` (or not yet spawned), IPC is deferred — size is **not** dropped. On `terminal-ready`, `flushTerminalResize` fits and sends the latest size (same pending→flush pattern as input). Manual window resize still force-syncs via `lastResize` clear.
+
 ### Regression watchlist (mitigated — re-check after layout/GPU changes)
 
 | Symptom | Mitigation |
 |---------|------------|
 | Black margins around xterm | `.terminal-container` fill CSS, `safeFitTerminal` |
 | Garbled text after resize | Trailing scheduler + post-fit refresh |
-| PTY cols/rows drift | Hidden-tab gate; defer IPC until layout settle |
+| PTY cols/rows drift | Hidden-tab gate; defer IPC until layout settle; desired-size flush on ready |
+| tmux small until window resize (#101) | Retain `desiredResize` while starting; `flushTerminalResize` on ready |
 | Double framebuffer | Single active renderer path (WebGL **or** DOM) |
 
 ---

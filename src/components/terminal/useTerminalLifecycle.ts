@@ -573,6 +573,7 @@ export function useTerminalLifecycle({
         pendingInput: '',
         pendingInputBytes: 0,
         inputFlushTimer: null,
+        desiredResize: null,
         lastResize: null,
         ligaturesAddon: undefined,
         ligaturesEnabled: false,

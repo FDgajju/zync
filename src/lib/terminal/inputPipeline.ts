@@ -11,6 +11,7 @@ import {
 import { terminalCache } from './terminalCache.js';
 import { touchTerminalActivity } from './terminalActivity.js';
 import { clearIdleHostSuspendNotice } from './terminalIdleSuspendNotice.js';
+import { flushTerminalResize } from './terminalResizeSync.js';
 import { isWin32Platform, resolveLocalWindowsShellId } from './spawnContext.js';
 
 const INPUT_BATCH_MS = 4;
@@ -190,5 +191,7 @@ export function handleTerminalReady(termId: string, generation: number): boolean
   }
   clearIdleHostSuspendNotice(termId);
   flushPendingInput(termId);
+  // Geometry uses the same pending→flush contract as input (#101).
+  flushTerminalResize(termId);
   return true;
 }

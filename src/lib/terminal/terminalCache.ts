@@ -21,6 +21,9 @@ export interface TerminalCache {
   pendingInput: string;
   pendingInputBytes: number;
   inputFlushTimer: ReturnType<typeof window.setTimeout> | null;
+  /** Latest fitted size from the UI (retained while PTY is starting). */
+  desiredResize: { rows: number; cols: number } | null;
+  /** Last size successfully sent to the backend PTY. */
   lastResize: { rows: number; cols: number } | null;
   unlisten?: UnlistenFn[];
   /** Streaming PTY output channel passed to terminal:create. */

@@ -1,5 +1,6 @@
 import type { Terminal as XTerm } from '@xterm/xterm';
 import { clearTerminalPendingInput, terminalCache } from './terminalCache.js';
+import { clearTerminalResizeState } from './terminalResizeSync.js';
 import { spawnTerminalFromStoreContext } from './terminalSpawn.js';
 import type { TerminalSpawnTabState } from './spawnContext.js';
 
@@ -38,7 +39,7 @@ export function tryWakeTerminalOnReconnect(ctx: ConnectionWakeupContext): boolea
   }
 
   clearTerminalPendingInput(ctx.sessionId);
-  cached.lastResize = null;
+  clearTerminalResizeState(ctx.sessionId);
   return spawnTerminalFromStoreContext({
     sessionId: ctx.sessionId,
     connectionId: ctx.connectionId,

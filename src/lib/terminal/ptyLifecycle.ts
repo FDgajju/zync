@@ -8,6 +8,7 @@ import {
 } from './terminalSpawnErrors.js';
 import { clearIdleHostSuspendNotice, writeIdleHostSuspendNotice } from './terminalIdleSuspendNotice.js';
 import { attachTerminalOutputChannel } from './terminalOutputStream.js';
+import { clearTerminalResizeState } from './terminalResizeSync.js';
 
 export interface SpawnTerminalSessionOptions {
   termId: string;
@@ -44,6 +45,9 @@ export function spawnTerminalSession(options: SpawnTerminalSessionOptions): bool
   cached.spawned = true;
   cached.starting = true;
   cached.suspendedByPanel = false;
+  cached.desiredResize = { rows: term.rows, cols: term.cols };
+  // Create tells the backend this size; lastResize stays null until ready flush
+  // or a live sync confirms the backend has caught up to desiredResize.
 
   if (clearBuffer) {
     term.clear();
@@ -123,7 +127,7 @@ export function resetTerminalPtyForReconnect(termId: string): void {
   cached.suspendedByIdle = false;
   clearIdleHostSuspendNotice(termId);
   cached.spawnBlocked = false;
-  cached.lastResize = null;
+  clearTerminalResizeState(termId);
 }
 
 /** Closes the backend PTY while preserving the cached xterm instance and scrollback. */
@@ -144,5 +148,5 @@ export function suspendTerminalPty(termId: string, options?: SuspendTerminalPtyO
   cached.spawned = false;
   cached.starting = false;
   cached.suspendedByPanel = options?.panelHide ?? false;
-  cached.lastResize = null;
+  clearTerminalResizeState(termId);
 }
