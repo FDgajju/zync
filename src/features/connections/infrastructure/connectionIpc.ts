@@ -121,6 +121,11 @@ export const connectIpc = async (config: ConnectionConfigPayload): Promise<Conne
 export const disconnectIpc = async (connectionId: string): Promise<void> =>
     window.ipcRenderer.invoke('ssh:disconnect', connectionId);
 
+export const measureConnectionLatencyIpc = async (
+    connectionId: string,
+): Promise<{ connectionId: string; rttMs: number }> =>
+    window.ipcRenderer.invoke('ssh:connectionLatency', connectionId);
+
 export const cancelConnectIpc = async (connectionId: string, attemptId?: string): Promise<void> =>
     window.ipcRenderer.invoke('ssh:cancelConnect', { connectionId, attemptId });
 

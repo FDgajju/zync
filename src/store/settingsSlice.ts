@@ -22,6 +22,11 @@ import {
     normalizeNotificationSettings,
     type NotificationSettings,
 } from '../features/notifications';
+import {
+    DEFAULT_STATUS_BAR_SETTINGS,
+    normalizeStatusBarSettings,
+} from '../features/statusBar/settings.js';
+import type { StatusBarSettings } from '../features/statusBar/types.js';
 
 export interface AppSettings {
     theme: string;
@@ -137,6 +142,7 @@ export interface AppSettings {
         showHostAddressesInLists: boolean;
     };
     notifications: NotificationSettings;
+    statusBar: StatusBarSettings;
 }
 
 export const defaultSettings: AppSettings = {
@@ -167,6 +173,7 @@ export const defaultSettings: AppSettings = {
         showHostAddressesInLists: DEFAULT_SHOW_HOST_ADDRESSES_IN_LISTS,
     },
     notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
+    statusBar: { ...DEFAULT_STATUS_BAR_SETTINGS },
     terminal: {
         ...(() => {
             const typography = resolveDefaultTerminalTypography();
@@ -343,6 +350,7 @@ export type SettingsTabId =
     | 'general'
     | 'terminal'
     | 'appearance'
+    | 'statusBar'
     | 'fileManager'
     | 'shortcuts'
     | 'plugins'
@@ -365,6 +373,7 @@ export interface SettingsSlice {
     updateTerminalSettings: (updates: Partial<AppSettings['terminal']>) => Promise<void>;
     updateLocalTermSettings: (updates: Partial<AppSettings['localTerm']>) => Promise<void>;
     updateFileManagerSettings: (updates: Partial<AppSettings['fileManager']>) => Promise<void>;
+    updateStatusBarSettings: (updates: Partial<AppSettings['statusBar']>) => Promise<void>;
     updateGhostSuggestionsSettings: (updates: Partial<AppSettings['ghostSuggestions']>) => Promise<void>;
     updateKeybindings: (updates: Partial<AppSettings['keybindings']>) => Promise<void>;
     toggleExpandedFolder: (folderPath: string) => Promise<void>;
@@ -430,6 +439,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
                 ai: { ...defaultSettings.ai, ...(loaded?.ai || {}) },
                 privacy: { ...defaultSettings.privacy, ...(loaded?.privacy || {}) },
                 notifications: normalizeNotificationSettings(loaded?.notifications),
+                statusBar: normalizeStatusBarSettings(loaded?.statusBar),
                 expandedFolders: loaded?.expandedFolders || []
             };
             set({ settings: merged, isLoadingSettings: false });
@@ -627,6 +637,40 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
                 changedKeys.map((key) => [key, previous.localTerm[key]])
             ) as Partial<AppSettings['localTerm']>;
             set({ settings: { ...current, localTerm: { ...current.localTerm, ...rollbackPatch } } });
+            throw error;
+        }
+    },
+
+    updateStatusBarSettings: async (updates) => {
+        const previous = get().settings;
+        const previousBar = normalizeStatusBarSettings(previous.statusBar);
+        const updatedBar = { ...previousBar, ...updates };
+        const updated = {
+            ...previous,
+            statusBar: updatedBar,
+        };
+        set({ settings: updated });
+        const changedKeys = Object.keys(updates) as Array<keyof AppSettings['statusBar']>;
+        try {
+            await persistSettings({ statusBar: updates });
+        } catch (error) {
+            console.error('Failed to save status bar settings:', error);
+            const current = get().settings;
+            if (current.statusBar !== updatedBar) {
+                throw error;
+            }
+            const rollbackPatch = Object.fromEntries(
+                changedKeys.map((key) => [key, previousBar[key]]),
+            ) as Partial<AppSettings['statusBar']>;
+            set({
+                settings: {
+                    ...current,
+                    statusBar: {
+                        ...normalizeStatusBarSettings(current.statusBar),
+                        ...rollbackPatch,
+                    },
+                },
+            });
             throw error;
         }
     },

@@ -7,6 +7,11 @@ import { Tooltip } from '../ui/Tooltip';
 import { StatusBarTransferIndicator } from '../file-manager/StatusBarTransferIndicator';
 import { StatusBarUpdateIndicator } from '../../features/updater/StatusBarUpdateIndicator';
 import { NotificationBell, useNotificationBellPlacement } from '../notifications/NotificationBell';
+import {
+  DEFAULT_STATUS_BAR_SETTINGS,
+  StatusBarLatency,
+  useConnectionLatency,
+} from '../../features/statusBar';
 
 const statusToggleBtnClass =
   'h-6 w-6 shrink-0 rounded-md text-app-muted hover:text-app-text hover:bg-app-surface border border-transparent hover:border-app-border/40 transition-colors flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 focus-visible:ring-offset-0';
@@ -40,6 +45,14 @@ export function StatusBar() {
   const isLiveConnected = activeConnection?.status === 'connected';
   const isConnecting = activeConnection?.status === 'connecting';
   const { showInStatusLeft, showInStatusRight } = useNotificationBellPlacement();
+  const showConnectionLatency =
+    useAppStore((state) => state.settings.statusBar?.showConnectionLatency)
+    ?? DEFAULT_STATUS_BAR_SETTINGS.showConnectionLatency;
+  const latencyMs = useConnectionLatency({
+    connectionId: activeConnectionId,
+    enabled: showConnectionLatency,
+    isLive: Boolean(isLiveConnected && activeConnection),
+  });
 
   return (
     <div className="h-9 bg-app-panel border-t border-app-border flex items-center px-2.5 text-[11px] select-none text-app-text/80 justify-between shrink-0 gap-2">
@@ -71,22 +84,34 @@ export function StatusBar() {
           </>
         )}
 
-        <div className="flex items-center gap-1.5 hover:text-white transition-colors min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 max-w-[min(18rem,42%)]">
           {isLiveConnected && activeConnection ? (
-            <>
-              <Wifi size={12} className="text-app-success shrink-0" />
-              <span className="font-medium truncate">Connected to {activeConnection.name}</span>
-            </>
+            <div className="flex min-w-0 max-w-full items-center gap-1.5 text-app-text/80">
+              {showConnectionLatency && latencyMs !== null ? (
+                <StatusBarLatency ms={latencyMs} />
+              ) : (
+                <Wifi size={12} className="text-app-success shrink-0" />
+              )}
+              <Tooltip content={`Connected to ${activeConnection.name}`} position="top" className="min-w-0 max-w-full justify-start">
+                <span className="min-w-0 truncate font-medium hover:text-white transition-colors">
+                  {activeConnection.name}
+                </span>
+              </Tooltip>
+            </div>
           ) : isConnecting && activeConnection ? (
-            <>
-              <Wifi size={12} className="text-app-warning shrink-0 animate-pulse" />
-              <span className="text-app-muted truncate">Connecting to {activeConnection.name}…</span>
-            </>
+            <Tooltip content={`Connecting to ${activeConnection.name}`} position="top" className="min-w-0 max-w-full justify-start">
+              <div className="flex min-w-0 max-w-full items-center gap-1.5">
+                <Wifi size={12} className="text-app-warning shrink-0 animate-pulse" />
+                <span className="text-app-muted truncate">{activeConnection.name}</span>
+              </div>
+            </Tooltip>
           ) : activeConnection ? (
-            <>
-              <WifiOff size={12} className="text-app-muted shrink-0" />
-              <span className="text-app-muted truncate">{activeConnection.name} · offline</span>
-            </>
+            <Tooltip content={`${activeConnection.name} is offline`} position="top" className="min-w-0 max-w-full justify-start">
+              <div className="flex min-w-0 max-w-full items-center gap-1.5">
+                <WifiOff size={12} className="text-app-muted shrink-0" />
+                <span className="text-app-muted truncate">{activeConnection.name}</span>
+              </div>
+            </Tooltip>
           ) : isLocalWorkspace ? (
             <>
               <Monitor size={12} className="text-app-muted shrink-0" />

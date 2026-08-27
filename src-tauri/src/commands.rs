@@ -4848,6 +4848,43 @@ pub async fn ssh_exec(
     }
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionLatencyPayload {
+    pub connection_id: String,
+    pub rtt_ms: u64,
+}
+
+#[tauri::command]
+pub async fn ssh_connection_latency(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<ConnectionLatencyPayload, String> {
+    if id == "local" {
+        return Err("Local workspace has no SSH latency".to_string());
+    }
+
+    let session = {
+        let connections = state.connections.lock().await;
+        let conn = connections
+            .get(&id)
+            .ok_or_else(|| "Connection not found".to_string())?;
+        conn.session
+            .clone()
+            .ok_or_else(|| "Connection is not live".to_string())?
+    };
+
+    let rtt_ms = {
+        let handle = session.lock().await;
+        crate::connection_latency::measure_session_rtt_ms(&handle).await?
+    };
+
+    Ok(ConnectionLatencyPayload {
+        connection_id: id,
+        rtt_ms,
+    })
+}
+
 #[tauri::command]
 pub async fn ssh_import_config(
     app: AppHandle,

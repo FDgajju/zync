@@ -6,7 +6,7 @@ import { ZPortal } from '../ui/ZPortal';
 import { useAppStore } from '../../store/useAppStore'; // Updated Import
 import { usePlugins } from '../../context/PluginContext';
 
-import { X, Type, Monitor, FileText, Keyboard, Info, RefreshCw, FolderOpen, Settings as SettingsIcon, Package, Code, Sparkles, GripHorizontal } from 'lucide-react';
+import { X, Type, Monitor, FileText, Keyboard, Info, RefreshCw, FolderOpen, Settings as SettingsIcon, Package, Code, Sparkles, GripHorizontal, PanelBottom } from 'lucide-react';
 import { ToastContainer } from '../ui/Toast';
 
 import { buildEditorProviderOptions, CODEMIRROR_EDITOR_ID, formatEditorCapabilities } from '../editor/providers';
@@ -18,6 +18,7 @@ import { AiTab } from './tabs/AiTab';
 import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { PluginsTab } from './tabs/PluginsTab';
 import { AboutTab } from './tabs/AboutTab';
+import { StatusBarTab } from './tabs/StatusBarTab';
 import { IconResolver } from './common/IconResolver';
 import { TabButton } from './common/TabButton';
 import { TiltLogo } from './common/TiltLogo';
@@ -37,7 +38,7 @@ interface SettingsModalProps {
     onClose: () => void;
 }
 
-type Tab = 'general' | 'terminal' | 'appearance' | 'fileManager' | 'shortcuts' | 'plugins' | 'ai' | 'about';
+type Tab = 'general' | 'terminal' | 'appearance' | 'statusBar' | 'fileManager' | 'shortcuts' | 'plugins' | 'ai' | 'about';
 const BUILTIN_ICON_THEME_COUNT = 2; // VSCode Icons + Lucide
 const FOCUSABLE_SELECTOR = [
     'a[href]',
@@ -69,6 +70,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const updateAiSettings = useAppStore(state => state.updateAiSettings);
     const updateTerminalSettings = useAppStore(state => state.updateTerminalSettings);
     const updateFileManagerSettings = useAppStore(state => state.updateFileManagerSettings);
+    const updateStatusBarSettings = useAppStore(state => state.updateStatusBarSettings);
     const updateLocalTermSettings = useAppStore(state => state.updateLocalTermSettings);
     const updateKeybindings = useAppStore(state => state.updateKeybindings);
     const updateGhostSuggestionsSettings = useAppStore(state => state.updateGhostSuggestionsSettings);
@@ -104,6 +106,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             toastSettingsError('local shell settings', error);
         }
     };
+
 
     // Use the store action so merges happen against current state, not the render snapshot.
     const setGhostSuggestionsField = (patch: Partial<typeof settings.ghostSuggestions>) => {
@@ -367,7 +370,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     return;
                 }
                 e.preventDefault();
-                const tabs: Tab[] = ['general', 'terminal', 'appearance', 'fileManager', 'shortcuts', 'plugins', 'ai', 'about'];
+                const tabs: Tab[] = ['general', 'terminal', 'appearance', 'statusBar', 'fileManager', 'shortcuts', 'plugins', 'ai', 'about'];
                 const currentIndex = tabs.indexOf(activeTab);
                 let nextIndex: number;
 
@@ -564,6 +567,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <TabButton active={activeTab === 'general'} onClick={() => handleTabChange('general')} icon={<SettingsIcon size={15} />} label="General" tabIndex={getTabIndex('general')} />
                     <TabButton active={activeTab === 'terminal'} onClick={() => handleTabChange('terminal')} icon={<Type size={15} />} label="Terminal" tabIndex={getTabIndex('terminal')} />
                     <TabButton active={activeTab === 'appearance'} onClick={() => handleTabChange('appearance')} icon={<Monitor size={15} />} label="Appearance" tabIndex={getTabIndex('appearance')} />
+                    <TabButton active={activeTab === 'statusBar'} onClick={() => handleTabChange('statusBar')} icon={<PanelBottom size={15} />} label="Status Bar" tabIndex={getTabIndex('statusBar')} />
                     <TabButton active={activeTab === 'fileManager'} onClick={() => handleTabChange('fileManager')} icon={<FileText size={15} />} label="File Manager" tabIndex={getTabIndex('fileManager')} />
                     <TabButton active={activeTab === 'shortcuts'} onClick={() => handleTabChange('shortcuts')} icon={<Keyboard size={15} />} label="Shortcuts" tabIndex={getTabIndex('shortcuts')} />
                     <TabButton active={activeTab === 'plugins'} onClick={() => handleTabChange('plugins')} icon={<Package size={15} />} label="Plugins" tabIndex={getTabIndex('plugins')} />
@@ -609,6 +613,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <h2 id={titleId} className="font-medium text-[var(--color-app-text)] text-sm tracking-tight">
                             {activeTab === 'fileManager'
                                 ? 'File Manager'
+                                : activeTab === 'statusBar'
+                                    ? 'Status Bar'
                                 : activeTab === 'ai'
                                     ? 'AI Assistant'
                                 : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
@@ -660,6 +666,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 updateLocalTermSettings={safeUpdateLocalTermSettings}
                                 setGhostSuggestionsField={setGhostSuggestionsField}
                                 setGhostProviderField={setGhostProviderField}
+                            />
+                        )}
+
+                        {activeTab === 'statusBar' && (
+                            <StatusBarTab
+                                settings={settings}
+                                updateStatusBarSettings={updateStatusBarSettings}
                             />
                         )}
 
