@@ -4,6 +4,9 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Fixed
+- **Remote PTY / tmux initial size (#101)**: Terminal geometry is retained while the PTY is starting and flushed on `terminal-ready`, so tmux and other remote sessions fill the viewport on first attach without requiring a manual window resize. ([ff07642])
+
 ## [2.25.8] - 2026-08-22
 
 ### Added
