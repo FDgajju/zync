@@ -737,6 +737,8 @@ export function MainLayout({ children }: { children: ReactNode }) {
     const setSidebarCollapsedLocal = useAppStore(state => state.setSidebarCollapsedLocal);
     const [surveyPrompt, setSurveyPrompt] = useState<{ kind: SurveyPromptKind; version: string } | null>(null);
     const surveyChecked = useRef(false);
+    /** Pre-update lastSeenVersion captured before release-notes boot rewrites it. */
+    const surveyPreviousVersionRef = useRef<string | null>(null);
 
     // Shutdown Management
     const [isShutdownModalOpen, setIsShutdownModalOpen] = useState(false);
@@ -821,6 +823,10 @@ export function MainLayout({ children }: { children: ReactNode }) {
         if (isLoadingSettings || versionChecked.current) return;
         versionChecked.current = true;
 
+        // Capture synchronously before any await / lastSeenVersion rewrite so survey
+        // can tell "upgraded from older build" vs "brand-new install".
+        surveyPreviousVersionRef.current = useAppStore.getState().settings.lastSeenVersion || '';
+
         const checkVersionAndShowNotes = async () => {
             try {
                 const currentVersion = await window.ipcRenderer?.invoke('app:getVersion');
@@ -858,15 +864,16 @@ export function MainLayout({ children }: { children: ReactNode }) {
         checkVersionAndShowNotes();
     }, [isLoadingSettings, openReleaseNotesTab, updateSettings]);
 
-    // Profile survey: install once, or release check-in after updating from a prior version.
+    // Profile survey: one-shot only (new install, or first upgrade into a survey-enabled build).
     useEffect(() => {
         if (isLoadingSettings || !sessionLoaded || surveyChecked.current) return;
         surveyChecked.current = true;
 
-        // Capture before other boot effects rewrite lastSeenVersion.
         const state = useAppStore.getState();
         const survey = normalizeSurveySettings(state.settings.survey);
-        const previousSeenVersion = state.settings.lastSeenVersion || '';
+        const previousSeenVersion =
+            surveyPreviousVersionRef.current
+            ?? (state.settings.lastSeenVersion || '');
 
         const maybeShowSurvey = async () => {
             try {
@@ -923,18 +930,12 @@ export function MainLayout({ children }: { children: ReactNode }) {
                     lastDiscoverySource: prefs?.lastDiscoverySource ?? '',
                 }
                 : {};
-            if (prompt.kind === 'install') {
-                await updateSurveySettings({
-                    installCompleted: true,
-                    releaseSeenVersion: prompt.version,
-                    ...prefPatch,
-                });
-            } else {
-                await updateSurveySettings({
-                    releaseSeenVersion: prompt.version,
-                    ...prefPatch,
-                });
-            }
+            // Always mark installCompleted so later releases never re-prompt.
+            await updateSurveySettings({
+                installCompleted: true,
+                releaseSeenVersion: prompt.version,
+                ...prefPatch,
+            });
         } catch (err) {
             console.error(`Failed to persist survey ${result} state`, err);
         }

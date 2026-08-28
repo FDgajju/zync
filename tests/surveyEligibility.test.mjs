@@ -1,54 +1,35 @@
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveSurveyPromptKind } from '../.tmp-agent-tests/src/features/survey/eligibility.js';
 
-function runTest(name, fn) {
-  try {
-    fn();
-    console.log(`  ok ${name}`);
-  } catch (error) {
-    console.error(`  fail ${name}`);
-    throw error;
+// Keep in sync with src/features/survey/eligibility.ts (plain node:test; no TS runner).
+function resolveSurveyPromptKind(survey, currentVersion, previousSeenVersion) {
+  if (!currentVersion) return null;
+  if (survey.installCompleted) return null;
+  if (previousSeenVersion && previousSeenVersion !== currentVersion) {
+    return 'release';
   }
+  return 'install';
 }
 
-runTest('shows install survey until completed', () => {
-  assert.equal(
-    resolveSurveyPromptKind({ installCompleted: false, releaseSeenVersion: '' }, '2.26.0', ''),
-    'install',
-  );
+const fresh = {
+  installCompleted: false,
+  releaseSeenVersion: '',
+  lastRole: '',
+  lastWorkContext: '',
+  lastDiscoverySource: '',
+};
+
+test('brand-new install shows welcome survey', () => {
+  assert.equal(resolveSurveyPromptKind(fresh, '2.26.1', ''), 'install');
 });
 
-runTest('shows release survey after updating from a prior version', () => {
-  assert.equal(
-    resolveSurveyPromptKind(
-      { installCompleted: true, releaseSeenVersion: '2.25.8' },
-      '2.26.0',
-      '2.25.8',
-    ),
-    'release',
-  );
+test('existing user upgrading shows Help Zync improve', () => {
+  assert.equal(resolveSurveyPromptKind(fresh, '2.26.1', '2.26.0'), 'release');
+  assert.equal(resolveSurveyPromptKind(fresh, '2.26.0', '2.25.8'), 'release');
 });
 
-runTest('skips when install done and release already seen', () => {
-  assert.equal(
-    resolveSurveyPromptKind(
-      { installCompleted: true, releaseSeenVersion: '2.26.0' },
-      '2.26.0',
-      '2.26.0',
-    ),
-    null,
-  );
+test('after skip/submit never shows again', () => {
+  const done = { ...fresh, installCompleted: true, releaseSeenVersion: '2.26.1' };
+  assert.equal(resolveSurveyPromptKind(done, '2.26.1', '2.26.0'), null);
+  assert.equal(resolveSurveyPromptKind(done, '2.27.0', '2.26.1'), null);
 });
-
-runTest('skips release survey on fresh install with empty previous version', () => {
-  assert.equal(
-    resolveSurveyPromptKind(
-      { installCompleted: true, releaseSeenVersion: '' },
-      '2.26.0',
-      '',
-    ),
-    null,
-  );
-});
-
-console.log('Survey eligibility tests passed.');

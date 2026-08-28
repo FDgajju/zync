@@ -113,15 +113,15 @@ export function StatusBar() {
               </div>
             </Tooltip>
           ) : isLocalWorkspace ? (
-            <>
+            <div className="flex shrink-0 items-center gap-1.5">
               <Monitor size={12} className="text-app-muted shrink-0" />
-              <span className="text-app-muted">Local</span>
-            </>
+              <span className="whitespace-nowrap text-app-muted">Local</span>
+            </div>
           ) : (
-            <>
+            <div className="flex shrink-0 items-center gap-1.5">
               <WifiOff size={12} className="text-app-muted shrink-0" />
-              <span className="text-app-muted">No Connection</span>
-            </>
+              <span className="whitespace-nowrap text-app-muted">No Connection</span>
+            </div>
           )}
         </div>
 
