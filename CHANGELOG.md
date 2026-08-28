@@ -7,6 +7,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 ### Added
 - **Status bar SSH latency**: Live round-trip chip replaces the connected wifi icon (`21ms`), with Settings → Status Bar to toggle it. Probes the active SSH session only; fails soft when unknown. ([2608d05])
 - **Branded connect stage**: Host connect uses a loaders kit (`ConnectLoader` / `ConnectStagePanel`) with a dash on the host tile, quiet Connecting… copy, and a fade into the workspace (or the same-frame error + Retry). ([12a8aa7])
+- **In-app survey & feedback**: Optional welcome/update check-in popup and Settings → Feedback (private API submit + optional public GitHub issue). ([9903eb8])
 
 ### Fixed
 - **Remote PTY / tmux initial size (#101)**: Terminal geometry is retained while the PTY is starting and flushed on `terminal-ready`, so tmux and other remote sessions fill the viewport on first attach without requiring a manual window resize. ([ff07642])
