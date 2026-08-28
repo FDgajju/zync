@@ -17,6 +17,13 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { ShieldAlert, Loader2 } from 'lucide-react';
 import { ConnectStagePanel, PanelLoader, useConnectionStageOverlay } from '../loaders';
+import { SurveyPromptModal } from '../survey/SurveyPromptModal';
+import {
+    normalizeSurveySettings,
+    resolveSurveyPromptKind,
+    type SurveyPromptKind,
+} from '../../features/survey';
+import { getDebugSurveyPromptKind, isDebugSurveyPromptEnabled } from '../../lib/debugFlags';
 import ReleaseNotesTab from '../tabs/ReleaseNotesTab';
 import { SnippetSidebar } from '../snippets/SnippetSidebar';
 import { SetupWizard } from '../onboarding/SetupWizard';
@@ -726,7 +733,10 @@ export function MainLayout({ children }: { children: ReactNode }) {
     const settings = useAppStore(state => state.settings);
     const sidebarCollapsed = settings.sidebarCollapsed;
     const updateSettings = useAppStore(state => state.updateSettings);
+    const updateSurveySettings = useAppStore(state => state.updateSurveySettings);
     const setSidebarCollapsedLocal = useAppStore(state => state.setSidebarCollapsedLocal);
+    const [surveyPrompt, setSurveyPrompt] = useState<{ kind: SurveyPromptKind; version: string } | null>(null);
+    const surveyChecked = useRef(false);
 
     // Shutdown Management
     const [isShutdownModalOpen, setIsShutdownModalOpen] = useState(false);
@@ -847,6 +857,88 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
         checkVersionAndShowNotes();
     }, [isLoadingSettings, openReleaseNotesTab, updateSettings]);
+
+    // Profile survey: install once, or release check-in after updating from a prior version.
+    useEffect(() => {
+        if (isLoadingSettings || !sessionLoaded || surveyChecked.current) return;
+        surveyChecked.current = true;
+
+        // Capture before other boot effects rewrite lastSeenVersion.
+        const state = useAppStore.getState();
+        const survey = normalizeSurveySettings(state.settings.survey);
+        const previousSeenVersion = state.settings.lastSeenVersion || '';
+
+        const maybeShowSurvey = async () => {
+            try {
+                const currentVersion = await window.ipcRenderer?.invoke('app:getVersion');
+                if (!currentVersion || typeof currentVersion !== 'string') return;
+
+                const debugKind = isDebugSurveyPromptEnabled()
+                    ? (getDebugSurveyPromptKind() ?? 'install')
+                    : null;
+                const kind = debugKind ?? resolveSurveyPromptKind(survey, currentVersion, previousSeenVersion);
+                if (!kind) return;
+
+                if (kind === 'release' && !debugKind) {
+                    // Prefer showing after What's New is closed (max ~8s).
+                    const started = Date.now();
+                    await new Promise<void>((resolve) => {
+                        const tick = () => {
+                            const activeId = useAppStore.getState().activeTabId;
+                            const active = useAppStore.getState().tabs.find((tab) => tab.id === activeId);
+                            const notesOpen = active?.type === 'release-notes';
+                            if (!notesOpen || Date.now() - started > 8000) {
+                                resolve();
+                                return;
+                            }
+                            window.setTimeout(tick, 350);
+                        };
+                        window.setTimeout(tick, 600);
+                    });
+                } else {
+                    await new Promise((resolve) => window.setTimeout(resolve, 900));
+                }
+
+                setSurveyPrompt({ kind, version: currentVersion });
+            } catch (err) {
+                console.error('Failed to resolve survey prompt', err);
+            }
+        };
+
+        void maybeShowSurvey();
+    }, [isLoadingSettings, sessionLoaded]);
+
+    const handleSurveyCompleted = useCallback(async (
+        result: 'submitted' | 'skipped',
+        prefs?: { lastRole?: string; lastWorkContext?: string; lastDiscoverySource?: string },
+    ) => {
+        const prompt = surveyPrompt;
+        setSurveyPrompt(null);
+        if (!prompt) return;
+        try {
+            const prefPatch = result === 'submitted'
+                ? {
+                    lastRole: prefs?.lastRole ?? '',
+                    lastWorkContext: prefs?.lastWorkContext ?? '',
+                    lastDiscoverySource: prefs?.lastDiscoverySource ?? '',
+                }
+                : {};
+            if (prompt.kind === 'install') {
+                await updateSurveySettings({
+                    installCompleted: true,
+                    releaseSeenVersion: prompt.version,
+                    ...prefPatch,
+                });
+            } else {
+                await updateSurveySettings({
+                    releaseSeenVersion: prompt.version,
+                    ...prefPatch,
+                });
+            }
+        } catch (err) {
+            console.error(`Failed to persist survey ${result} state`, err);
+        }
+    }, [surveyPrompt, updateSurveySettings]);
 
     // Theme Application Effect
     const theme = useAppStore(state => state.settings.theme);
@@ -1081,6 +1173,14 @@ export function MainLayout({ children }: { children: ReactNode }) {
             />
             {/* Portal Root for Modals/Overlays to ensure they stay within rounded corners */}
             <div id="modal-portal-root" className="absolute inset-0 pointer-events-none z-[9999]" />
+
+            <SurveyPromptModal
+                open={Boolean(surveyPrompt)}
+                kind={surveyPrompt?.kind ?? 'install'}
+                appVersion={surveyPrompt?.version ?? ''}
+                prefill={normalizeSurveySettings(settings.survey)}
+                onCompleted={(result, prefs) => { void handleSurveyCompleted(result, prefs); }}
+            />
         </div >
     );
 }

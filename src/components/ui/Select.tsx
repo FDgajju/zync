@@ -59,9 +59,15 @@ const createDefaultBounds = (): BoundsRect => ({
     width: window.innerWidth - EDGE_MARGIN * 2,
 });
 
-const calculateDropdownCoords = (trigger: HTMLElement): DropdownCoords => {
+const calculateDropdownCoords = (
+    trigger: HTMLElement,
+    /** When true (portal menus), escape modal overflow and use the viewport. */
+    useViewportBounds = false,
+): DropdownCoords => {
     const triggerRect = trigger.getBoundingClientRect();
-    const modalSurface = trigger.closest('[data-zync-modal-surface]') as HTMLElement | null;
+    const modalSurface = useViewportBounds
+        ? null
+        : trigger.closest('[data-zync-modal-surface]') as HTMLElement | null;
     const bounds: BoundsRect = modalSurface
         ? {
             top: modalSurface.getBoundingClientRect().top,
@@ -114,7 +120,7 @@ export function Select({
     useLayoutEffect(() => {
         if (!(isOpen && portal && containerRef.current)) return;
 
-        setCoords(calculateDropdownCoords(containerRef.current));
+        setCoords(calculateDropdownCoords(containerRef.current, true));
     }, [isOpen, portal]);
 
     useEffect(() => {
@@ -156,7 +162,7 @@ export function Select({
             if (portal && containerRef.current) {
                 updateCoords = () => {
                     if (!containerRef.current) return;
-                    setCoords(calculateDropdownCoords(containerRef.current));
+                    setCoords(calculateDropdownCoords(containerRef.current, true));
                 };
                 window.addEventListener('resize', updateCoords);
                 window.addEventListener('scroll', updateCoords, true);
@@ -189,7 +195,7 @@ export function Select({
                 width: coords.width > 0 ? coords.width : 'auto',
                 minWidth: '160px',
                 maxHeight: `${coords.maxHeight}px`,
-                zIndex: 9999
+                zIndex: 10050
             } : undefined}
             className={cn(
                 !portal && "absolute z-[110] w-full mt-1.5",

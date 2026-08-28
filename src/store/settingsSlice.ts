@@ -27,6 +27,11 @@ import {
     normalizeStatusBarSettings,
 } from '../features/statusBar/settings.js';
 import type { StatusBarSettings } from '../features/statusBar/types.js';
+import {
+    DEFAULT_SURVEY_SETTINGS,
+    normalizeSurveySettings,
+} from '../features/survey/settings.js';
+import type { SurveySettings } from '../features/survey/types.js';
 
 export interface AppSettings {
     theme: string;
@@ -143,6 +148,7 @@ export interface AppSettings {
     };
     notifications: NotificationSettings;
     statusBar: StatusBarSettings;
+    survey: SurveySettings;
 }
 
 export const defaultSettings: AppSettings = {
@@ -174,6 +180,7 @@ export const defaultSettings: AppSettings = {
     },
     notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
     statusBar: { ...DEFAULT_STATUS_BAR_SETTINGS },
+    survey: { ...DEFAULT_SURVEY_SETTINGS },
     terminal: {
         ...(() => {
             const typography = resolveDefaultTerminalTypography();
@@ -355,6 +362,7 @@ export type SettingsTabId =
     | 'shortcuts'
     | 'plugins'
     | 'ai'
+    | 'feedback'
     | 'about';
 
 export interface SettingsSlice {
@@ -374,6 +382,7 @@ export interface SettingsSlice {
     updateLocalTermSettings: (updates: Partial<AppSettings['localTerm']>) => Promise<void>;
     updateFileManagerSettings: (updates: Partial<AppSettings['fileManager']>) => Promise<void>;
     updateStatusBarSettings: (updates: Partial<AppSettings['statusBar']>) => Promise<void>;
+    updateSurveySettings: (updates: Partial<AppSettings['survey']>) => Promise<void>;
     updateGhostSuggestionsSettings: (updates: Partial<AppSettings['ghostSuggestions']>) => Promise<void>;
     updateKeybindings: (updates: Partial<AppSettings['keybindings']>) => Promise<void>;
     toggleExpandedFolder: (folderPath: string) => Promise<void>;
@@ -440,6 +449,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
                 privacy: { ...defaultSettings.privacy, ...(loaded?.privacy || {}) },
                 notifications: normalizeNotificationSettings(loaded?.notifications),
                 statusBar: normalizeStatusBarSettings(loaded?.statusBar),
+                survey: normalizeSurveySettings(loaded?.survey),
                 expandedFolders: loaded?.expandedFolders || []
             };
             set({ settings: merged, isLoadingSettings: false });
@@ -667,6 +677,43 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
                     ...current,
                     statusBar: {
                         ...normalizeStatusBarSettings(current.statusBar),
+                        ...rollbackPatch,
+                    },
+                },
+            });
+            throw error;
+        }
+    },
+
+    updateSurveySettings: async (updates) => {
+        const previous = get().settings;
+        const previousSurvey = normalizeSurveySettings(previous.survey);
+        const updatedSurvey = { ...previousSurvey, ...updates };
+        const updated = {
+            ...previous,
+            survey: updatedSurvey,
+        };
+        set({ settings: updated });
+        const changedKeys = Object.keys(updates) as Array<keyof AppSettings['survey']>;
+        try {
+            await persistSettings({ survey: updates });
+        } catch (error) {
+            console.error('Failed to save survey settings:', error);
+            const current = get().settings;
+            const currentSurvey = normalizeSurveySettings(current.survey);
+            const rollbackPatch = Object.fromEntries(
+                changedKeys
+                    .filter((key) => currentSurvey[key] === updatedSurvey[key])
+                    .map((key) => [key, previousSurvey[key]]),
+            ) as Partial<AppSettings['survey']>;
+            if (Object.keys(rollbackPatch).length === 0) {
+                throw error;
+            }
+            set({
+                settings: {
+                    ...current,
+                    survey: {
+                        ...currentSurvey,
                         ...rollbackPatch,
                     },
                 },

@@ -23,3 +23,27 @@ export function isDebugThemePayloadEnabled(): boolean {
   return readLocalStorageFlag('zync.debug.themePayload');
 }
 
+/**
+ * Force the profile survey modal on boot (dev).
+ *
+ * Enable:
+ *   localStorage.setItem('zync.debug.surveyPrompt', '1')
+ * Optional kind:
+ *   localStorage.setItem('zync.debug.surveyPromptKind', 'install') // or 'release'
+ * Disable:
+ *   localStorage.removeItem('zync.debug.surveyPrompt')
+ */
+export function isDebugSurveyPromptEnabled(): boolean {
+  return readLocalStorageFlag('zync.debug.surveyPrompt');
+}
+
+export function getDebugSurveyPromptKind(): 'install' | 'release' | null {
+  try {
+    const kind = window.localStorage.getItem('zync.debug.surveyPromptKind');
+    if (kind === 'install' || kind === 'release') return kind;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+

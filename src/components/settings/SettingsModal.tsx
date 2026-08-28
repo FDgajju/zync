@@ -6,7 +6,7 @@ import { ZPortal } from '../ui/ZPortal';
 import { useAppStore } from '../../store/useAppStore'; // Updated Import
 import { usePlugins } from '../../context/PluginContext';
 
-import { X, Type, Monitor, FileText, Keyboard, Info, RefreshCw, FolderOpen, Settings as SettingsIcon, Package, Code, Sparkles, GripHorizontal, PanelBottom } from 'lucide-react';
+import { X, Type, Monitor, FileText, Keyboard, Info, RefreshCw, FolderOpen, Settings as SettingsIcon, Package, Code, Sparkles, GripHorizontal, PanelBottom, MessageSquare } from 'lucide-react';
 import { ToastContainer } from '../ui/Toast';
 
 import { buildEditorProviderOptions, CODEMIRROR_EDITOR_ID, formatEditorCapabilities } from '../editor/providers';
@@ -19,6 +19,7 @@ import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { PluginsTab } from './tabs/PluginsTab';
 import { AboutTab } from './tabs/AboutTab';
 import { StatusBarTab } from './tabs/StatusBarTab';
+import { FeedbackTab } from './tabs/FeedbackTab';
 import { IconResolver } from './common/IconResolver';
 import { TabButton } from './common/TabButton';
 import { TiltLogo } from './common/TiltLogo';
@@ -38,7 +39,7 @@ interface SettingsModalProps {
     onClose: () => void;
 }
 
-type Tab = 'general' | 'terminal' | 'appearance' | 'statusBar' | 'fileManager' | 'shortcuts' | 'plugins' | 'ai' | 'about';
+type Tab = 'general' | 'terminal' | 'appearance' | 'statusBar' | 'fileManager' | 'shortcuts' | 'plugins' | 'ai' | 'feedback' | 'about';
 const BUILTIN_ICON_THEME_COUNT = 2; // VSCode Icons + Lucide
 const FOCUSABLE_SELECTOR = [
     'a[href]',
@@ -370,7 +371,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     return;
                 }
                 e.preventDefault();
-                const tabs: Tab[] = ['general', 'terminal', 'appearance', 'statusBar', 'fileManager', 'shortcuts', 'plugins', 'ai', 'about'];
+                const tabs: Tab[] = ['general', 'terminal', 'appearance', 'statusBar', 'fileManager', 'shortcuts', 'plugins', 'ai', 'feedback', 'about'];
                 const currentIndex = tabs.indexOf(activeTab);
                 let nextIndex: number;
 
@@ -572,6 +573,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <TabButton active={activeTab === 'shortcuts'} onClick={() => handleTabChange('shortcuts')} icon={<Keyboard size={15} />} label="Shortcuts" tabIndex={getTabIndex('shortcuts')} />
                     <TabButton active={activeTab === 'plugins'} onClick={() => handleTabChange('plugins')} icon={<Package size={15} />} label="Plugins" tabIndex={getTabIndex('plugins')} />
                     <TabButton active={activeTab === 'ai'} onClick={() => handleTabChange('ai')} icon={<Sparkles size={15} />} label="AI" tabIndex={getTabIndex('ai')} />
+                    <TabButton active={activeTab === 'feedback'} onClick={() => handleTabChange('feedback')} icon={<MessageSquare size={15} />} label="Feedback" tabIndex={getTabIndex('feedback')} />
                     <TabButton
                         active={false}
                         onClick={() => {
@@ -617,6 +619,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     ? 'Status Bar'
                                 : activeTab === 'ai'
                                     ? 'AI Assistant'
+                                : activeTab === 'feedback'
+                                    ? 'Feedback'
                                 : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
                         </h2>
                         <GripHorizontal
@@ -738,6 +742,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 updateAiSettings={updateAiSettings}
                                 saveApiKey={saveApiKey}
                             />
+                        )}
+
+                        {activeTab === 'feedback' && (
+                            <FeedbackTab />
                         )}
 
                         {activeTab === 'about' && (
