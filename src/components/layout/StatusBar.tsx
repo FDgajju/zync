@@ -57,7 +57,7 @@ export function StatusBar() {
   return (
     <div className="h-9 bg-app-panel border-t border-app-border flex items-center px-2.5 text-[11px] select-none text-app-text/80 justify-between shrink-0 gap-2">
       {/* Bottom-left: sidebar toggle + connection status */}
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
         <Tooltip
           content={`${sidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar'} (${sidebarShortcut})`}
           position="top"
@@ -84,32 +84,51 @@ export function StatusBar() {
           </>
         )}
 
-        <div className="flex items-center gap-1.5 min-w-0 max-w-[min(18rem,42%)]">
+        {/*
+          Cap host width with a fixed rem max (not % of a squeezed flex parent).
+          Long names ellipsis; hover tooltip keeps the full label.
+        */}
+        <div className="flex min-w-0 max-w-[8rem] items-center gap-1.5 overflow-hidden">
           {isLiveConnected && activeConnection ? (
-            <div className="flex min-w-0 max-w-full items-center gap-1.5 text-app-text/80">
+            <div className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden text-app-text/80">
               {showConnectionLatency && latencyMs !== null ? (
                 <StatusBarLatency ms={latencyMs} />
               ) : (
                 <Wifi size={12} className="text-app-success shrink-0" />
               )}
-              <Tooltip content={`Connected to ${activeConnection.name}`} position="top" className="min-w-0 max-w-full justify-start">
-                <span className="min-w-0 truncate font-medium hover:text-white transition-colors">
-                  {activeConnection.name}
+              {/* Inner truncate span: Tooltip trigger is inline-flex and breaks ellipsis on the same node */}
+              <Tooltip
+                content={`Connected to ${activeConnection.name}`}
+                position="top"
+                className="min-w-0 max-w-full justify-start overflow-hidden"
+              >
+                <span className="inline-flex min-w-0 max-w-full overflow-hidden">
+                  <span className="min-w-0 truncate font-medium hover:text-white transition-colors">
+                    {activeConnection.name}
+                  </span>
                 </span>
               </Tooltip>
             </div>
           ) : isConnecting && activeConnection ? (
-            <Tooltip content={`Connecting to ${activeConnection.name}`} position="top" className="min-w-0 max-w-full justify-start">
-              <div className="flex min-w-0 max-w-full items-center gap-1.5">
+            <Tooltip
+              content={`Connecting to ${activeConnection.name}`}
+              position="top"
+              className="min-w-0 max-w-full justify-start overflow-hidden"
+            >
+              <div className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden">
                 <Wifi size={12} className="text-app-warning shrink-0 animate-pulse" />
-                <span className="text-app-muted truncate">{activeConnection.name}</span>
+                <span className="min-w-0 truncate text-app-muted">{activeConnection.name}</span>
               </div>
             </Tooltip>
           ) : activeConnection ? (
-            <Tooltip content={`${activeConnection.name} is offline`} position="top" className="min-w-0 max-w-full justify-start">
-              <div className="flex min-w-0 max-w-full items-center gap-1.5">
+            <Tooltip
+              content={`${activeConnection.name} is offline`}
+              position="top"
+              className="min-w-0 max-w-full justify-start overflow-hidden"
+            >
+              <div className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden">
                 <WifiOff size={12} className="text-app-muted shrink-0" />
-                <span className="text-app-muted truncate">{activeConnection.name}</span>
+                <span className="min-w-0 truncate text-app-muted">{activeConnection.name}</span>
               </div>
             </Tooltip>
           ) : isLocalWorkspace ? (

@@ -7,6 +7,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 ### Fixed
 - **Survey upgrade check-in**: Existing users updating into a survey-enabled build see **Help Zync improve** once (new installs still get Welcome). Skip/Submit never re-prompts on later releases. Captures `lastSeenVersion` before What's New rewrites it so the upgrade modal is not skipped. ([d3f4060])
 - **Status bar “No Connection” stacking**: Keep the idle connection label on one line (`whitespace-nowrap` + `shrink-0`) so it no longer wraps vertically when the status bar is tight. ([d3f4060])
+- **Status bar host name width**: Cap the connection label at `8rem` with a fixed rem max (not a `%` of a squeezed flex parent), truncate with ellipsis, and keep the full name on hover — avoids both huge names and ~1-character crush.
 
 ## [2.26.0] - 2026-08-28
 
