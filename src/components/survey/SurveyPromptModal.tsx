@@ -48,7 +48,7 @@ export function SurveyPromptModal({
 
     const rolePrefill = splitPrefillValue(prefill?.lastRole, ROLE_OPTIONS);
     const workPrefill = splitPrefillValue(prefill?.lastWorkContext, WORK_CONTEXT_OPTIONS);
-    const discoveryPrefill = splitPrefillValue(prefill?.lastDiscoverySource, DISCOVERY_OPTIONS);
+    const discoveryPrefill = splitPrefillValue(prefill?.lastDiscoverySource, DISCOVERY_OPTIONS, 120);
     setRole(rolePrefill.value);
     setRoleOther(rolePrefill.other);
     setWorkContext(workPrefill.value);
@@ -78,7 +78,10 @@ export function SurveyPromptModal({
   const buildPrefs = (resolvedRole?: string, resolvedWork?: string): SurveyPrefill => ({
     lastRole: resolvedRole || role || undefined,
     lastWorkContext: resolvedWork || workContext || undefined,
-    lastDiscoverySource: discoverySource || undefined,
+    lastDiscoverySource:
+      discoverySource === 'other'
+        ? (discoveryOther.trim().slice(0, 120) || 'other')
+        : (discoverySource || undefined),
   });
 
   const handleSubmit = async () => {

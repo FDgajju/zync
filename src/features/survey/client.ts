@@ -24,8 +24,14 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      // Refuse silent redirects so survey/feedback cannot be downgraded or forwarded.
+      redirect: 'manual',
     });
   } catch {
+    throw new Error(friendlyApiError(null));
+  }
+
+  if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
     throw new Error(friendlyApiError(null));
   }
 
