@@ -14,7 +14,12 @@ export function getSurveyApiBaseUrl(): string {
   }
 
   const host = parsed.hostname.toLowerCase();
-  const isLoopback = host === '127.0.0.1' || host === 'localhost' || host === '[::1]' || host === '::1';
+  // Allow any IPv4 loopback (127.0.0.0/8), localhost, and IPv6 loopback.
+  const isLoopback =
+    host === 'localhost'
+    || host === '[::1]'
+    || host === '::1'
+    || /^127(?:\.(?:\d{1,3})){3}$/.test(host);
 
   if (parsed.protocol === 'http:') {
     if (!isLoopback) {

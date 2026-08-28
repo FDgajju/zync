@@ -17,46 +17,60 @@ function friendlyApiError(status: number | null, serverMessage?: string): string
   return `Request failed (${status}). Try again or Skip.`;
 }
 
+const SURVEY_FETCH_TIMEOUT_MS = 15_000;
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SURVEY_FETCH_TIMEOUT_MS);
+
   try {
-    response = await fetch(`${getSurveyApiBaseUrl()}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      // Refuse silent redirects so survey/feedback cannot be downgraded or forwarded.
-      redirect: 'manual',
-    });
-  } catch {
-    throw new Error(friendlyApiError(null));
-  }
+    let response: Response;
+    try {
+      response = await fetch(`${getSurveyApiBaseUrl()}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        // Refuse silent redirects so survey/feedback cannot be downgraded or forwarded.
+        redirect: 'manual',
+        signal: controller.signal,
+      });
+    } catch {
+      throw new Error(friendlyApiError(null));
+    }
 
-  if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
-    throw new Error(friendlyApiError(null));
-  }
+    if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+      throw new Error(friendlyApiError(null));
+    }
 
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
+    let payload: unknown = null;
+    try {
+      // Same abort deadline covers body read, not only headers/connect.
+      payload = await response.json();
+    } catch {
+      if (controller.signal.aborted) {
+        throw new Error(friendlyApiError(null));
+      }
+      payload = null;
+    }
 
-  if (!response.ok) {
-    const serverMessage =
-      payload
-      && typeof payload === 'object'
-      && 'error' in payload
-      && payload.error
-      && typeof payload.error === 'object'
-      && 'message' in payload.error
-      && typeof (payload.error as { message?: unknown }).message === 'string'
-        ? (payload.error as { message: string }).message
-        : undefined;
-    throw new Error(friendlyApiError(response.status, serverMessage));
-  }
+    if (!response.ok) {
+      const serverMessage =
+        payload
+        && typeof payload === 'object'
+        && 'error' in payload
+        && payload.error
+        && typeof payload.error === 'object'
+        && 'message' in payload.error
+        && typeof (payload.error as { message?: unknown }).message === 'string'
+          ? (payload.error as { message: string }).message
+          : undefined;
+      throw new Error(friendlyApiError(response.status, serverMessage));
+    }
 
-  return payload as T;
+    return payload as T;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function submitSurvey(payload: SurveyPayload): Promise<SurveyApiResult> {
