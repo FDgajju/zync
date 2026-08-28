@@ -4,6 +4,10 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Fixed
+- **Survey upgrade check-in**: Existing users updating into a survey-enabled build see **Help Zync improve** once (new installs still get Welcome). Skip/Submit never re-prompts on later releases. Captures `lastSeenVersion` before What's New rewrites it so the upgrade modal is not skipped. ([d3f4060])
+- **Status bar “No Connection” stacking**: Keep the idle connection label on one line (`whitespace-nowrap` + `shrink-0`) so it no longer wraps vertically when the status bar is tight. ([d3f4060])
+
 ## [2.26.0] - 2026-08-28
 
 ### Added
@@ -1290,6 +1294,7 @@ Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` publishe
 [9903eb8]: https://github.com/zync-sh/zync/commit/9903eb8
 [ff07642]: https://github.com/zync-sh/zync/commit/ff07642
 [db0233d]: https://github.com/zync-sh/zync/commit/db0233d
+[d3f4060]: https://github.com/zync-sh/zync/commit/d3f4060
 [Unreleased]: https://github.com/zync-sh/zync/compare/v2.26.0...HEAD
 [2.26.0]: https://github.com/zync-sh/zync/compare/v2.25.8...v2.26.0
 [2.25.8]: https://github.com/zync-sh/zync/compare/v2.25.7...v2.25.8
