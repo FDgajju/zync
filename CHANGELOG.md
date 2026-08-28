@@ -4,6 +4,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.26.0] - 2026-08-28
+
 ### Added
 - **Status bar SSH latency**: Live round-trip chip replaces the connected wifi icon (`21ms`), with Settings → Status Bar to toggle it. Probes the active SSH session only; fails soft when unknown. ([2608d05])
 - **Branded connect stage**: Host connect uses a loaders kit (`ConnectLoader` / `ConnectStagePanel`) with a dash on the host tile, quiet Connecting… copy, and a fade into the workspace (or the same-frame error + Retry). ([12a8aa7])
@@ -11,6 +13,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ### Fixed
 - **Remote PTY / tmux initial size (#101)**: Terminal geometry is retained while the PTY is starting and flushed on `terminal-ready`, so tmux and other remote sessions fill the viewport on first attach without requiring a manual window resize. ([ff07642])
+- **Survey API URL hardening**: Reject non-loopback `http` survey API bases, require HTTPS for remote hosts, refuse POST redirects, and persist discovery “Other” free text in prefs. Release builds bake `VITE_SURVEY_API_URL`. ([db0233d])
 
 ## [2.25.8] - 2026-08-22
 
@@ -1282,7 +1285,13 @@ Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` publishe
 [6ed8f66]: https://github.com/zync-sh/zync/commit/6ed8f66
 [db8442c]: https://github.com/zync-sh/zync/commit/db8442c
 [7027a17]: https://github.com/zync-sh/zync/commit/7027a17
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.8...HEAD
+[2608d05]: https://github.com/zync-sh/zync/commit/2608d05
+[12a8aa7]: https://github.com/zync-sh/zync/commit/12a8aa7
+[9903eb8]: https://github.com/zync-sh/zync/commit/9903eb8
+[ff07642]: https://github.com/zync-sh/zync/commit/ff07642
+[db0233d]: https://github.com/zync-sh/zync/commit/db0233d
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.26.0...HEAD
+[2.26.0]: https://github.com/zync-sh/zync/compare/v2.25.8...v2.26.0
 [2.25.8]: https://github.com/zync-sh/zync/compare/v2.25.7...v2.25.8
 [2.25.7]: https://github.com/zync-sh/zync/compare/v2.25.6...v2.25.7
 [2.25.6]: https://github.com/zync-sh/zync/compare/v2.25.5...v2.25.6
