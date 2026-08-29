@@ -270,6 +270,19 @@ pub(crate) async fn stop_tunnels_for_connections(
         );
     }
 
+    for connection_id in connection_ids {
+        let session = {
+            let connections = state.connections.lock().await;
+            connections
+                .get(connection_id)
+                .and_then(|c| c.session.clone())
+        };
+        state
+            .tunnel_manager
+            .cancel_orphan_remote_forwards(session, connection_id)
+            .await;
+    }
+
     Ok(())
 }
 

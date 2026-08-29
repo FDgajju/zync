@@ -485,8 +485,10 @@ export function GlobalTunnelList() {
                                     onDelete: handleDeleteTunnel,
                                     onOpenBrowser: handleOpenBrowser,
                                     onCopy: (text: string) => {
-                                        navigator.clipboard.writeText(text);
-                                        showToast('success', 'Copied');
+                                        void navigator.clipboard.writeText(text).then(
+                                            () => showToast('success', 'Copied'),
+                                            () => showToast('error', 'Could not copy'),
+                                        );
                                     },
                                 };
                                 return (
@@ -534,7 +536,7 @@ export function GlobalTunnelList() {
                                                     {running}/{group.tunnels.length}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                                                 {running > 0 && (
                                                     <Button
                                                         size="sm"

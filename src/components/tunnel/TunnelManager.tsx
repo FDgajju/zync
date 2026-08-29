@@ -263,8 +263,10 @@ export function TunnelManager({ connectionId }: { connectionId?: string }) {
     onDelete: handleDeleteTunnel,
     onOpenBrowser: handleOpenBrowser,
     onCopy: (text: string) => {
-      navigator.clipboard.writeText(text);
-      showToast('success', 'Copied');
+      void navigator.clipboard.writeText(text).then(
+        () => showToast('success', 'Copied'),
+        () => showToast('error', 'Could not copy'),
+      );
     },
   };
   const renderTunnels = (items: TunnelConfig[], showGroup = true) =>

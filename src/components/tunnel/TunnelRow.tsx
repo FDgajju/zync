@@ -198,7 +198,9 @@ function TunnelOverflowMenu({
                 onClick={() => setMenuOpen(open => !open)}
                 className={cn(
                     'rounded-md p-1 text-app-muted transition-opacity hover:bg-app-surface hover:text-app-text',
-                    menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+                    menuOpen
+                        ? 'opacity-100'
+                        : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
                 )}
                 title="More"
             >

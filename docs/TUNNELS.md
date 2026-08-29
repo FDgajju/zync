@@ -163,7 +163,7 @@ Equivalent to `ssh -R [bind:]remotePort:localHost:localPort`.
 
 - Requests `tcpip_forward` on the SSH server for `bindAddress:remotePort`.
 - Incoming forwarded connections are proxied to the local target (`remoteHost` in the saved config stores the **local target host** for `-R`).
-- If the server rejects the listen and a later port on the same bind succeeds, Zync surfaces the same **port conflict** picker as local (suggested next port or manual). If every probe fails, the original reject is kept (usually `sshd` policy, not a busy port).
+- If the server rejects the listen and a later port on the same bind succeeds, Zync surfaces the same **port conflict** picker as local (suggested next port or manual). If every probe fails, the original rejection is kept.
 
 **Server requirement:** Remote binds on non-loopback addresses need `GatewayPorts` / `AllowTcpForwarding` on `sshd` (documented on the marketing site).
 

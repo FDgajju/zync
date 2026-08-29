@@ -11,7 +11,8 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Port Forwarding list**: Compact table grouped by SSH host, with a matching quiet grid. Search, status/type filters, host icons, persisted list/grid, and Copy/Open on the row.
 
 ### Fixed
-- **Remote port conflict**: Busy SSH `-R` listen ports use the same next-port / manual picker as local forwards. If every probe fails (sshd policy), the original reject is kept.
+- **Remote port conflict**: Busy SSH `-R` listen ports use the same next-port / manual picker as local forwards. If every probe fails, the original reject is kept. Probe binds that cannot be cancelled stay tracked until disconnect.
+- **Public URLs WebSocket**: Forward pre-close request bytes before later frames so upgrade payloads stay in order.
 
 ## [2.26.1] - 2026-08-28
 
