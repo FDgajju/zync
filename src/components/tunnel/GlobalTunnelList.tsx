@@ -4,12 +4,28 @@ import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { TopbarDropdown } from '../ui/TopbarDropdown';
 import { cn } from '../../lib/utils';
-import { Plus, Network, ChevronDown, FileText, Play, Square, Folder, FolderOpen, LayoutGrid, List, ChevronRight, ArrowRight } from 'lucide-react';
+import { Plus, Network, ChevronDown, FileText, Play, Square, ChevronRight, ArrowRight } from 'lucide-react';
 import { TUNNEL_PRESETS, TunnelPreset } from '../../lib/tunnelPresets';
 import { AddTunnelModal } from '../modals/AddTunnelModal';
 import { ImportSSHCommandModal } from '../modals/ImportSSHCommandModal';
-import { TunnelCard, TunnelConfig } from './TunnelCard';
+import type { TunnelConfig } from './TunnelCard';
+import {
+    TunnelRow,
+    TunnelGridCard,
+    TunnelTableHeader,
+    TunnelSearchInput,
+    TunnelViewToggle,
+    useTunnelViewMode,
+    TunnelFilterToolbar,
+    countTunnelFilters,
+    tunnelMatchesQuery,
+    tunnelMatchesStatus,
+    tunnelMatchesType,
+    type TunnelStatusFilter,
+    type TunnelTypeFilter,
+} from './TunnelRow';
 import { getConnectionDisplayLabels } from '../../features/connections/domain/connectionDisplay';
+import { OSIcon } from '../icons/OSIcon';
 import {
     parsePortConflictError,
     tunnelWithSwappedPort,
@@ -35,14 +51,16 @@ export function GlobalTunnelList() {
     const showToast = useAppStore((state) => state.showToast);
     // const [tunnels, setTunnels] = useState<TunnelConfig[]>([]); // Removed local state
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<TunnelStatusFilter>('all');
+    const [typeFilter, setTypeFilter] = useState<TunnelTypeFilter>('all');
     const [loading, setLoading] = useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingTunnel, setEditingTunnel] = useState<TunnelConfig | null>(null);
     const [initialConnectionId, setInitialConnectionId] = useState<string | undefined>(undefined);
     const [showPresetDropdown, setShowPresetDropdown] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    const [viewMode, setViewMode] = useTunnelViewMode();
+    const [collapsedHosts, setCollapsedHosts] = useState<Set<string>>(new Set());
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Port suggestion dialog state
@@ -124,45 +142,55 @@ export function GlobalTunnelList() {
         setIsAddModalOpen(true);
     };
 
-    const toggleGroup = (group: string) => {
-        const newSet = new Set(collapsedGroups);
-        if (newSet.has(group)) {
-            newSet.delete(group);
-        } else {
-            newSet.add(group);
-        }
-        setCollapsedGroups(newSet);
+    const toggleHost = (connectionId: string) => {
+        setCollapsedHosts(prev => {
+            const next = new Set(prev);
+            if (next.has(connectionId)) next.delete(connectionId);
+            else next.add(connectionId);
+            return next;
+        });
     };
 
-    const filteredTunnels = allTunnels.filter(t => {
-        const query = searchQuery.toLowerCase();
-        const conn = connections.find(c => c.id === t.connectionId);
-        return t.name.toLowerCase().includes(query) ||
-            t.localPort.toString().includes(query) ||
-            t.remotePort.toString().includes(query) ||
-            t.remoteHost.toLowerCase().includes(query) ||
-            conn?.name?.toLowerCase().includes(query) ||
-            conn?.host?.toLowerCase().includes(query);
-    });
+    const filterCounts = useMemo(() => countTunnelFilters(allTunnels), [allTunnels]);
 
-    // Grouping by connection
-    // Grouping by Group Name
-    const groupedTunnels = filteredTunnels.reduce((acc, t) => {
-        const groupName = t.group || 'Ungrouped';
-        if (!acc[groupName]) acc[groupName] = [];
-        acc[groupName].push(t);
-        return acc;
-    }, {} as Record<string, TunnelConfig[]>);
+    const filteredTunnels = useMemo(() => {
+        return allTunnels.filter(t => {
+            const conn = connections.find(c => c.id === t.connectionId);
+            const extra = [conn?.name, conn?.host].filter(Boolean) as string[];
+            return (
+                tunnelMatchesQuery(t, searchQuery, extra) &&
+                tunnelMatchesStatus(t, statusFilter) &&
+                tunnelMatchesType(t, typeFilter)
+            );
+        });
+    }, [allTunnels, connections, searchQuery, statusFilter, typeFilter]);
 
-    // Sort groups: named groups alphabetical, then Ungrouped
-    const sortedGroupNames = Object.keys(groupedTunnels).sort((a, b) => {
-        if (a === 'Ungrouped') return 1;
-        if (b === 'Ungrouped') return -1;
-        return a.localeCompare(b);
-    });
+    const hostGroups = useMemo(() => {
+        const byConn = new Map<string, TunnelConfig[]>();
+        for (const t of filteredTunnels) {
+            const list = byConn.get(t.connectionId) ?? [];
+            list.push(t);
+            byConn.set(t.connectionId, list);
+        }
+        return Array.from(byConn.entries())
+            .map(([connectionId, tunnels]) => {
+                const conn = connections.find(c => c.id === connectionId);
+                return {
+                    connectionId,
+                    hostLabel: conn
+                        ? getConnectionDisplayLabels(conn, false).primary
+                        : 'Unknown host',
+                    icon: conn?.icon || 'Server',
+                    connected: conn?.status === 'connected',
+                    tunnels,
+                };
+            })
+            .sort((a, b) => a.hostLabel.localeCompare(b.hostLabel));
+    }, [filteredTunnels, connections]);
 
-    const activeCount = allTunnels.filter(t => t.status === 'active').length;
+    const activeCount = filterCounts.running;
     const serversCount = new Set(allTunnels.map(t => t.connectionId)).size;
+    const filtersActive = Boolean(searchQuery.trim()) || statusFilter !== 'all' || typeFilter !== 'all';
 
     const handleToggleTunnel = async (tunnel: TunnelConfig) => {
         const conn = connections.find(c => c.id === tunnel.connectionId);
@@ -332,59 +360,19 @@ export function GlobalTunnelList() {
 
     return (
         <div className="flex flex-col h-full bg-app-bg animate-in fade-in duration-300">
-            {/* Compact Stacked Header */}
-            <div className="py-2.5 px-4 bg-app-panel/40 border-b border-app-border/30 backdrop-blur-md sticky top-0 z-20">
-                {/* Title Row */}
-                <div className="flex items-center gap-2 mb-2">
+            <div className="sticky top-0 z-20 border-b border-app-border/30 bg-app-panel/40 px-4 py-2.5 backdrop-blur-md">
+                <div className="mb-2 flex items-center gap-2">
                     <h1 className="text-sm font-bold tracking-tight text-app-text">Port Forwarding</h1>
                     {allTunnels.length > 0 && (
-                        <span className="text-[10px] text-app-muted/60 font-medium px-1.5 py-0.5 rounded-md bg-app-surface/50 border border-app-border/30">
-                            {activeCount} Active · {serversCount} Servers
+                        <span className="rounded-md border border-app-border/30 bg-app-surface/50 px-1.5 py-0.5 text-[10px] font-medium text-app-muted/60">
+                            {activeCount} running · {serversCount} {serversCount === 1 ? 'host' : 'hosts'}
                         </span>
                     )}
                 </div>
 
-                {/* Search and Actions Row */}
-                <div className="flex items-center gap-2">
-                    {/* Search Bar */}
-                    <div className="relative group flex-1">
-                        <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted/40 group-focus-within:text-app-accent">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="Filter forwards..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-app-surface/30 border border-app-border/30 rounded-lg py-1 pl-8 pr-3 text-[11px] focus:outline-none focus:ring-1 focus:ring-app-accent/40 transition-all placeholder:text-app-muted/30"
-                        />
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex bg-app-surface/50 p-0.5 rounded-lg border border-app-border/40 mr-2">
-                        <button
-                            onClick={() => setViewMode('grid')}
-                            className={cn(
-                                "p-1.5 rounded transition-all",
-                                viewMode === 'grid' ? "bg-app-accent text-white shadow-sm" : "text-app-muted hover:text-app-text hover:bg-app-highlight/30"
-                            )}
-                            title="Grid View"
-                        >
-                            <LayoutGrid size={14} />
-                        </button>
-                        <button
-                            onClick={() => setViewMode('list')}
-                            className={cn(
-                                "p-1.5 rounded transition-all",
-                                viewMode === 'list' ? "bg-app-accent text-white shadow-sm" : "text-app-muted hover:text-app-text hover:bg-app-highlight/30"
-                            )}
-                            title="List View"
-                        >
-                            <List size={14} />
-                        </button>
-                    </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <TunnelSearchInput query={searchQuery} onQueryChange={setSearchQuery} />
+                    <TunnelViewToggle viewMode={viewMode} onChange={setViewMode} />
                     <div className="flex items-center gap-1.5">
                         <Button
                             variant="ghost"
@@ -422,7 +410,6 @@ export function GlobalTunnelList() {
                                 </Button>
                             </div>
 
-                            {/* Preset Dropdown */}
                             {showPresetDropdown && (
                                 <TopbarDropdown
                                     align="right"
@@ -453,166 +440,160 @@ export function GlobalTunnelList() {
                 </div>
             </div>
 
-            {/* Content Area */}
             <div className="flex-1 overflow-auto p-4 pt-2">
-                {
-                    filteredTunnels.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center -mt-20">
-                            <div className="w-20 h-20 rounded-3xl bg-app-surface/50 border border-app-border/40 flex items-center justify-center mb-6 shadow-sm">
-                                <Network className="text-app-muted/40 w-10 h-10" />
-                            </div>
-                            <h3 className="text-xl font-semibold text-app-text">
-                                {searchQuery ? 'No results found' : 'No Port Forwards'}
-                            </h3>
-                            <p className="text-sm text-app-muted mt-2 max-w-xs text-center opacity-70">
-                                {searchQuery
-                                    ? `We couldn't find anything matching "${searchQuery}"`
-                                    : 'Bridge your local environment with remote servers securely.'}
-                            </p>
-                            {!searchQuery && (
-                                <Button variant="ghost" className="mt-6 text-app-accent hover:bg-app-accent/5" onClick={() => setIsAddModalOpen(true)}>
-                                    Create your first forward
-                                </Button>
-                            )}
+                {allTunnels.length > 0 && (
+                    <TunnelFilterToolbar
+                        status={statusFilter}
+                        onStatusChange={setStatusFilter}
+                        type={typeFilter}
+                        onTypeChange={setTypeFilter}
+                        counts={filterCounts}
+                    />
+                )}
+                {filteredTunnels.length === 0 ? (
+                    <div className="flex h-full flex-col items-center justify-center -mt-20">
+                        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-app-border/40 bg-app-surface/50 shadow-sm">
+                            <Network className="h-10 w-10 text-app-muted/40" />
                         </div>
-                    ) : (
-                        <div className="w-full space-y-6">
-                                {sortedGroupNames.map(groupName => {
-                                    const ports = groupedTunnels[groupName];
-                                    const activeCount = ports.filter(t => t.status === 'active').length;
-
-                                    const isCollapsed = collapsedGroups.has(groupName);
-
-                                    return (
-                                        <div key={groupName} className="animate-in slide-in-from-top-1 duration-200">
-                                            {/* Group Header */}
-                                            <div
-                                                className="group flex items-center justify-between mb-2 px-1 border-b border-app-border/30 pb-1 cursor-pointer select-none hover:bg-app-surface/30 rounded-t-lg transition-colors"
-                                                onClick={() => toggleGroup(groupName)}
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <ChevronRight
-                                                        size={14}
+                        <h3 className="text-xl font-semibold text-app-text">
+                            {filtersActive ? 'No matching forwards' : 'No Port Forwards'}
+                        </h3>
+                        <p className="mt-2 max-w-xs text-center text-sm text-app-muted opacity-70">
+                            {filtersActive
+                                ? 'Try a different search or clear the filters.'
+                                : 'SSH local, remote, and SOCKS forwards across your hosts.'}
+                        </p>
+                        {!filtersActive && (
+                            <Button variant="ghost" className="mt-6 text-app-accent hover:bg-app-accent/5" onClick={() => setIsAddModalOpen(true)}>
+                                Create your first forward
+                            </Button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="w-full">
+                        {viewMode === 'list' && <TunnelTableHeader />}
+                        <div className="space-y-4">
+                            {hostGroups.map(group => {
+                                const running = group.tunnels.filter(t => t.status === 'active').length;
+                                const collapsed = collapsedHosts.has(group.connectionId);
+                                const copyHandlers = {
+                                    onToggle: handleToggleTunnel,
+                                    onEdit: (t: TunnelConfig) => {
+                                        setEditingTunnel(t);
+                                        setIsAddModalOpen(true);
+                                    },
+                                    onDelete: handleDeleteTunnel,
+                                    onOpenBrowser: handleOpenBrowser,
+                                    onCopy: (text: string) => {
+                                        navigator.clipboard.writeText(text);
+                                        showToast('success', 'Copied');
+                                    },
+                                };
+                                return (
+                                    <div key={group.connectionId}>
+                                        <div
+                                            role="button"
+                                            tabIndex={0}
+                                            aria-expanded={!collapsed}
+                                            className="group flex cursor-pointer select-none items-center justify-between rounded-md px-1 py-1 hover:bg-app-surface/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-app-border"
+                                            onClick={() => toggleHost(group.connectionId)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    toggleHost(group.connectionId);
+                                                }
+                                            }}
+                                        >
+                                            <div className="flex min-w-0 items-center gap-2">
+                                                <ChevronRight
+                                                    size={14}
+                                                    className={cn(
+                                                        'shrink-0 text-app-muted transition-transform duration-200',
+                                                        !collapsed && 'rotate-90',
+                                                    )}
+                                                />
+                                                <span
+                                                    className="relative flex h-4 w-4 shrink-0 items-center justify-center"
+                                                    title={group.connected ? 'Connected' : 'Disconnected'}
+                                                >
+                                                    <OSIcon
+                                                        icon={group.icon}
+                                                        className="h-3.5 w-3.5 text-app-muted"
+                                                    />
+                                                    <span
                                                         className={cn(
-                                                            "text-app-muted transition-transform duration-200",
-                                                            !isCollapsed && "rotate-90"
+                                                            'absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-app-bg',
+                                                            group.connected ? 'bg-app-success' : 'bg-app-muted/40',
                                                         )}
                                                     />
-                                                    {groupName === 'Ungrouped' ? (
-                                                        <FolderOpen size={16} className="text-app-muted/60" />
-                                                    ) : (
-                                                        <Folder size={16} className="text-app-accent/80" />
-                                                    )}
-                                                    <div className="flex items-baseline gap-2 flex-1">
-                                                        <h2 className={cn(
-                                                            "font-bold text-xs",
-                                                            groupName === 'Ungrouped' ? "text-app-muted italic" : "text-app-text"
-                                                        )}>
-                                                            {groupName}
-                                                        </h2>
-                                                        <span className="rounded border border-app-border/30 bg-app-surface px-1.5 py-0.5 font-mono text-[9px] text-app-muted">
-                                                            {activeCount}/{ports.length} active
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    {activeCount > 0 && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleStopGroup(groupName, ports);
-                                                            }}
-                                                            className="h-6 px-2 text-[10px] text-app-muted hover:text-red-400 hover:bg-red-400/10 gap-1"
-                                                            title="Stop All"
-                                                        >
-                                                            <Square size={10} className="fill-current" /> Stop All
-                                                        </Button>
-                                                    )}
+                                                </span>
+                                                <h2 className="truncate text-xs font-semibold text-app-text">
+                                                    {group.hostLabel}
+                                                </h2>
+                                                <span className="font-mono text-[10px] text-app-muted/50">
+                                                    {running}/{group.tunnels.length}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                                {running > 0 && (
                                                     <Button
                                                         size="sm"
                                                         variant="ghost"
-                                                        onClick={(e) => {
+                                                        onClick={e => {
                                                             e.stopPropagation();
-                                                            handleStartGroup(groupName, ports);
+                                                            handleStopGroup(group.hostLabel, group.tunnels);
                                                         }}
-                                                        className="h-6 px-2 text-[10px] text-app-muted hover:text-green-400 hover:bg-green-400/10 gap-1"
-                                                        title="Start All"
+                                                        className="h-6 gap-1 px-2 text-[10px] text-app-muted hover:bg-red-400/10 hover:text-red-400"
+                                                        title="Stop all on this host"
                                                     >
-                                                        <Play size={10} className="fill-current" /> Start All
+                                                        <Square size={10} className="fill-current" /> Stop all
                                                     </Button>
-                                                </div>
+                                                )}
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={e => {
+                                                        e.stopPropagation();
+                                                        handleStartGroup(group.hostLabel, group.tunnels);
+                                                    }}
+                                                    className="h-6 gap-1 px-2 text-[10px] text-app-muted hover:bg-green-400/10 hover:text-green-400"
+                                                    title="Start all on this host"
+                                                >
+                                                    <Play size={10} className="fill-current" /> Start all
+                                                </Button>
                                             </div>
-
-                                            {/* Ports Grid/List */}
-                                            {!isCollapsed && (
-                                                viewMode === 'grid' ? (
-                                                    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
-                                                        {ports.map((tunnel) => {
-                                                            const conn = connections.find(c => c.id === tunnel.connectionId);
-                                                            const hostLabel = conn
-                                                                ? getConnectionDisplayLabels(conn, false).primary
-                                                                : undefined;
-                                                            return (
-                                                                <TunnelCard
-                                                                    key={tunnel.id}
-                                                                    tunnel={tunnel}
-                                                                    connectionIcon={conn?.icon}
-                                                                    hostLabel={hostLabel}
-                                                                    viewMode="grid"
-                                                                    onToggle={handleToggleTunnel}
-                                                                    onEdit={(t) => {
-                                                                        setEditingTunnel(t);
-                                                                        setIsAddModalOpen(true);
-                                                                    }}
-                                                                    onDelete={handleDeleteTunnel}
-                                                                    onOpenBrowser={handleOpenBrowser}
-                                                                    onCopy={(text) => {
-                                                                        navigator.clipboard.writeText(text);
-                                                                        showToast('success', 'Copied');
-                                                                    }}
-                                                                />
-                                                            );
-                                                        })}
-                                                    </div>
-                                                ) : (
-                                                    // List View
-                                                    <div className="flex w-full flex-col gap-1.5">
-                                                        {ports.map((tunnel) => {
-                                                            const conn = connections.find(c => c.id === tunnel.connectionId);
-                                                            const hostLabel = conn
-                                                                ? getConnectionDisplayLabels(conn, false).primary
-                                                                : undefined;
-                                                            return (
-                                                                <TunnelCard
-                                                                    key={tunnel.id}
-                                                                    tunnel={tunnel}
-                                                                    connectionIcon={conn?.icon}
-                                                                    hostLabel={hostLabel}
-                                                                    viewMode="list"
-                                                                    onToggle={handleToggleTunnel}
-                                                                    onEdit={(t) => {
-                                                                        setEditingTunnel(t);
-                                                                        setIsAddModalOpen(true);
-                                                                    }}
-                                                                    onDelete={handleDeleteTunnel}
-                                                                    onOpenBrowser={handleOpenBrowser}
-                                                                    onCopy={(text) => {
-                                                                        navigator.clipboard.writeText(text);
-                                                                        showToast('success', 'Copied');
-                                                                    }}
-                                                                />
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )
-                                            )}
                                         </div>
-                                    );
-                                })}
+                                        {!collapsed && (
+                                            viewMode === 'grid' ? (
+                                                <div className="mt-2 grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                                                    {group.tunnels.map(tunnel => (
+                                                        <TunnelGridCard
+                                                            key={tunnel.id}
+                                                            tunnel={tunnel}
+                                                            hostLabel={group.hostLabel}
+                                                            {...copyHandlers}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="mt-1 flex flex-col gap-1.5">
+                                                    {group.tunnels.map(tunnel => (
+                                                        <TunnelRow
+                                                            key={tunnel.id}
+                                                            tunnel={tunnel}
+                                                            hostLabel={group.hostLabel}
+                                                            {...copyHandlers}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
-                    )}
+                    </div>
+                )}
             </div>
 
             {/* Port Conflict Modal */}
