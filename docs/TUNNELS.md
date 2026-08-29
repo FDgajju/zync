@@ -1,6 +1,6 @@
 # Port Forwarding & Tunnels — Architecture & Reference
 
-**Last updated:** 2026-07-09  
+**Last updated:** 2026-08-29  
 **Applies to:** Zync v2.21.0+  
 **User-facing guide:** [zync.thesudoer.in/docs/port-forwarding](https://zync.thesudoer.in/docs/port-forwarding)
 
@@ -104,9 +104,9 @@ flowchart TB
     GL[GlobalTunnelList]
     AM[AddTunnelModal]
     IM[ImportSSHCommandModal]
-    TC[TunnelCard]
-    TM --> TC
-    GL --> TC
+    TR[TunnelRow]
+    TM --> TR
+    GL --> TR
     AM --> TM
     AM --> GL
   end
@@ -163,6 +163,7 @@ Equivalent to `ssh -R [bind:]remotePort:localHost:localPort`.
 
 - Requests `tcpip_forward` on the SSH server for `bindAddress:remotePort`.
 - Incoming forwarded connections are proxied to the local target (`remoteHost` in the saved config stores the **local target host** for `-R`).
+- If the server rejects the listen and a later port on the same bind succeeds, Zync surfaces the same **port conflict** picker as local (suggested next port or manual). If every probe fails, the original reject is kept (usually `sshd` policy, not a busy port).
 
 **Server requirement:** Remote binds on non-loopback addresses need `GatewayPorts` / `AllowTcpForwarding` on `sshd` (documented on the marketing site).
 
@@ -213,13 +214,15 @@ Failed restarts on reconnect surface a **toast** per tunnel.
 
 | Surface | Role |
 |---------|------|
-| **Port Forwarding tab** | Per-host tunnel list; grid/list toggle; start/stop/edit |
-| **Global dashboard** | All tunnels across connections; search; grid/list; group collapse |
+| **Port Forwarding tab** | Per-host compact table or matching grid tiles; search + status/type filters |
+| **Global dashboard** | All tunnels across connections; same views + filters; collapsible **host** groups |
 | **Add / edit modal** | Presets, bind address, auto-start, groups |
 | **Import modal** | Paste `ssh -L` / `-R` / `-D` command |
-| **Tunnel card** | Status, flow line, type badges (incl. SOCKS), action bar |
+| **Tunnel row / tile** | Status, name, type (`-L`/`-R`/`-D`), flow, Start/Stop, copy, open, overflow menu |
 
-**Global list grouping:** UI groups by user-defined `group` field, **not** by connection. Connection name appears on each card.
+**Global list grouping:** UI groups by **SSH host** (connection). User-defined `group` is a secondary label on the row. The per-host tab still sections by named group when any tunnel on that host has a group.
+
+**Views:** List is default. Grid uses the same type, status, flow, and actions as the list, laid out as quiet tiles. Copy and Open sit on the row/tile; Edit/Delete stay in the overflow menu.
 
 **Parity:** Both surfaces share `tunnelSlice` state. Start/stop from either surface reflects immediately in the other via events.
 
@@ -368,7 +371,7 @@ Directional work — not a commitment order.
 ### Observability
 
 - Bytes in/out per tunnel (optional)
-- Last error + uptime on tunnel cards
+- Last error + uptime on tunnel rows
 - Health probe for HTTP forwards (optional HEAD request)
 
 ### UI
@@ -388,7 +391,7 @@ Directional work — not a commitment order.
 
 ```
 src/components/tunnel/
-  TunnelManager.tsx, GlobalTunnelList.tsx, TunnelCard.tsx
+  TunnelManager.tsx, GlobalTunnelList.tsx, TunnelRow.tsx, TunnelCard.tsx
 
 src/components/modals/
   AddTunnelModal.tsx, ImportSSHCommandModal.tsx

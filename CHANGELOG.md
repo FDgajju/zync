@@ -7,6 +7,12 @@ All notable changes to Zync are documented in this file. The format is based on 
 ### Added
 - **Public URLs (Beta)**: Share a local port on the internet with an HTTPS link via Zync account sign-in (GitHub/Google). Separate from Google Drive Sync and from SSH port forwarding. Includes create/stop/start/delete, copy URL, local share agent, OAuth cancel/retry, Beta badge, and bug-report link. Profile avatar prefers the Zync account photo when signed in.
 
+### Changed
+- **Port Forwarding list**: Compact table grouped by SSH host, with a matching quiet grid. Search, status/type filters, host icons, persisted list/grid, and Copy/Open on the row.
+
+### Fixed
+- **Remote port conflict**: Busy SSH `-R` listen ports use the same next-port / manual picker as local forwards. If every probe fails (sshd policy), the original reject is kept.
+
 ## [2.26.1] - 2026-08-28
 
 ### Fixed
