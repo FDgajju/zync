@@ -4,6 +4,9 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Public URLs (Beta)**: Share a local port on the internet with an HTTPS link via Zync account sign-in (GitHub/Google). Separate from Google Drive Sync and from SSH port forwarding. Includes create/stop/start/delete, copy URL, local share agent, OAuth cancel/retry, Beta badge, and bug-report link. Profile avatar prefers the Zync account photo when signed in.
+
 ## [2.26.1] - 2026-08-28
 
 ### Fixed
