@@ -1,0 +1,82 @@
+import { getSurveyApiBaseUrl } from './config.js';
+import type { FeedbackPayload, SurveyApiResult, SurveyPayload } from './types.js';
+
+function friendlyApiError(status: number | null, serverMessage?: string): string {
+  if (status === null) {
+    return "Couldn't reach the server. Try again or Skip.";
+  }
+  if (status === 429) {
+    return 'Too many requests. Please try again later.';
+  }
+  if (status >= 500) {
+    return "Something went wrong on our side. Try again or Skip.";
+  }
+  if (serverMessage && serverMessage.trim()) {
+    return serverMessage.trim();
+  }
+  return `Request failed (${status}). Try again or Skip.`;
+}
+
+const SURVEY_FETCH_TIMEOUT_MS = 15_000;
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SURVEY_FETCH_TIMEOUT_MS);
+
+  try {
+    let response: Response;
+    try {
+      response = await fetch(`${getSurveyApiBaseUrl()}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        // Refuse silent redirects so survey/feedback cannot be downgraded or forwarded.
+        redirect: 'manual',
+        signal: controller.signal,
+      });
+    } catch {
+      throw new Error(friendlyApiError(null));
+    }
+
+    if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+      throw new Error(friendlyApiError(null));
+    }
+
+    let payload: unknown = null;
+    try {
+      // Same abort deadline covers body read, not only headers/connect.
+      payload = await response.json();
+    } catch {
+      if (controller.signal.aborted) {
+        throw new Error(friendlyApiError(null));
+      }
+      payload = null;
+    }
+
+    if (!response.ok) {
+      const serverMessage =
+        payload
+        && typeof payload === 'object'
+        && 'error' in payload
+        && payload.error
+        && typeof payload.error === 'object'
+        && 'message' in payload.error
+        && typeof (payload.error as { message?: unknown }).message === 'string'
+          ? (payload.error as { message: string }).message
+          : undefined;
+      throw new Error(friendlyApiError(response.status, serverMessage));
+    }
+
+    return payload as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function submitSurvey(payload: SurveyPayload): Promise<SurveyApiResult> {
+  return postJson<SurveyApiResult>('/v1/survey', payload);
+}
+
+export function submitFeedback(payload: FeedbackPayload): Promise<SurveyApiResult> {
+  return postJson<SurveyApiResult>('/v1/feedback', payload);
+}

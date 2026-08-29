@@ -117,7 +117,11 @@ export type { ResizeScheduler, ResizeScheduleOptions } from './terminalFit.js';
 export type { TerminalSpawnTabState } from './spawnContext.js';
 export { resolveTerminalSpawnParams } from './spawnContext.js';
 
-export { syncTerminalResize } from './terminalResizeSync.js';
+export {
+  clearTerminalResizeState,
+  flushTerminalResize,
+  syncTerminalResize,
+} from './terminalResizeSync.js';
 
 export type { SpawnTerminalFromStoreOptions } from './terminalSpawn.js';
 export { spawnTerminalFromStoreContext } from './terminalSpawn.js';

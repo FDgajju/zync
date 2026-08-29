@@ -4,6 +4,25 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.26.1] - 2026-08-28
+
+### Fixed
+- **Survey upgrade check-in**: Existing users updating into a survey-enabled build see **Help Zync improve** once (new installs still get Welcome). Skip/Submit never re-prompts on later releases. Captures `lastSeenVersion` before What's New rewrites it so the upgrade modal is not skipped. ([d3f4060])
+- **Status bar “No Connection” stacking**: Keep the idle connection label on one line (`whitespace-nowrap` + `shrink-0`) so it no longer wraps vertically when the status bar is tight. ([d3f4060])
+- **Status bar host name width**: Cap the connection label at `8rem` with a fixed rem max (not a `%` of a squeezed flex parent), truncate with ellipsis, and keep the full name on hover — avoids both huge names and ~1-character crush. ([840afc2])
+- **Survey API fetch hardening**: Accept any `127.x.x.x` loopback host for local `http`, and abort survey/feedback POSTs after 15s (including body read). ([193f568])
+
+## [2.26.0] - 2026-08-28
+
+### Added
+- **Status bar SSH latency**: Live round-trip chip replaces the connected wifi icon (`21ms`), with Settings → Status Bar to toggle it. Probes the active SSH session only; fails soft when unknown. ([2608d05])
+- **Branded connect stage**: Host connect uses a loaders kit (`ConnectLoader` / `ConnectStagePanel`) with a dash on the host tile, quiet Connecting… copy, and a fade into the workspace (or the same-frame error + Retry). ([12a8aa7])
+- **In-app survey & feedback**: Optional welcome/update check-in popup and Settings → Feedback (private API submit + optional public GitHub issue). ([9903eb8])
+
+### Fixed
+- **Remote PTY / tmux initial size (#101)**: Terminal geometry is retained while the PTY is starting and flushed on `terminal-ready`, so tmux and other remote sessions fill the viewport on first attach without requiring a manual window resize. ([ff07642])
+- **Survey API URL hardening**: Reject non-loopback `http` survey API bases, require HTTPS for remote hosts, refuse POST redirects, and persist discovery “Other” free text in prefs. Release builds bake `VITE_SURVEY_API_URL`. ([db0233d])
+
 ## [2.25.8] - 2026-08-22
 
 ### Added
@@ -1274,7 +1293,17 @@ Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` publishe
 [6ed8f66]: https://github.com/zync-sh/zync/commit/6ed8f66
 [db8442c]: https://github.com/zync-sh/zync/commit/db8442c
 [7027a17]: https://github.com/zync-sh/zync/commit/7027a17
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.25.8...HEAD
+[2608d05]: https://github.com/zync-sh/zync/commit/2608d05
+[12a8aa7]: https://github.com/zync-sh/zync/commit/12a8aa7
+[9903eb8]: https://github.com/zync-sh/zync/commit/9903eb8
+[ff07642]: https://github.com/zync-sh/zync/commit/ff07642
+[db0233d]: https://github.com/zync-sh/zync/commit/db0233d
+[d3f4060]: https://github.com/zync-sh/zync/commit/d3f4060
+[840afc2]: https://github.com/zync-sh/zync/commit/840afc2
+[193f568]: https://github.com/zync-sh/zync/commit/193f568
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.26.1...HEAD
+[2.26.1]: https://github.com/zync-sh/zync/compare/v2.26.0...v2.26.1
+[2.26.0]: https://github.com/zync-sh/zync/compare/v2.25.8...v2.26.0
 [2.25.8]: https://github.com/zync-sh/zync/compare/v2.25.7...v2.25.8
 [2.25.7]: https://github.com/zync-sh/zync/compare/v2.25.6...v2.25.7
 [2.25.6]: https://github.com/zync-sh/zync/compare/v2.25.5...v2.25.6

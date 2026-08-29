@@ -16,6 +16,14 @@ import { listen } from '@tauri-apps/api/event';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { ShieldAlert, Loader2 } from 'lucide-react';
+import { ConnectStagePanel, PanelLoader, useConnectionStageOverlay } from '../loaders';
+import { SurveyPromptModal } from '../survey/SurveyPromptModal';
+import {
+    normalizeSurveySettings,
+    resolveSurveyPromptKind,
+    type SurveyPromptKind,
+} from '../../features/survey';
+import { getDebugSurveyPromptKind, isDebugSurveyPromptEnabled } from '../../lib/debugFlags';
 import ReleaseNotesTab from '../tabs/ReleaseNotesTab';
 import { SnippetSidebar } from '../snippets/SnippetSidebar';
 import { SetupWizard } from '../onboarding/SetupWizard';
@@ -73,12 +81,7 @@ const SyncBackupWorkspacePanel = lazy(() =>
     import('../sync/SyncBackupWorkspacePanel').then(module => ({ default: module.default }))
 );
 
-// Loading Component
-const TabLoading = () => (
-    <div className="absolute inset-0 flex items-center justify-center bg-app-bg">
-        <div className="w-6 h-6 border-2 border-app-accent/30 border-t-app-accent rounded-full animate-spin" />
-    </div>
-);
+const TabLoading = () => <PanelLoader />;
 
 /**
  * Fallback splash only if boot splash is gone early.
@@ -405,7 +408,11 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
 
     const isConnecting = connection?.status === 'connecting';
     const isError = connection?.status === 'error';
-    const forceOpaqueShell = isConnecting || isError;
+    const { stage, visible: stageVisible, showWorkspace } = useConnectionStageOverlay(
+        Boolean(isConnecting),
+        Boolean(isError),
+    );
+    const forceOpaqueShell = isConnecting || isError || Boolean(stage);
 
     /**
      * Handles selection from the combined tab bar.
@@ -513,44 +520,7 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
             !isActive && "hidden",
             isActive && !forceOpaqueShell && "animate-in fade-in duration-150 ease-out fill-mode-forwards"
         )}>
-            {isConnecting ? (
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4 bg-app-bg">
-                    <div className="w-8 h-8 border-4 border-[var(--color-app-accent)]/30 border-t-[var(--color-app-accent)] rounded-full animate-spin"></div>
-                    <div className="text-[var(--color-app-muted)] animate-pulse">Connecting to server...</div>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => connection && void cancelConnect(connection.id)}
-                        className="border border-app-border/60 bg-app-surface/30 px-3 text-xs"
-                    >
-                        Cancel
-                    </Button>
-                </div>
-            ) : isError ? (
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4 bg-app-bg">
-                    <div className="text-[var(--color-app-danger)] text-4xl mb-4">&#9888;</div>
-                    <div className="text-xl font-medium text-[var(--color-app-text)]">Connection Failed</div>
-                    <div className="text-[var(--color-app-muted)] text-sm max-w-md text-center">
-                        Could not establish a connection to <span className="font-mono text-[var(--color-app-text)]">{connection?.host}</span>.
-                    </div>
-                    {connection?.lastError && (
-                        <div className="max-w-xl rounded-lg border border-[var(--color-app-border)]/70 bg-[var(--color-app-surface)]/45 px-3 py-2 text-center text-xs leading-relaxed text-[var(--color-app-muted)]">
-                            {connection.lastError}
-                        </div>
-                    )}
-                    {connection?.authRef && (
-                        <div className="text-[11px] text-[var(--color-app-muted)]">
-                            Vault credential: {connection.authRef.credentialId?.slice(0, 8) ?? connection.authRef.itemId?.slice(0, 8) ?? '<no-id>'}
-                        </div>
-                    )}
-                    <button
-                        onClick={() => connection && connect(connection.id)}
-                        className="px-4 py-2 bg-[var(--color-app-accent)] text-white rounded-lg hover:brightness-110 transition-all font-medium text-sm mt-4"
-                    >
-                        Retry Connection
-                    </button>
-                </div>
-            ) : (
+            {showWorkspace && (
                 <>
                     {/* Unified Tab Bar — not shown for the standalone global snippets tab */}
                     {tab.connectionId !== GLOBAL_SNIPPETS_CONNECTION_ID && (
@@ -652,6 +622,28 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
                     </div>
                 </>
             )}
+            {stage && (
+                <div
+                    className={cn(
+                        'absolute inset-0 z-40 flex flex-col bg-app-bg transition-opacity duration-200 ease-out',
+                        stageVisible ? 'opacity-100' : 'opacity-0 pointer-events-none',
+                    )}
+                >
+                    <ConnectStagePanel
+                        status={stage}
+                        name={connection?.name ?? tab.title}
+                        host={connection?.host}
+                        icon={connection?.icon}
+                        lastError={connection?.lastError}
+                        onCancel={() => {
+                            if (connection) void cancelConnect(connection.id);
+                        }}
+                        onRetry={() => {
+                            if (connection) void connect(connection.id);
+                        }}
+                    />
+                </div>
+            )}
         </div>
     );
 });
@@ -741,7 +733,12 @@ export function MainLayout({ children }: { children: ReactNode }) {
     const settings = useAppStore(state => state.settings);
     const sidebarCollapsed = settings.sidebarCollapsed;
     const updateSettings = useAppStore(state => state.updateSettings);
+    const updateSurveySettings = useAppStore(state => state.updateSurveySettings);
     const setSidebarCollapsedLocal = useAppStore(state => state.setSidebarCollapsedLocal);
+    const [surveyPrompt, setSurveyPrompt] = useState<{ kind: SurveyPromptKind; version: string } | null>(null);
+    const surveyChecked = useRef(false);
+    /** Pre-update lastSeenVersion captured before release-notes boot rewrites it. */
+    const surveyPreviousVersionRef = useRef<string | null>(null);
 
     // Shutdown Management
     const [isShutdownModalOpen, setIsShutdownModalOpen] = useState(false);
@@ -826,6 +823,10 @@ export function MainLayout({ children }: { children: ReactNode }) {
         if (isLoadingSettings || versionChecked.current) return;
         versionChecked.current = true;
 
+        // Capture synchronously before any await / lastSeenVersion rewrite so survey
+        // can tell "upgraded from older build" vs "brand-new install".
+        surveyPreviousVersionRef.current = useAppStore.getState().settings.lastSeenVersion || '';
+
         const checkVersionAndShowNotes = async () => {
             try {
                 const currentVersion = await window.ipcRenderer?.invoke('app:getVersion');
@@ -862,6 +863,83 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
         checkVersionAndShowNotes();
     }, [isLoadingSettings, openReleaseNotesTab, updateSettings]);
+
+    // Profile survey: one-shot only (new install, or first upgrade into a survey-enabled build).
+    useEffect(() => {
+        if (isLoadingSettings || !sessionLoaded || surveyChecked.current) return;
+        surveyChecked.current = true;
+
+        const state = useAppStore.getState();
+        const survey = normalizeSurveySettings(state.settings.survey);
+        const previousSeenVersion =
+            surveyPreviousVersionRef.current
+            ?? (state.settings.lastSeenVersion || '');
+
+        const maybeShowSurvey = async () => {
+            try {
+                const currentVersion = await window.ipcRenderer?.invoke('app:getVersion');
+                if (!currentVersion || typeof currentVersion !== 'string') return;
+
+                const debugKind = isDebugSurveyPromptEnabled()
+                    ? (getDebugSurveyPromptKind() ?? 'install')
+                    : null;
+                const kind = debugKind ?? resolveSurveyPromptKind(survey, currentVersion, previousSeenVersion);
+                if (!kind) return;
+
+                if (kind === 'release' && !debugKind) {
+                    // Prefer showing after What's New is closed (max ~8s).
+                    const started = Date.now();
+                    await new Promise<void>((resolve) => {
+                        const tick = () => {
+                            const activeId = useAppStore.getState().activeTabId;
+                            const active = useAppStore.getState().tabs.find((tab) => tab.id === activeId);
+                            const notesOpen = active?.type === 'release-notes';
+                            if (!notesOpen || Date.now() - started > 8000) {
+                                resolve();
+                                return;
+                            }
+                            window.setTimeout(tick, 350);
+                        };
+                        window.setTimeout(tick, 600);
+                    });
+                } else {
+                    await new Promise((resolve) => window.setTimeout(resolve, 900));
+                }
+
+                setSurveyPrompt({ kind, version: currentVersion });
+            } catch (err) {
+                console.error('Failed to resolve survey prompt', err);
+            }
+        };
+
+        void maybeShowSurvey();
+    }, [isLoadingSettings, sessionLoaded]);
+
+    const handleSurveyCompleted = useCallback(async (
+        result: 'submitted' | 'skipped',
+        prefs?: { lastRole?: string; lastWorkContext?: string; lastDiscoverySource?: string },
+    ) => {
+        const prompt = surveyPrompt;
+        setSurveyPrompt(null);
+        if (!prompt) return;
+        try {
+            const prefPatch = result === 'submitted'
+                ? {
+                    lastRole: prefs?.lastRole ?? '',
+                    lastWorkContext: prefs?.lastWorkContext ?? '',
+                    lastDiscoverySource: prefs?.lastDiscoverySource ?? '',
+                }
+                : {};
+            // Always mark installCompleted so later releases never re-prompt.
+            await updateSurveySettings({
+                installCompleted: true,
+                releaseSeenVersion: prompt.version,
+                ...prefPatch,
+            });
+        } catch (err) {
+            console.error(`Failed to persist survey ${result} state`, err);
+        }
+    }, [surveyPrompt, updateSurveySettings]);
 
     // Theme Application Effect
     const theme = useAppStore(state => state.settings.theme);
@@ -1096,6 +1174,14 @@ export function MainLayout({ children }: { children: ReactNode }) {
             />
             {/* Portal Root for Modals/Overlays to ensure they stay within rounded corners */}
             <div id="modal-portal-root" className="absolute inset-0 pointer-events-none z-[9999]" />
+
+            <SurveyPromptModal
+                open={Boolean(surveyPrompt)}
+                kind={surveyPrompt?.kind ?? 'install'}
+                appVersion={surveyPrompt?.version ?? ''}
+                prefill={normalizeSurveySettings(settings.survey)}
+                onCompleted={(result, prefs) => { void handleSurveyCompleted(result, prefs); }}
+            />
         </div >
     );
 }

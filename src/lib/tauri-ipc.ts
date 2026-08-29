@@ -172,6 +172,7 @@ const ipcRenderer = {
       'tunnel:start': 'tunnel_start',
       'tunnel:stop': 'tunnel_stop',
       'ssh:exec': 'ssh_exec',
+      'ssh:connectionLatency': 'ssh_connection_latency',
       'ssh:test': 'ssh_test_connection',
 
       'ssh:extract-pem': 'ssh_extract_pem',
@@ -323,7 +324,11 @@ const ipcRenderer = {
       // Manual argument mapping for mismatched commands
       if (tauriCommand === 'ssh_connect' || tauriCommand === 'ssh_test_connection') {
         payload = { config: args[0] };
-      } else if (tauriCommand === 'ssh_disconnect' || tauriCommand === 'ssh_transport_lost') {
+      } else if (
+        tauriCommand === 'ssh_disconnect'
+        || tauriCommand === 'ssh_transport_lost'
+        || tauriCommand === 'ssh_connection_latency'
+      ) {
         payload = { id: args[0] };
       } else if (tauriCommand === 'ssh_cancel_connect') {
         if (args.length === 1 && hasConnectionId(args[0])) {

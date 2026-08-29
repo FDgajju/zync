@@ -238,7 +238,40 @@
     -moz-osx-font-smoothing: grayscale;
 }
 
+@keyframes zync-loader-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes zync-loader-dash {
+    to {
+        stroke-dashoffset: -276;
+    }
+}
+
+.zync-inline-spinner {
+    animation: zync-loader-spin 0.85s linear infinite;
+    transform-origin: 50% 50%;
+}
+
+.zync-connect-orbit-dash {
+    stroke-dasharray: 36 240;
+    animation: zync-loader-dash 1.65s linear infinite;
+}
+
+.zync-connect-orbit-dash.is-paused {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
+    .zync-inline-spinner,
+    .zync-connect-orbit-dash {
+        animation: none !important;
+    }
+
     .zync-splash-icon,
     .zync-splash-meta,
     .zync-splash-ring-spin {

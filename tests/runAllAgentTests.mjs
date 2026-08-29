@@ -82,6 +82,8 @@ const tests = [
   'tests/terminalResizeSync.test.mjs',
   'tests/terminalReconnectReset.test.mjs',
   'tests/sidebarSubmit.test.mjs',
+  'tests/statusBarLatency.test.mjs',
+  'tests/surveyEligibility.test.mjs',
   'tests/tunnelAutoStartService.test.mjs',
   'tests/tunnelReconnectService.test.mjs',
   'tests/syncPassphrase.test.mjs',

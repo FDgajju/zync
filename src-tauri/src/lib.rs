@@ -1,6 +1,7 @@
 mod ai;
 mod atomic_io;
 mod commands;
+mod connection_latency;
 mod fs;
 mod ghost;
 mod identity_migration;
@@ -176,6 +177,7 @@ pub fn run() {
             commands::window_minimize,
             commands::window_close,
             commands::ssh_exec,
+            commands::ssh_connection_latency,
             commands::ssh_import_config,
             commands::ssh_import_config_from_file,
             commands::ssh_import_config_from_text,

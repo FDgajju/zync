@@ -4,6 +4,7 @@ import { clearTerminalInputQueue } from './inputQueue.js';
 import { handleTerminalReady } from './inputPipeline.js';
 import { clearTerminalPendingInput, terminalCache } from './terminalCache.js';
 import { writeIdleHostSuspendNotice } from './terminalIdleSuspendNotice.js';
+import { clearTerminalResizeState } from './terminalResizeSync.js';
 import { terminalService } from './terminalService.js';
 
 
@@ -61,7 +62,7 @@ export function attachTerminalLifecycleListeners(sessionId: string, _term: XTerm
     entry.spawned = false;
     clearTerminalPendingInput(sessionId);
     clearTerminalInputQueue(sessionId);
-    entry.lastResize = null;
+    clearTerminalResizeState(sessionId);
 
     if (suspendedForIdle) {
       writeIdleHostSuspendNotice(sessionId);

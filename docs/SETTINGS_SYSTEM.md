@@ -57,6 +57,7 @@ Zync provides an in-app editor tab (not external VS Code handoff) for global set
 - app-wide appearance preferences (theme, global font family/size, accent)
 - persisted feature/settings configuration in user `settings.json`
 - update/config toggles and system-level options
+- status bar preferences (Settings → Status Bar; `statusBar.showConnectionLatency`)
 
 ### What is currently “local” in UI terms (but not local override file scope)
 

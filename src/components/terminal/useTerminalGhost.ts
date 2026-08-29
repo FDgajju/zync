@@ -25,6 +25,7 @@ import type { AppSettings } from '../../store/settingsSlice';
 import { extractRecentCommands } from '../../lib/ghostSuggestions/recentCommands';
 import {
   clearTerminalPendingInput,
+  clearTerminalResizeState,
   enqueueTerminalInputTask,
   getTerminalRecentLines,
   queueTerminalInput,
@@ -273,7 +274,7 @@ export function useTerminalGhost({
                 : '[Terminal] Session ended, restarting on Enter',
             );
             clearTerminalPendingInput(mountSessionId);
-            cached.lastResize = null;
+            clearTerminalResizeState(mountSessionId);
             cached.spawnBlocked = false;
             const store = useAppStore.getState();
             spawnTerminalFromStoreContext({
