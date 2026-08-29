@@ -50,7 +50,7 @@ export interface Folder {
 
 export interface Tab {
     id: string;
-    type: 'connection' | 'settings' | 'port-forwarding' | 'release-notes' | 'vault' | 'sync';
+    type: 'connection' | 'settings' | 'port-forwarding' | 'release-notes' | 'vault' | 'sync' | 'public-urls';
     title: string;
     connectionId?: string;
     vaultProfileId?: VaultProfileId;
