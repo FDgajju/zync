@@ -26,8 +26,8 @@ export function parseShareError(error: unknown): ParsedShareError {
     const trimmed = raw.trim();
     const parsed = trimmed.match(ERROR_PATTERN);
     const code = parsed?.groups?.code;
-    let message = parsed?.groups?.body ?? trimmed;
-    if (code === 'share_quota_exceeded') {
+    let message = (parsed?.groups?.body ?? trimmed).trim();
+    if (code === 'share_quota_exceeded' && !message) {
         message = SHARE_QUOTA_FULL_MESSAGE;
     }
     return { code, message };

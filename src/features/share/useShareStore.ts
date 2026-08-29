@@ -174,6 +174,7 @@ export const useShareStore = create<ShareStore>((set, get) => ({
             applyPayload(set, payload);
         } catch (error) {
             set({ error: parseShareError(error).message });
+            throw error;
         }
     },
 

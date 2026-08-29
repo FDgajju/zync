@@ -23,10 +23,10 @@ import { useAppStore } from '../../store/useAppStore';
 import {
     agentLine,
     quotaFull,
-    SHARE_QUOTA_FULL_MESSAGE,
     useShareStore,
 } from '../../features/share/useShareStore';
 import {
+    quotaFullMessage,
     shareChip,
     shareDisplayUrl,
     type ShareChip,
@@ -382,7 +382,7 @@ export function PublicUrlsPanel() {
                 </div>
                 {full && (
                     <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                        {SHARE_QUOTA_FULL_MESSAGE}
+                        {quotaFullMessage(quotaUsed, quotaMax)}
                     </div>
                 )}
                 {error && !full && (
@@ -431,7 +431,16 @@ export function PublicUrlsPanel() {
                 <div className="shrink-0 border-t border-app-border/30 px-6 py-3 flex items-center justify-between gap-3">
                     <p className="text-xs text-app-muted">{line.label}</p>
                     {(line.state === 'offline' || line.state === 'auth_failed') && (
-                        <Button size="sm" variant="secondary" disabled={busy} onClick={() => void startSharing()}>
+                        <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={busy}
+                            onClick={() => {
+                                void startSharing().catch((e) =>
+                                    showToast('error', parseShareError(e).message),
+                                );
+                            }}
+                        >
                             Start sharing
                         </Button>
                     )}
@@ -447,7 +456,7 @@ export function PublicUrlsPanel() {
             >
                 <div className="space-y-4 px-1 pb-2">
                     {full && (
-                        <p className="text-xs text-amber-200">{SHARE_QUOTA_FULL_MESSAGE}</p>
+                        <p className="text-xs text-amber-200">{quotaFullMessage(quotaUsed, quotaMax)}</p>
                     )}
                     <Input
                         label="Local port"

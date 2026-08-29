@@ -254,13 +254,36 @@ async fn proxy_websocket(
     }
 
     let (mut read_half, mut write_half) = stream.into_split();
+    let mut req_rx = readers.req_rx;
     let mut extra_rx = readers.extra_rx;
-    drop(readers.req_rx);
 
+    // Merge body-channel and post-close uplink so early TYPE_DATA before the
+    // first TYPE_CLOSE is not dropped (WebSocket upgrade request bodies).
     let uplink = async {
-        while let Some(chunk) = extra_rx.recv().await {
-            if write_half.write_all(&chunk).await.is_err() {
-                break;
+        let mut req_done = false;
+        let mut extra_done = false;
+        while !req_done || !extra_done {
+            tokio::select! {
+                chunk = req_rx.recv(), if !req_done => {
+                    match chunk {
+                        Some(c) => {
+                            if write_half.write_all(&c).await.is_err() {
+                                break;
+                            }
+                        }
+                        None => req_done = true,
+                    }
+                }
+                chunk = extra_rx.recv(), if !extra_done => {
+                    match chunk {
+                        Some(c) => {
+                            if write_half.write_all(&c).await.is_err() {
+                                break;
+                            }
+                        }
+                        None => extra_done = true,
+                    }
+                }
             }
         }
         let _ = write_half.shutdown().await;
@@ -411,7 +434,10 @@ async fn read_http_headers(
     let mut buf = Vec::new();
     let mut tmp = [0u8; 1024];
     loop {
-        let n = stream.read(&mut tmp).await.map_err(|e| e.to_string())?;
+        let n = tokio::time::timeout(DIAL_TIMEOUT, stream.read(&mut tmp))
+            .await
+            .map_err(|_| "timed out waiting for response headers".to_string())?
+            .map_err(|e| e.to_string())?;
         if n == 0 {
             return Err("connection closed before headers".into());
         }

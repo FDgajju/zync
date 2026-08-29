@@ -532,7 +532,19 @@ async fn run_session(
                         guard.get(&msg.stream_id).map(|st| st.data_sender())
                     };
                     if let Some(tx) = sender {
-                        let _ = tx.send(bytes::Bytes::from(raw)).await;
+                        match tx.try_send(bytes::Bytes::from(raw)) {
+                            Ok(()) => {}
+                            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                // Slow/local stream backlog — drop only this stream so
+                                // the session keeps handling other streams and pings.
+                                if let Some(st) = streams.lock().await.remove(&msg.stream_id) {
+                                    st.cancel();
+                                }
+                            }
+                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                                streams.lock().await.remove(&msg.stream_id);
+                            }
+                        }
                     }
                 }
                 TYPE_CLOSE => {
