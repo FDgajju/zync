@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 
 const CHUNK_SIZE: usize = 24 * 1024;
 const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -254,38 +255,11 @@ async fn proxy_websocket(
     }
 
     let (mut read_half, mut write_half) = stream.into_split();
-    let mut req_rx = readers.req_rx;
-    let mut extra_rx = readers.extra_rx;
 
-    // Merge body-channel and post-close uplink so early TYPE_DATA before the
-    // first TYPE_CLOSE is not dropped (WebSocket upgrade request bodies).
+    // Drain the HTTP-body channel fully before post-close uplink so TYPE_DATA
+    // before the first TYPE_CLOSE stays ahead of later frames.
     let uplink = async {
-        let mut req_done = false;
-        let mut extra_done = false;
-        while !req_done || !extra_done {
-            tokio::select! {
-                chunk = req_rx.recv(), if !req_done => {
-                    match chunk {
-                        Some(c) => {
-                            if write_half.write_all(&c).await.is_err() {
-                                break;
-                            }
-                        }
-                        None => req_done = true,
-                    }
-                }
-                chunk = extra_rx.recv(), if !extra_done => {
-                    match chunk {
-                        Some(c) => {
-                            if write_half.write_all(&c).await.is_err() {
-                                break;
-                            }
-                        }
-                        None => extra_done = true,
-                    }
-                }
-            }
-        }
+        write_ordered_uplink(readers.req_rx, readers.extra_rx, &mut write_half).await;
         let _ = write_half.shutdown().await;
     };
     let downlink = async {
@@ -428,6 +402,23 @@ fn is_loopback_url(target: &url::Url) -> bool {
     }
 }
 
+async fn write_ordered_uplink<W: AsyncWriteExt + Unpin>(
+    mut req_rx: mpsc::Receiver<Bytes>,
+    mut extra_rx: mpsc::Receiver<Bytes>,
+    write: &mut W,
+) {
+    while let Some(chunk) = req_rx.recv().await {
+        if write.write_all(&chunk).await.is_err() {
+            return;
+        }
+    }
+    while let Some(chunk) = extra_rx.recv().await {
+        if write.write_all(&chunk).await.is_err() {
+            return;
+        }
+    }
+}
+
 async fn read_http_headers(
     stream: &mut TcpStream,
 ) -> Result<(u16, HashMap<String, Vec<String>>, Vec<u8>), String> {
@@ -488,5 +479,19 @@ mod tests {
     fn loopback_host_includes_port() {
         let u = url::Url::parse("http://127.0.0.1:3000").unwrap();
         assert_eq!(localhost_http_host(&u), "localhost:3000");
+    }
+
+    #[tokio::test]
+    async fn uplink_writes_req_channel_before_extra() {
+        let (req_tx, req_rx) = mpsc::channel(8);
+        let (extra_tx, extra_rx) = mpsc::channel(8);
+        extra_tx.send(Bytes::from_static(b"B")).await.unwrap();
+        req_tx.send(Bytes::from_static(b"A")).await.unwrap();
+        drop(req_tx);
+        drop(extra_tx);
+
+        let mut buf = Vec::new();
+        write_ordered_uplink(req_rx, extra_rx, &mut buf).await;
+        assert_eq!(&buf, b"AB");
     }
 }
