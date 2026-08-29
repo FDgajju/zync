@@ -4,15 +4,17 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.27.0] - 2026-08-29
+
 ### Added
-- **Public URLs (Beta)**: Share a local port on the internet with an HTTPS link via Zync account sign-in (GitHub/Google). Separate from Google Drive Sync and from SSH port forwarding. Includes create/stop/start/delete, copy URL, local share agent, OAuth cancel/retry, Beta badge, and bug-report link. Profile avatar prefers the Zync account photo when signed in.
+- **Public URLs (Beta)**: Share a local port on the internet with an HTTPS link via Zync account sign-in (GitHub/Google). Separate from Google Drive Sync and from SSH port forwarding. Includes create/stop/start/delete, copy URL, local share agent, OAuth cancel/retry, Beta badge, and bug-report link. Profile avatar prefers the Zync account photo when signed in. ([b44475a], [d826b82], [97ccad1], [c8da354])
 
 ### Changed
-- **Port Forwarding list**: Compact table grouped by SSH host, with a matching quiet grid. Search, status/type filters, host icons, persisted list/grid, and Copy/Open on the row.
+- **Port Forwarding list**: Compact table grouped by SSH host, with a matching quiet grid. Search, status/type filters, host icons, persisted list/grid, and Copy/Open on the row. ([1203446], [d2d12e1], [72d839b])
 
 ### Fixed
-- **Remote port conflict**: Busy SSH `-R` listen ports use the same next-port / manual picker as local forwards. If every probe fails, the original reject is kept. Probe binds that cannot be cancelled stay tracked until disconnect.
-- **Public URLs WebSocket**: Forward pre-close request bytes before later frames so upgrade payloads stay in order.
+- **Remote port conflict**: Busy SSH `-R` listen ports use the same next-port / manual picker as local forwards. If every probe fails, the original reject is kept. Probe binds that cannot be cancelled stay tracked until disconnect. ([9acc835], [72d839b])
+- **Public URLs WebSocket**: Forward pre-close request bytes before later frames so upgrade payloads stay in order. ([4784865])
 
 ## [2.26.1] - 2026-08-28
 
@@ -1311,9 +1313,19 @@ Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` publishe
 [d3f4060]: https://github.com/zync-sh/zync/commit/d3f4060
 [840afc2]: https://github.com/zync-sh/zync/commit/840afc2
 [193f568]: https://github.com/zync-sh/zync/commit/193f568
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.26.1...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.27.0...HEAD
+[2.27.0]: https://github.com/zync-sh/zync/compare/v2.26.1...v2.27.0
 [2.26.1]: https://github.com/zync-sh/zync/compare/v2.26.0...v2.26.1
 [2.26.0]: https://github.com/zync-sh/zync/compare/v2.25.8...v2.26.0
+[b44475a]: https://github.com/zync-sh/zync/commit/b44475a
+[d826b82]: https://github.com/zync-sh/zync/commit/d826b82
+[97ccad1]: https://github.com/zync-sh/zync/commit/97ccad1
+[c8da354]: https://github.com/zync-sh/zync/commit/c8da354
+[1203446]: https://github.com/zync-sh/zync/commit/1203446
+[d2d12e1]: https://github.com/zync-sh/zync/commit/d2d12e1
+[72d839b]: https://github.com/zync-sh/zync/commit/72d839b
+[9acc835]: https://github.com/zync-sh/zync/commit/9acc835
+[4784865]: https://github.com/zync-sh/zync/commit/4784865
 [2.25.8]: https://github.com/zync-sh/zync/compare/v2.25.7...v2.25.8
 [2.25.7]: https://github.com/zync-sh/zync/compare/v2.25.6...v2.25.7
 [2.25.6]: https://github.com/zync-sh/zync/compare/v2.25.5...v2.25.6
