@@ -517,21 +517,36 @@ impl TunnelManager {
                 .collect()
         };
         for (key, bind, port) in leftovers {
-            if let Some(session) = &session {
+            let cancel_ok = if let Some(session) = &session {
                 let handle = session.lock().await;
-                if let Err(e) = handle
+                match handle
                     .cancel_tcpip_forward(bind.clone(), port as u32)
                     .await
                 {
-                    warn!(
-                        "[TUNNEL] Failed to cancel orphan remote forward {} (bind {}): {}",
-                        key, bind, e
-                    );
+                    Ok(()) => true,
+                    Err(e) => {
+                        warn!(
+                            "[TUNNEL] Failed to cancel orphan remote forward {} (bind {}): {}",
+                            key, bind, e
+                        );
+                        false
+                    }
                 }
+            } else {
+                true
+            };
+            if drop_orphan_after_cancel(session.is_some(), cancel_ok) {
+                self.remote_forwards.lock().await.remove(&key);
             }
-            self.remote_forwards.lock().await.remove(&key);
         }
     }
+}
+
+fn drop_orphan_after_cancel(had_session: bool, cancel_ok: bool) -> bool {
+    if !had_session {
+        return true;
+    }
+    cancel_ok
 }
 
 /// Attempts to find which process is using the specified port.
@@ -758,6 +773,13 @@ mod tests {
         assert_eq!(unreleased, vec![9001]);
         assert_eq!(record_remote_probe(true, 9002, &mut unreleased), Some(9002));
         assert_eq!(unreleased, vec![9001]);
+    }
+
+    #[test]
+    fn failed_orphan_cancel_keeps_map_entry() {
+        assert!(!drop_orphan_after_cancel(true, false));
+        assert!(drop_orphan_after_cancel(true, true));
+        assert!(drop_orphan_after_cancel(false, false));
     }
 
     #[test]

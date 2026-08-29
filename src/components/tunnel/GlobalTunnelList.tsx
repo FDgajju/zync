@@ -536,7 +536,10 @@ export function GlobalTunnelList() {
                                                     {running}/{group.tunnels.length}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                                            <div
+                                                className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                                                onKeyDown={e => e.stopPropagation()}
+                                            >
                                                 {running > 0 && (
                                                     <Button
                                                         size="sm"

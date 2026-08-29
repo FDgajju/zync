@@ -7,7 +7,7 @@
 
 ## Summary
 
-Zync’s core security surface is **encrypted local vaulting**, optional **remember-on-device unlock**, and **Google Drive–backed encrypted sync**. From v2.27.1, an optional **Public URLs (Beta)** feature adds a separate Zync account (GitHub/Google share login) and a localhost-only share agent that talks to Zync-operated API and relay hosts. SSH sessions, vault secrets, and terminal content are not sent to those hosts. This document explains how those systems behave, what users and operators should know, and what remains out of scope.
+Zync’s core security surface is **encrypted local vaulting**, optional **remember-on-device unlock**, and **Google Drive–backed encrypted sync**. From v2.27.1, an optional **Public URLs (Beta)** feature adds a separate Zync account (GitHub/Google share login) and a localhost-only share agent that talks to Zync-operated API and relay hosts. Zync does not automatically send SSH sessions, vault secrets, or terminal content to those hosts. HTTP, WebSocket, and TCP bytes from the **user-selected shared loopback port** are proxied through the relay while the share is active. This document explains how those systems behave, what users and operators should know, and what remains out of scope.
 
 ---
 
@@ -38,7 +38,7 @@ Zync’s core security surface is **encrypted local vaulting**, optional **remem
 
 ### Public URLs (Beta)
 
-Public URLs is **not** SSH port forwarding (`-L` / `-R` / `-D`). It is an optional SaaS surface: a Zync account, a desktop share agent, and Zync-operated API + HTTPS/WSS relay.
+The Public URLs feature is **not** SSH port forwarding (`-L` / `-R` / `-D`). It is an optional SaaS surface: a Zync account, a desktop share agent, and Zync-operated API + HTTPS/WSS relay.
 
 - **Separate OAuth clients.** Drive Sync login is not Public URLs sign-in. GitHub/Google used for Public URLs are share-account clients (email/profile), not `drive.appdata`.
 - **Localhost-only agent.** The desktop agent proxies only to loopback targets (`127.0.0.1` / `localhost` / `::1`). Non-loopback hosts are refused.

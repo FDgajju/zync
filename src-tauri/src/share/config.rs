@@ -30,11 +30,24 @@ fn baked_url(compiled: Option<&str>, debug_fallback: &str) -> String {
     if let Some(raw) = compiled {
         let trimmed = raw.trim().trim_end_matches('/');
         if !trimmed.is_empty() {
-            return trimmed.to_string();
+            return accept_share_url(trimmed);
         }
     }
     if cfg!(debug_assertions) {
         return debug_fallback.trim_end_matches('/').to_string();
+    }
+    String::new()
+}
+
+/// Release builds only accept https (so tickets/API never use cleartext http/ws).
+/// Debug keeps http://127.0.0.1 for local zync-share.
+fn accept_share_url(url: &str) -> String {
+    let lower = url.to_ascii_lowercase();
+    if lower.starts_with("https://") || lower.starts_with("wss://") {
+        return url.to_string();
+    }
+    if cfg!(debug_assertions) && (lower.starts_with("http://") || lower.starts_with("ws://")) {
+        return url.to_string();
     }
     String::new()
 }
@@ -79,6 +92,24 @@ mod tests {
         let got = super::baked_url(Some("   "), "http://127.0.0.1:8080");
         if cfg!(debug_assertions) {
             assert_eq!(got, "http://127.0.0.1:8080");
+        } else {
+            assert!(got.is_empty());
+        }
+    }
+
+    #[test]
+    fn accept_share_url_allows_https() {
+        assert_eq!(
+            super::accept_share_url("https://example.com"),
+            "https://example.com"
+        );
+    }
+
+    #[test]
+    fn accept_share_url_rejects_cleartext_in_release() {
+        let got = super::accept_share_url("http://example.com");
+        if cfg!(debug_assertions) {
+            assert_eq!(got, "http://example.com");
         } else {
             assert!(got.is_empty());
         }
