@@ -1,3 +1,8 @@
+/// Loopback defaults for `cargo tauri dev` / debug tests only. Release builds
+/// must set `ZYNC_SHARE_API_BASE` and `ZYNC_SHARE_RELAY_URL` at compile time.
+const DEBUG_API_BASE: &str = "http://127.0.0.1:8080";
+const DEBUG_RELAY_URL: &str = "http://127.0.0.1:8081";
+
 #[derive(Debug, Clone)]
 pub struct ShareConfig {
     pub api_base: String,
@@ -6,23 +11,32 @@ pub struct ShareConfig {
 
 impl ShareConfig {
     pub fn from_env() -> Self {
-        let api_base = option_env!("ZYNC_SHARE_API_BASE")
-            .unwrap_or("https://zync-share.thesudoer.in")
-            .trim_end_matches('/')
-            .to_string();
-        let relay_url = option_env!("ZYNC_SHARE_RELAY_URL")
-            .unwrap_or("https://relay.thesudoer.in")
-            .trim_end_matches('/')
-            .to_string();
         Self {
-            api_base,
-            relay_url,
+            api_base: baked_url(option_env!("ZYNC_SHARE_API_BASE"), DEBUG_API_BASE),
+            relay_url: baked_url(option_env!("ZYNC_SHARE_RELAY_URL"), DEBUG_RELAY_URL),
         }
+    }
+
+    pub fn is_configured(&self) -> bool {
+        !self.api_base.is_empty() && !self.relay_url.is_empty()
     }
 
     pub fn api_url(&self, path: &str) -> String {
         format!("{}{}", self.api_base, path)
     }
+}
+
+fn baked_url(compiled: Option<&str>, debug_fallback: &str) -> String {
+    if let Some(raw) = compiled {
+        let trimmed = raw.trim().trim_end_matches('/');
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if cfg!(debug_assertions) {
+        return debug_fallback.trim_end_matches('/').to_string();
+    }
+    String::new()
 }
 
 pub fn to_ws_url(http_url: &str) -> Result<String, String> {
@@ -47,8 +61,26 @@ mod tests {
     #[test]
     fn https_becomes_wss() {
         assert_eq!(
-            to_ws_url("https://relay.thesudoer.in/agent").unwrap(),
-            "wss://relay.thesudoer.in/agent"
+            to_ws_url("https://example.com/agent").unwrap(),
+            "wss://example.com/agent"
         );
+    }
+
+    #[test]
+    fn baked_url_keeps_explicit_host() {
+        assert_eq!(
+            super::baked_url(Some("https://example.com/"), "http://127.0.0.1:8080"),
+            "https://example.com"
+        );
+    }
+
+    #[test]
+    fn baked_url_ignores_blank_compiled_value() {
+        let got = super::baked_url(Some("   "), "http://127.0.0.1:8080");
+        if cfg!(debug_assertions) {
+            assert_eq!(got, "http://127.0.0.1:8080");
+        } else {
+            assert!(got.is_empty());
+        }
     }
 }

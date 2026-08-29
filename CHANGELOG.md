@@ -4,7 +4,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
-## [2.27.0] - 2026-08-29
+## [2.27.1] - 2026-08-29
 
 ### Added
 - **Public URLs (Beta)**: Share a local port on the internet with an HTTPS link via Zync account sign-in (GitHub/Google). Separate from Google Drive Sync and from SSH port forwarding. Includes create/stop/start/delete, copy URL, local share agent, OAuth cancel/retry, Beta badge, and bug-report link. Profile avatar prefers the Zync account photo when signed in. ([b44475a], [d826b82], [97ccad1], [c8da354])
@@ -15,6 +15,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 ### Fixed
 - **Remote port conflict**: Busy SSH `-R` listen ports use the same next-port / manual picker as local forwards. If every probe fails, the original reject is kept. Probe binds that cannot be cancelled stay tracked until disconnect. ([9acc835], [72d839b])
 - **Public URLs WebSocket**: Forward pre-close request bytes before later frames so upgrade payloads stay in order. ([4784865])
+- **Public URLs build config**: Production API/relay hosts are no longer hardcoded. Release builds bake `ZYNC_SHARE_API_BASE` and `ZYNC_SHARE_RELAY_URL` from GitHub Actions secrets. Debug builds may use local `zync-share` loopback.
 
 ## [2.26.1] - 2026-08-28
 
@@ -1313,8 +1314,8 @@ Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` publishe
 [d3f4060]: https://github.com/zync-sh/zync/commit/d3f4060
 [840afc2]: https://github.com/zync-sh/zync/commit/840afc2
 [193f568]: https://github.com/zync-sh/zync/commit/193f568
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.27.0...HEAD
-[2.27.0]: https://github.com/zync-sh/zync/compare/v2.26.1...v2.27.0
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.27.1...HEAD
+[2.27.1]: https://github.com/zync-sh/zync/compare/v2.26.1...v2.27.1
 [2.26.1]: https://github.com/zync-sh/zync/compare/v2.26.0...v2.26.1
 [2.26.0]: https://github.com/zync-sh/zync/compare/v2.25.8...v2.26.0
 [b44475a]: https://github.com/zync-sh/zync/commit/b44475a

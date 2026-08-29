@@ -7,7 +7,7 @@
 
 ## Summary
 
-Zync’s core security surface is **encrypted local vaulting**, optional **remember-on-device unlock**, and **Google Drive–backed encrypted sync**. From v2.27.0, an optional **Public URLs (Beta)** feature adds a separate Zync account (GitHub/Google share login) and a localhost-only share agent that talks to Zync-operated API and relay hosts. SSH sessions, vault secrets, and terminal content are not sent to those hosts. This document explains how those systems behave, what users and operators should know, and what remains out of scope.
+Zync’s core security surface is **encrypted local vaulting**, optional **remember-on-device unlock**, and **Google Drive–backed encrypted sync**. From v2.27.1, an optional **Public URLs (Beta)** feature adds a separate Zync account (GitHub/Google share login) and a localhost-only share agent that talks to Zync-operated API and relay hosts. SSH sessions, vault secrets, and terminal content are not sent to those hosts. This document explains how those systems behave, what users and operators should know, and what remains out of scope.
 
 ---
 

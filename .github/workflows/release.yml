@@ -104,6 +104,10 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           # Baked into the Vite bundle for survey/feedback API (prod).
           VITE_SURVEY_API_URL: ${{ secrets.VITE_SURVEY_API_URL }}
+          # Baked into the Rust binary at compile time. Do not hardcode production
+          # Public URLs hosts in source. Set these repo secrets before tagging.
+          ZYNC_SHARE_API_BASE: ${{ secrets.ZYNC_SHARE_API_BASE }}
+          ZYNC_SHARE_RELAY_URL: ${{ secrets.ZYNC_SHARE_RELAY_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:

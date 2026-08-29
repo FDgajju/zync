@@ -19,6 +19,17 @@ pub fn share_auth_peek(state: State<'_, ShareState>) -> ShareAuthStatus {
     state.auth.cached_status()
 }
 
+fn require_share_config(state: &ShareState) -> Result<(), String> {
+    if state.config.is_configured() {
+        Ok(())
+    } else {
+        Err(super::err(
+            "share_unconfigured",
+            "Public URLs is not configured in this build. Release builds must set ZYNC_SHARE_API_BASE and ZYNC_SHARE_RELAY_URL at compile time.",
+        ))
+    }
+}
+
 #[tauri::command]
 pub async fn share_status(state: State<'_, ShareState>) -> Result<ShareStatusPayload, String> {
     let cached = state.auth.cached_status();
@@ -63,6 +74,7 @@ pub async fn share_login(
     state: State<'_, ShareState>,
     provider: String,
 ) -> Result<ShareStatusPayload, String> {
+    require_share_config(&state)?;
     state.auth.login(&app, &state.config, &provider).await?;
     let payload = share_status(state.clone()).await?;
     let _ = app.emit("share://auth", &payload.auth);
@@ -100,6 +112,7 @@ pub async fn share_logout(
 
 #[tauri::command]
 pub async fn share_list(state: State<'_, ShareState>) -> Result<Vec<ShareRecord>, String> {
+    require_share_config(&state)?;
     load_shares(&state).await
 }
 
@@ -110,6 +123,7 @@ pub async fn share_create(
     name: Option<String>,
     password: Option<String>,
 ) -> Result<ShareRecord, String> {
+    require_share_config(&state)?;
     if !(1..=65535).contains(&port) {
         return Err(super::err("invalid_port", "Local port must be between 1 and 65535"));
     }
@@ -151,6 +165,7 @@ pub async fn share_create(
 
 #[tauri::command]
 pub async fn share_stop(state: State<'_, ShareState>, id: String) -> Result<ShareRecord, String> {
+    require_share_config(&state)?;
     let access = state.auth.ensure_access_token(&state.config).await?;
     let client = ApiClient::new(state.config.clone());
     let share = client.stop_share(&access, &id).await?;
@@ -160,6 +175,7 @@ pub async fn share_stop(state: State<'_, ShareState>, id: String) -> Result<Shar
 
 #[tauri::command]
 pub async fn share_start(state: State<'_, ShareState>, id: String) -> Result<ShareRecord, String> {
+    require_share_config(&state)?;
     let access = state.auth.ensure_access_token(&state.config).await?;
     let client = ApiClient::new(state.config.clone());
     let share = client.start_share(&access, &id).await?;
@@ -169,6 +185,7 @@ pub async fn share_start(state: State<'_, ShareState>, id: String) -> Result<Sha
 
 #[tauri::command]
 pub async fn share_delete(state: State<'_, ShareState>, id: String) -> Result<ShareRecord, String> {
+    require_share_config(&state)?;
     let access = state.auth.ensure_access_token(&state.config).await?;
     let client = ApiClient::new(state.config.clone());
     let share = client.delete_share(&access, &id).await?;
@@ -181,6 +198,7 @@ pub async fn share_agent_start(
     state: State<'_, ShareState>,
     id: Option<String>,
 ) -> Result<(), String> {
+    require_share_config(&state)?;
     let shares = load_shares(&state).await?;
     let targets: Vec<ShareRecord> = match id {
         Some(id) => shares.into_iter().filter(|s| s.id == id).collect(),

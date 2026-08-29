@@ -234,7 +234,7 @@ Operator details: [`packaging/arch/README.md`](packaging/arch/README.md).
 
 | Document | Covers |
 |----------|--------|
-| [docs/SECURITY.md](docs/SECURITY.md) | Vault, sync, OAuth, and operator security guidance |
+| [docs/SECURITY.md](docs/SECURITY.md) | Vault, sync, Public URLs, OAuth, and operator security guidance |
 | [docs/VAULT.md](docs/VAULT.md) | Vault, credentials, Google sync |
 | [docs/TERMINAL.md](docs/TERMINAL.md) | Terminal system (IPC, renderer, lifecycle, settings) |
 | [docs/TERMINAL_GHOST.md](docs/TERMINAL_GHOST.md) | Ghost completions (inline, history, paths, suggestion engine) |

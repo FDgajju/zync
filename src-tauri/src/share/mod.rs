@@ -15,6 +15,7 @@ mod stream;
 pub use commands::*;
 pub use config::ShareConfig;
 
+use log::warn;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::AppHandle;
@@ -36,6 +37,11 @@ pub struct ShareState {
 impl ShareState {
     pub fn new(app: AppHandle, data_dir: PathBuf) -> Self {
         let config = ShareConfig::from_env();
+        if !config.is_configured() {
+            warn!(
+                "[share] Public URLs is unconfigured in this build. Set ZYNC_SHARE_API_BASE and ZYNC_SHARE_RELAY_URL at compile time for release builds."
+            );
+        }
         let auth = Arc::new(AuthStore::new(data_dir.clone()));
         let agents = Arc::new(AgentManager::new(
             app.clone(),
