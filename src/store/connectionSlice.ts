@@ -138,6 +138,7 @@ export interface ConnectionSlice {
     // Tab Actions
     openTab: (connectionId: string, startView?: CoreTabView) => void;
     openPortForwardingTab: () => void;
+    openPublicUrlsTab: () => void;
     openSnippetsTab: () => void;
     openReleaseNotesTab: () => void;
     openSettingsJsonTab: () => void;
@@ -181,7 +182,7 @@ export interface ConnectionSlice {
 }
 
 const VALID_RESTORABLE_VIEWS = new Set<CoreTabView>(['terminal', 'files', 'port-forwarding', 'snippets', 'dashboard']);
-const RESTORABLE_TAB_TYPES = new Set(['connection', 'port-forwarding', 'release-notes', 'snippets', 'settings', 'vault', 'sync']);
+const RESTORABLE_TAB_TYPES = new Set(['connection', 'port-forwarding', 'release-notes', 'snippets', 'settings', 'vault', 'sync', 'public-urls']);
 
 type PersistedConnection = Omit<Connection, 'status'> & Partial<Pick<Connection, 'status'>>;
 
@@ -972,6 +973,18 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             })), showWelcomeScreen: false };
         });
         // Dirty-checked in sessionSlice — redundant calls are harmless.
+        get().saveSession();
+    },
+
+    openPublicUrlsTab: () => {
+        set(state => {
+            return { ...ensureSingleTabByType(state.tabs, 'public-urls', () => ({
+                id: crypto.randomUUID(),
+                type: 'public-urls',
+                title: 'Public URLs',
+                view: 'terminal',
+            })), showWelcomeScreen: false };
+        });
         get().saveSession();
     },
 

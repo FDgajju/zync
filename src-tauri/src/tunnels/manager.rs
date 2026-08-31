@@ -5,7 +5,7 @@ use crate::types::SavedTunnel;
 use anyhow::{anyhow, Result};
 use log::warn;
 use russh::client::Handle;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -370,8 +370,52 @@ impl TunnelManager {
         };
 
         if let Err(e) = res {
-            let mut map = self.remote_forwards.lock().await;
-            map.remove(&map_key);
+            {
+                let mut map = self.remote_forwards.lock().await;
+                map.remove(&map_key);
+            }
+
+            let err_text = e.to_string();
+            if is_remote_forward_rejected(&err_text) {
+                let occupied: HashSet<u16> = {
+                    let map = self.remote_forwards.lock().await;
+                    map.keys()
+                        .filter_map(|key| {
+                            let (conn, port) = key.rsplit_once(':')?;
+                            if conn == connection_id {
+                                port.parse().ok()
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                };
+                let probe = find_next_available_remote_port(
+                    &session,
+                    &bind_address,
+                    remote_port,
+                    10,
+                    &occupied,
+                )
+                .await;
+                if !probe.unreleased.is_empty() {
+                    let mut map = self.remote_forwards.lock().await;
+                    for port in &probe.unreleased {
+                        map.insert(
+                            remote_forward_map_key(&connection_id, *port),
+                            (local_host.clone(), local_port, bind_address.clone()),
+                        );
+                    }
+                }
+                if let Some(suggested) = probe.suggested {
+                    return Err(anyhow!(
+                        "Port {} is already in use. Port {} is available.",
+                        remote_port,
+                        suggested
+                    ));
+                }
+            }
+
             return Err(anyhow!("Remote forwarding error: {}", e));
         }
 
@@ -453,6 +497,56 @@ impl TunnelManager {
         }
         Ok(())
     }
+
+    /// Cancel leftover remote binds for a connection (probe ports whose cancel failed).
+    pub async fn cancel_orphan_remote_forwards(
+        &self,
+        session: Option<Arc<Mutex<Handle<Client>>>>,
+        connection_id: &str,
+    ) {
+        let leftovers: Vec<(String, String, u16)> = {
+            let map = self.remote_forwards.lock().await;
+            map.iter()
+                .filter_map(|(key, (_, _, bind))| {
+                    let (conn, port) = key.rsplit_once(':')?;
+                    if conn != connection_id {
+                        return None;
+                    }
+                    Some((key.clone(), bind.clone(), port.parse().ok()?))
+                })
+                .collect()
+        };
+        for (key, bind, port) in leftovers {
+            let cancel_ok = if let Some(session) = &session {
+                let handle = session.lock().await;
+                match handle
+                    .cancel_tcpip_forward(bind.clone(), port as u32)
+                    .await
+                {
+                    Ok(()) => true,
+                    Err(e) => {
+                        warn!(
+                            "[TUNNEL] Failed to cancel orphan remote forward {} (bind {}): {}",
+                            key, bind, e
+                        );
+                        false
+                    }
+                }
+            } else {
+                true
+            };
+            if drop_orphan_after_cancel(session.is_some(), cancel_ok) {
+                self.remote_forwards.lock().await.remove(&key);
+            }
+        }
+    }
+}
+
+fn drop_orphan_after_cancel(had_session: bool, cancel_ok: bool) -> bool {
+    if !had_session {
+        return true;
+    }
+    cancel_ok
 }
 
 /// Attempts to find which process is using the specified port.
@@ -535,6 +629,81 @@ async fn find_process_using_port(port: u16) -> Option<String> {
     }
 }
 
+fn is_remote_forward_rejected(err: &str) -> bool {
+    err.to_ascii_lowercase()
+        .contains("rejected by the other party")
+}
+
+struct RemotePortProbe {
+    suggested: Option<u16>,
+    unreleased: Vec<u16>,
+}
+
+/// Probe the next remote listen ports via `tcpip-forward`, then cancel the probe bind.
+/// Ports that bind but fail to cancel stay in `unreleased` so the caller can keep ownership.
+async fn find_next_available_remote_port(
+    session: &Arc<Mutex<Handle<Client>>>,
+    bind_address: &str,
+    start_port: u16,
+    max_attempts: u8,
+    occupied: &HashSet<u16>,
+) -> RemotePortProbe {
+    let mut unreleased = Vec::new();
+    for offset in 1..=max_attempts {
+        let candidate = start_port.saturating_add(offset.into());
+        if candidate == 0 || candidate == start_port || occupied.contains(&candidate) {
+            continue;
+        }
+
+        let bound = {
+            let mut handle = session.lock().await;
+            handle
+                .tcpip_forward(bind_address.to_string(), candidate as u32)
+                .await
+                .is_ok()
+        };
+        if !bound {
+            continue;
+        }
+
+        let cancel_ok = {
+            let handle = session.lock().await;
+            match handle
+                .cancel_tcpip_forward(bind_address.to_string(), candidate as u32)
+                .await
+            {
+                Ok(()) => true,
+                Err(e) => {
+                    warn!(
+                        "[TUNNEL] Failed to release remote probe port {}: {}",
+                        candidate, e
+                    );
+                    false
+                }
+            }
+        };
+        if let Some(port) = record_remote_probe(cancel_ok, candidate, &mut unreleased) {
+            return RemotePortProbe {
+                suggested: Some(port),
+                unreleased,
+            };
+        }
+    }
+    RemotePortProbe {
+        suggested: None,
+        unreleased,
+    }
+}
+
+fn record_remote_probe(cancel_ok: bool, candidate: u16, unreleased: &mut Vec<u16>) -> Option<u16> {
+    if cancel_ok {
+        Some(candidate)
+    } else {
+        unreleased.push(candidate);
+        None
+    }
+}
+
 async fn find_next_available_port(start_port: u16, max_attempts: u8) -> Option<u16> {
     for offset in 1..=max_attempts {
         let candidate_port = start_port.saturating_add(offset.into());
@@ -587,6 +756,30 @@ mod tests {
     fn tunnel_runtime_id_includes_connection_for_remote() {
         let t = sample_tunnel("remote", "conn-b");
         assert_eq!(tunnel_runtime_id(&t), "remote:conn-b:5432:127.0.0.1:8080");
+    }
+
+    #[test]
+    fn is_remote_forward_rejected_matches_russh_text() {
+        assert!(is_remote_forward_rejected(
+            "The request was rejected by the other party"
+        ));
+        assert!(!is_remote_forward_rejected("connection reset"));
+    }
+
+    #[test]
+    fn failed_cancel_retains_unreleased_candidate() {
+        let mut unreleased = Vec::new();
+        assert_eq!(record_remote_probe(false, 9001, &mut unreleased), None);
+        assert_eq!(unreleased, vec![9001]);
+        assert_eq!(record_remote_probe(true, 9002, &mut unreleased), Some(9002));
+        assert_eq!(unreleased, vec![9001]);
+    }
+
+    #[test]
+    fn failed_orphan_cancel_keeps_map_entry() {
+        assert!(!drop_orphan_after_cancel(true, false));
+        assert!(drop_orphan_after_cancel(true, true));
+        assert!(drop_orphan_after_cancel(false, false));
     }
 
     #[test]

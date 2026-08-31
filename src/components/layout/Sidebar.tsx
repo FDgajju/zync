@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useAppStore, Connection, Folder } from '../../store/useAppStore';
-import { Files, FolderPlus, Info, Monitor, Network, Pencil, Plus, Power, RefreshCw, Search, Server, Trash2 } from 'lucide-react';
+import { Files, FolderPlus, Info, Link2, Monitor, Network, Pencil, Plus, Power, RefreshCw, Search, Server, Trash2 } from 'lucide-react';
+import { BetaBadge } from '../share/PublicUrlsLabel';
 import { cn } from '../../lib/utils';
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -58,6 +59,7 @@ export function Sidebar({ className }: { className?: string }) {
     const activeConnectionId = useAppStore(state => state.activeConnectionId);
     const openTab = useAppStore(state => state.openTab);
     const openPortForwardingTab = useAppStore(state => state.openPortForwardingTab);
+    const openPublicUrlsTab = useAppStore(state => state.openPublicUrlsTab);
     const folders = useAppStore(state => state.folders);
     const addFolder = useAppStore(state => state.addFolder);
     const updateConnectionFolder = useAppStore(state => state.updateConnectionFolder);
@@ -905,6 +907,13 @@ export function Sidebar({ className }: { className?: string }) {
                             icon={<Network size={13} />}
                             label="Port Forwarding"
                             onClick={() => openPortForwardingTab()}
+                        />
+
+                        <SidebarActionButton
+                            icon={<Link2 size={13} />}
+                            label="Public URLs"
+                            trailing={<BetaBadge className="text-[8px]" />}
+                            onClick={() => openPublicUrlsTab()}
                         />
 
                         <VaultNavSection />

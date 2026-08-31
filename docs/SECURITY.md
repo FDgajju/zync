@@ -1,13 +1,13 @@
 # Security Notes
 
-**Last updated:** 2026-07-01  
-**Scope:** Vault, Google sync, credential handling, and operator guidance for current Zync releases.
+**Last updated:** 2026-08-29  
+**Scope:** Vault, Google Drive sync, Public URLs (Beta), credential handling, and operator guidance for current Zync releases.
 
 ---
 
 ## Summary
 
-Zync's main security surface is **encrypted local vaulting**, optional **remember-on-device unlock**, and **Google Drive–backed encrypted sync**. This document explains how those systems behave, what users and operators should know, and what remains out of scope.
+Zync’s core security surface is **encrypted local vaulting**, optional **remember-on-device unlock**, and **Google Drive–backed encrypted sync**. From v2.27.1, an optional **Public URLs (Beta)** feature adds a separate Zync account (GitHub/Google share login) and a localhost-only share agent that talks to Zync-operated API and relay hosts. Zync does not automatically send SSH sessions, vault secrets, or terminal content to those hosts. HTTP, WebSocket, and TCP bytes from the **user-selected shared loopback port** are proxied through the relay while the share is active. This document explains how those systems behave, what users and operators should know, and what remains out of scope.
 
 ---
 
@@ -36,6 +36,17 @@ Zync's main security surface is **encrypted local vaulting**, optional **remembe
 - Sync collections use a **separate encryption passphrase** (local-vault-derived or custom).
 - OAuth uses Google's installed/desktop app flow with scoped access to Drive app data and account email.
 
+### Public URLs (Beta)
+
+The Public URLs feature is **not** SSH port forwarding (`-L` / `-R` / `-D`). It is an optional SaaS surface: a Zync account, a desktop share agent, and Zync-operated API + HTTPS/WSS relay.
+
+- **Separate OAuth clients.** Drive Sync login is not Public URLs sign-in. GitHub/Google used for Public URLs are share-account clients (email/profile), not `drive.appdata`.
+- **Localhost-only agent.** The desktop agent proxies only to loopback targets (`127.0.0.1` / `localhost` / `::1`). Non-loopback hosts are refused.
+- **Link access.** Anyone with the public HTTPS URL can reach that local port while the share is active, unless you set an optional share password. Treat the URL like a capability.
+- **Lifetime.** A share stays up while the **share agent** is running on this device. Dropping an SSH session does not stop a Public URL (and vice versa). Stop or delete the share (or sign out) to end it.
+- **Tokens.** Share access/refresh material is stored in the OS keyring. Sign out clears the local session.
+- **Beta.** Quota is a hard cap (no free/pro copy in-app). Report issues with the in-app bug link after sign-in.
+
 ---
 
 ## Security Hardening
@@ -47,7 +58,8 @@ Zync's main security surface is **encrypted local vaulting**, optional **remembe
 | **Tab open behavior** | Vault-backed connections defer auto-connect until explicit user reconnect |
 | **Sync durability** | Atomic JSON writes with fsync on production sync/vault paths; improved restore convergence and Windows finalize handling |
 | **Concurrent operations** | Guards against vault/sync state loss during overlapping provider and local operations |
-| **Build-time secret filtering** | `build.rs` blocks most sensitive env keys from compile-time embedding; `GOOGLE_CLIENT_SECRET` is explicitly allowlisted only for desktop OAuth compatibility |
+| **Build-time secret filtering** | `build.rs` blocks most sensitive env keys from compile-time embedding; Drive `GOOGLE_CLIENT_SECRET` is explicitly allowlisted only for desktop OAuth compatibility |
+| **Public URLs agent** | Share proxy refuses non-loopback targets; OAuth callback binds loopback only |
 
 ---
 
@@ -67,14 +79,22 @@ Zync's main security surface is **encrypted local vaulting**, optional **remembe
 - This trades convenience for risk: anyone with access to your unlocked OS session may access vault-backed connections without re-entering the passphrase until cache expiry or **Forget device**.
 - Do **not** enable remember-on-device on shared or untrusted machines.
 
-### Google OAuth
+### Google OAuth (Drive Sync)
 
-- Official release builds embed **`GOOGLE_CLIENT_ID`** (and optionally **`GOOGLE_CLIENT_SECRET`**) for the Zync desktop OAuth client.
+- Official release builds embed **`GOOGLE_CLIENT_ID`** (and optionally **`GOOGLE_CLIENT_SECRET`**) for the **Drive Sync** desktop OAuth client.
 - **Low risk, expected for desktop apps:** Google's installed-app model does not treat the client secret as confidential — it cannot be kept secret inside a distributed binary. This is normal for desktop OAuth and is **not** the same as leaking a server-side OAuth secret.
 - User data access still requires **per-user consent** and scoped tokens; extracting the embedded client pair alone does not grant access to someone else's Google data.
 - Do **not** reuse a production **web/server** OAuth client for Zync desktop builds.
+- Do **not** reuse the Drive Sync client for Public URLs sign-in (and vice versa).
 - Google sync tokens are stored locally; disconnect/revoke flows clear provider tokens where implemented.
 - A future **PKCE-only** client (no embedded secret) is planned as hygiene improvement, not an urgent security blocker.
+
+### Public URLs (Beta) operator notes
+
+- Treat an active Public URL as **internet exposure of that loopback port** via Zync’s relay.
+- Do not share ports that bind privileged or sensitive local services unless you intend that exposure.
+- Stop/delete the share when finished. Signing out of Zync ends the local agent session; revoke GitHub/Google app access if you want the account unlinked at the provider.
+- Survey / Settings → Feedback POSTs (when used) go to a Zync-operated survey API. They are optional and do not include vault secrets, SSH keys, or terminal contents.
 
 ### Backups and restore
 
@@ -91,6 +111,7 @@ These are **product scope** limits today, not vulnerabilities:
 - **No team/org policy controls** — vault and sync are single-user oriented; shared/team vaults are deferred to later phases.
 - **No live bi-directional sync scheduling** — Google sync is manual upload/restore; there is no background auto-sync scheduler yet.
 - **Plugins** — marketplace plugins do **not** receive raw vault secrets by design; only explicit future export/copy flows could change that.
+- **Public URLs Beta** — no team/org sharing, no custom domains, no pricing plans in-app; GA hardening is deferred.
 
 ### AI credential policy
 
@@ -112,4 +133,6 @@ If you discover a vulnerability in Zync, report it privately to the maintainers 
 
 - [VAULT.md](./VAULT.md) — vault and sync architecture
 - [VAULT_ROADMAP.md](./VAULT_ROADMAP.md) — planned vault/sync work
+- [TUNNELS.md](./TUNNELS.md) — SSH port forwarding (separate from Public URLs)
 - [CHANGELOG.md](../CHANGELOG.md) — release history
+- Privacy Policy (marketing site) — `https://zync.thesudoer.in/privacy`

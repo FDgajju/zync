@@ -19,6 +19,7 @@ mod tunnels;
 pub use tunnels::{remote_forward_map_key, tunnel_runtime_id, TunnelManager};
 mod types;
 mod utils;
+mod share;
 mod vault;
 
 use commands::AppState;
@@ -64,6 +65,7 @@ pub fn run() {
             let data_dir = commands::get_data_dir(&app_handle);
             let app_state = AppState::new(data_dir.clone(), app_handle.clone());
             app.manage(app_state);
+            app.manage(share::ShareState::new(app_handle.clone(), data_dir.clone()));
             app.manage(tokio::sync::Mutex::new(vault::store::VaultService::new(
                 data_dir,
             )));
@@ -90,6 +92,12 @@ pub fn run() {
                                 for cancel in runs.values() {
                                     cancel.store(true, std::sync::atomic::Ordering::Relaxed);
                                 }
+                            });
+                        }
+                        if let Some(share) = window.try_state::<share::ShareState>() {
+                            let agents = share.agents.clone();
+                            tauri::async_runtime::block_on(async move {
+                                agents.stop_all().await;
                             });
                         }
                         api.prevent_close();
@@ -300,6 +308,18 @@ pub fn run() {
             sync::commands::sync_restore_preview,
             sync::commands::sync_restore_credentials,
             sync::commands::sync_download,
+            share::share_status,
+            share::share_auth_peek,
+            share::share_login,
+            share::share_login_cancel,
+            share::share_logout,
+            share::share_list,
+            share::share_create,
+            share::share_stop,
+            share::share_start,
+            share::share_delete,
+            share::share_agent_start,
+            share::share_agent_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

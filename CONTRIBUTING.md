@@ -17,6 +17,8 @@ Thank you for your interest in contributing to Zync. This document provides guid
 
 4. Run `npm install` and `npm run tauri dev` to start the development environment.
 
+**Public URLs / survey hosts:** do not hardcode production API URLs in source. Debug builds may talk to local `zync-share` / `zync-survey`. Release builds must bake `ZYNC_SHARE_API_BASE`, `ZYNC_SHARE_RELAY_URL`, and `VITE_SURVEY_API_URL` from GitHub Actions secrets.
+
 **Staying in sync:** Before starting new work, pull the latest from upstream:
    ```bash
    git fetch upstream

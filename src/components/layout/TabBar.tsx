@@ -1,4 +1,4 @@
-import { X, Settings as SettingsIcon, Network, Gift, Plus, Laptop, FolderPlus, Home, Shield, UserRound, ChevronDown, LogOut, RefreshCw, Monitor } from 'lucide-react';
+import { X, Settings as SettingsIcon, Network, Gift, Plus, Laptop, FolderPlus, Home, Shield, UserRound, ChevronDown, LogOut, RefreshCw, Monitor, Link2 } from 'lucide-react';
 import { GoogleMarkIcon } from '../icons/providerIcons';
 import { OSIcon } from '../icons/OSIcon';
 import { ZyncMark } from '../brand/ZyncMark';
@@ -17,6 +17,9 @@ import { matchShortcut } from '../../lib/shortcuts';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import { isEditorOverlayOpen } from '../editor/overlayState';
 import { syncIpc, SYNC_STATUS_CHANGED_EVENT, type SyncProviderStatus } from '../../vault/syncIpc';
+import { useShareStore } from '../../features/share/useShareStore';
+import { parseShareError } from '../../features/share/ipc';
+import { PublicUrlsLabel } from '../share/PublicUrlsLabel';
 import {
     DndContext,
     closestCenter,
@@ -36,6 +39,7 @@ import { CSS } from '@dnd-kit/utilities';
 
 function getIconForTab(tab: Tab, connections: Connection[], size: 12 | 13 = 12) {
     if (tab.type === 'port-forwarding') return <Network size={size} />;
+    if (tab.type === 'public-urls') return <Link2 size={size} />;
     if (tab.type === 'settings') return <SettingsIcon size={size} />;
     if (tab.type === 'release-notes') return <Gift size={size} className="text-[var(--color-app-accent)]" />;
     if (tab.type === 'vault') return <Shield size={size} />;
@@ -122,12 +126,16 @@ function SortableTab({
                     ? "bg-app-surface text-app-text shadow-sm font-semibold"
                     : "text-app-muted hover:bg-app-surface/60 hover:text-app-text border-transparent"
             )}
-            title={tab.title}
+            title={tab.type === 'public-urls' ? 'Public URLs (Beta)' : tab.title}
         >
             {/* Icon based on type */}
             {getIconForTab(tab, connections, 12)}
 
-            <span className="truncate max-w-[90px]">{tab.title}</span>
+            {tab.type === 'public-urls' ? (
+                <PublicUrlsLabel className="text-[11px] font-semibold max-w-[120px]" />
+            ) : (
+                <span className="truncate max-w-[90px]">{tab.title}</span>
+            )}
 
             <button
                 onClick={(e) => onClose(tab.id, e)}
@@ -161,6 +169,11 @@ export function TabBar() {
     const openSettings = useAppStore(state => state.openSettings);
     const openVaultTab = useAppStore(state => state.openVaultTab);
     const openSyncBackupTab = useAppStore(state => state.openSyncBackupTab);
+    const openPublicUrlsTab = useAppStore(state => state.openPublicUrlsTab);
+    const shareAuth = useShareStore(state => state.auth);
+    const shareBusy = useShareStore(state => state.busy);
+    const shareHydrate = useShareStore(state => state.hydrate);
+    const shareLogout = useShareStore(state => state.logout);
     const setAddConnectionModalOpen = useAppStore(state => state.setAddConnectionModalOpen);
     const showToast = useAppStore(state => state.showToast);
     const { showInTitleLeft, showInTitleRight } = useNotificationBellPlacement();
@@ -202,6 +215,7 @@ export function TabBar() {
         };
 
         refreshGoogleSync();
+        void shareHydrate();
         const onSyncStatusChanged = (event: Event) => {
             const detail = (event as CustomEvent<{ provider?: string }>).detail;
             if (!detail?.provider || detail.provider === 'google') {
@@ -210,7 +224,7 @@ export function TabBar() {
         };
         window.addEventListener(SYNC_STATUS_CHANGED_EVENT, onSyncStatusChanged);
         return () => window.removeEventListener(SYNC_STATUS_CHANGED_EVENT, onSyncStatusChanged);
-    }, []);
+    }, [shareHydrate]);
 
     // Window drag hook for Linux compatibility
     const dragRegionRef = useRef<HTMLDivElement>(null);
@@ -296,11 +310,22 @@ export function TabBar() {
 
     const platform = window.electronUtils?.platform || 'linux';
     const isMac = platform === 'darwin';
-    const profileInitial = (googleSync?.email?.trim().charAt(0) || 'U').toUpperCase();
+    const zyncEmail = shareAuth.signed_in && typeof shareAuth.email === 'string'
+        ? shareAuth.email
+        : undefined;
+    const zyncAvatarUrl = shareAuth.signed_in && typeof shareAuth.avatar_url === 'string'
+        ? shareAuth.avatar_url
+        : undefined;
+    const profileAvatarUrl = zyncAvatarUrl || googleSync?.avatarUrl || null;
+    const profileInitial = (
+        zyncEmail?.trim().charAt(0)
+        || googleSync?.email?.trim().charAt(0)
+        || 'U'
+    ).toUpperCase();
 
     useEffect(() => {
         setAvatarLoadFailed(false);
-    }, [googleSync?.avatarUrl]);
+    }, [profileAvatarUrl]);
 
     return (
         <>
@@ -432,27 +457,26 @@ export function TabBar() {
                                         aria-label="Profile and sync menu"
                                     >
                                         <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full bg-app-accent/20 border border-app-accent/40 text-[10px] font-bold text-app-text overflow-hidden shadow-sm">
-                                            {googleSync?.avatarUrl && !avatarLoadFailed ? (
+                                            {profileAvatarUrl && !avatarLoadFailed ? (
                                                 <img
-                                                    src={googleSync.avatarUrl}
+                                                    src={profileAvatarUrl}
                                                     alt="Profile"
                                                     className="h-full w-full object-cover"
                                                     referrerPolicy="no-referrer"
                                                     onError={() => setAvatarLoadFailed(true)}
                                                 />
-                                            ) : googleSync?.email ? profileInitial : <UserRound size={10} />}
+                                            ) : zyncEmail || googleSync?.email ? (
+                                                profileInitial
+                                            ) : (
+                                                <UserRound size={10} />
+                                            )}
                                         </span>
                                         <ChevronDown size={12} />
                                     </button>
                                 </Tooltip>
 
                                 {isProfileMenuOpen && (
-                                    <TopbarDropdown align="right" widthClass="w-72">
-                                        <div className="px-2 py-1.5">
-                                            <p className="text-[10px] uppercase tracking-wider text-app-muted">Account</p>
-                                            <p className="text-xs text-app-text truncate">{googleSync?.email || 'Not connected to Google Drive'}</p>
-                                        </div>
-                                        <div className="h-px bg-app-border/40 my-1 mx-1" />
+                                    <TopbarDropdown align="right" widthClass="w-64">
                                         <button
                                             onClick={() => {
                                                 openSettings();
@@ -465,16 +489,6 @@ export function TabBar() {
                                         </button>
                                         <button
                                             onClick={() => {
-                                                openSyncBackupTab();
-                                                setIsProfileMenuOpen(false);
-                                            }}
-                                            className="w-full text-left px-3 py-2 text-xs font-medium text-app-text hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center gap-2 transition-colors"
-                                        >
-                                            <GoogleMarkIcon size={13} variant="mono" className="text-app-muted" />
-                                            <span>Sync & Backup</span>
-                                        </button>
-                                        <button
-                                            onClick={() => {
                                                 openVaultTab('local');
                                                 setIsProfileMenuOpen(false);
                                             }}
@@ -482,6 +496,22 @@ export function TabBar() {
                                         >
                                             <Shield size={13} className="text-app-muted" />
                                             <span>Vault Credentials</span>
+                                        </button>
+                                        <div className="h-px bg-app-border/40 my-1 mx-1" />
+                                        <button
+                                            onClick={() => {
+                                                openSyncBackupTab();
+                                                setIsProfileMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-xs font-medium text-app-text hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center gap-2 transition-colors"
+                                        >
+                                            <GoogleMarkIcon size={13} variant="mono" className="text-app-muted shrink-0" />
+                                            <span className="min-w-0">
+                                                <span className="block">Sync & Backup</span>
+                                                <span className="block text-[10px] font-normal text-app-muted truncate">
+                                                    {googleSync?.email || 'Google Drive'}
+                                                </span>
+                                            </span>
                                         </button>
                                         {!googleSync?.connected && (
                                             <button
@@ -519,7 +549,7 @@ export function TabBar() {
                                                 ) : (
                                                     <Network size={13} className="text-app-muted" />
                                                 )}
-                                                <span>{isGoogleSyncConnecting ? 'Connecting Google Sync…' : 'Connect Google Sync'}</span>
+                                                <span>{isGoogleSyncConnecting ? 'Connecting…' : 'Connect Google Drive'}</span>
                                             </button>
                                         )}
                                         {googleSync?.connected && (
@@ -558,7 +588,55 @@ export function TabBar() {
                                                 ) : (
                                                     <LogOut size={13} />
                                                 )}
-                                                <span>{isGoogleSyncDisconnecting ? 'Disconnecting Google Sync…' : 'Disconnect Google Sync'}</span>
+                                                <span>{isGoogleSyncDisconnecting ? 'Disconnecting…' : 'Disconnect Drive'}</span>
+                                            </button>
+                                        )}
+                                        <div className="h-px bg-app-border/40 my-1 mx-1" />
+                                        <button
+                                            onClick={() => {
+                                                openPublicUrlsTab();
+                                                setIsProfileMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-xs font-medium text-app-text hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center gap-2 transition-colors"
+                                        >
+                                            {shareAuth.signed_in && shareAuth.avatar_url ? (
+                                                <img
+                                                    src={shareAuth.avatar_url}
+                                                    alt=""
+                                                    className="h-[13px] w-[13px] rounded-full object-cover shrink-0"
+                                                    referrerPolicy="no-referrer"
+                                                />
+                                            ) : (
+                                                <Link2 size={13} className="text-app-muted shrink-0" />
+                                            )}
+                                            <span className="min-w-0">
+                                                <span className="block">
+                                                    <PublicUrlsLabel className="text-xs font-medium" />
+                                                </span>
+                                                <span className="block text-[10px] font-normal text-app-muted truncate">
+                                                    {shareAuth.signed_in
+                                                        ? (shareAuth.email || 'Signed in to Zync')
+                                                        : 'Sign in to Zync'}
+                                                </span>
+                                            </span>
+                                        </button>
+                                        {shareAuth.signed_in && (
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        await shareLogout();
+                                                        showToast('success', 'Signed out of Zync');
+                                                    } catch (error) {
+                                                        showToast('error', parseShareError(error).message);
+                                                    } finally {
+                                                        setIsProfileMenuOpen(false);
+                                                    }
+                                                }}
+                                                disabled={shareBusy}
+                                                className="w-full text-left px-3 py-2 text-xs font-medium text-red-300 hover:text-red-200 hover:bg-red-500/10 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-60"
+                                            >
+                                                <LogOut size={13} />
+                                                <span>Sign out of Zync</span>
                                             </button>
                                         )}
                                     </TopbarDropdown>
@@ -582,7 +660,11 @@ export function TabBar() {
                                     return (
                                         <div className="flex items-center gap-2 px-2.5 py-1.5 h-8 text-sm rounded-md bg-app-surface text-app-text shadow-lg font-medium border border-app-border/50">
                                             {getIconForTab(tab, connections, 13)}
-                                            <span className="truncate max-w-[120px]">{tab.title}</span>
+                                            {tab.type === 'public-urls' ? (
+                                                <PublicUrlsLabel className="text-sm font-medium max-w-[140px]" />
+                                            ) : (
+                                                <span className="truncate max-w-[120px]">{tab.title}</span>
+                                            )}
                                             <div className="p-0.5">
                                                 <X size={12} />
                                             </div>
