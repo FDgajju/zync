@@ -191,7 +191,7 @@ export function PublicUrlsPanel() {
                             <div className="min-w-0">
                                 <Header />
                                 <p className="mt-1 text-xs text-app-muted">
-                                    Zync · {auth.email || 'Signed in'}
+                                    Zync · Signed in
                                 </p>
                             </div>
                         </div>
@@ -338,7 +338,7 @@ export function PublicUrlsPanel() {
                             <div className="min-w-0">
                                 <Header />
                                 <p className="mt-1 text-xs text-app-muted">
-                                    Zync · {auth.email || 'Signed in'} · Anyone with the link can reach that port while this device is sharing.
+                                    Zync · Signed in · Anyone with the link can reach that port while this device is sharing.
                                 </p>
                             </div>
                         </div>
