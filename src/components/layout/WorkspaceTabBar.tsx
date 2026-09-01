@@ -17,6 +17,8 @@ export interface WorkspaceTabBarProps {
     onNewTerminal: (shell?: ShellEntry) => void;
     onOpenFeature?: (feature: string) => void;
     onTogglePin: (feature: string) => void;
+    sessionToolsOpen?: boolean;
+    onToggleSessionTools?: () => void;
 }
 
 /**
@@ -35,6 +37,8 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
     onNewTerminal,
     onOpenFeature,
     onTogglePin,
+    sessionToolsOpen,
+    onToggleSessionTools,
 }: WorkspaceTabBarProps) {
     const activeTerminalId = useAppStore(
         state => state.activeTerminalIds[connectionId] ?? null,
@@ -66,6 +70,8 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
             onNewTerminal={onNewTerminal}
             onOpenFeature={onOpenFeature}
             onTogglePin={onTogglePin}
+            sessionToolsOpen={sessionToolsOpen}
+            onToggleSessionTools={onToggleSessionTools}
         />
     );
 });

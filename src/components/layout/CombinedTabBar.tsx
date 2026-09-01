@@ -2,12 +2,13 @@ import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { cn } from '../../lib/utils';
-import { Plus, ChevronDown, X, Plug, Terminal as TerminalIcon, Loader2, RotateCw } from 'lucide-react';
+import { Plus, ChevronDown, X, Plug, Terminal as TerminalIcon, Loader2, RotateCw, PanelRight } from 'lucide-react';
 import { ContextMenu } from '../ui/ContextMenu';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import type { ShellEntry } from '../../lib/shells/types';
 import { ShellIcon } from '../icons/ShellIcon';
 import { FEATURE_META, formatFeatureShortcut, type FeatureId } from './featureMeta';
+import { formatShortcutLabel } from '../../lib/shortcuts';
 import { Tooltip } from '../ui/Tooltip';
 import { TopbarDropdown } from '../ui/TopbarDropdown';
 
@@ -29,6 +30,8 @@ interface CombinedTabBarProps {
     onNewTerminal: (shell?: ShellEntry) => void;
     onOpenFeature?: (feature: string) => void;
     onTogglePin: (feature: string) => void;
+    sessionToolsOpen?: boolean;
+    onToggleSessionTools?: () => void;
 }
 
 type ContextMenuTarget =
@@ -109,7 +112,9 @@ export const CombinedTabBar = memo(function CombinedTabBar({
     onTerminalClose,
     onNewTerminal,
     onOpenFeature,
-    onTogglePin
+    onTogglePin,
+    sessionToolsOpen = false,
+    onToggleSessionTools,
 }: CombinedTabBarProps) {
     const terminals = useAppStore(useShallow(state => state.terminals[connectionId] || []));
     const canOpenFeature = Boolean(onOpenFeature);
@@ -524,6 +529,31 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                     )}
                 </div>
             </div>
+
+            {onToggleSessionTools && (
+                <div className="ml-auto shrink-0 pr-0.5 drag-none" data-tauri-drag-region="false">
+                    <Tooltip
+                        content={`Session tools (${formatShortcutLabel('Ctrl+Shift+S')})`}
+                        position="bottom"
+                    >
+                        <button
+                            type="button"
+                            id={`session-tools-toggle-${connectionId}`}
+                            onClick={onToggleSessionTools}
+                            aria-pressed={sessionToolsOpen}
+                            aria-label="Toggle session tools"
+                            className={cn(
+                                'h-7 w-7 flex items-center justify-center rounded-md border transition-colors',
+                                sessionToolsOpen
+                                    ? 'bg-app-accent/20 text-app-text border-app-accent/40'
+                                    : 'text-app-muted border-transparent hover:text-app-text hover:bg-app-surface hover:border-app-border/40',
+                            )}
+                        >
+                            <PanelRight size={14} />
+                        </button>
+                    </Tooltip>
+                </div>
+            )}
 
             {contextMenu && (
                 <ContextMenu
