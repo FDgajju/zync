@@ -7,6 +7,23 @@ import { TerminalQuickSettings } from './TerminalQuickSettings';
 
 type SessionToolId = 'snippets' | 'terminal';
 
+function focusSessionToolsToggle(tabId: string | undefined, connectionId: string): void {
+    const ids = [
+        tabId ? `session-tools-toggle-${tabId}` : null,
+        `session-tools-toggle-${connectionId}`,
+    ];
+    const seen = new Set<string>();
+    for (const id of ids) {
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const el = document.getElementById(id);
+        if (el instanceof HTMLElement) {
+            el.focus();
+            return;
+        }
+    }
+}
+
 interface SnippetSidebarProps {
     connectionId: string;
     tabId?: string;
@@ -38,10 +55,10 @@ export function SnippetSidebar({ connectionId, tabId, isOpen, onClose, restoreTe
             if (restoreTerminalFocus) {
                 window.dispatchEvent(new CustomEvent('ssh-ui:term-focus'));
             } else {
-                document.getElementById(`session-tools-toggle-${connectionId}`)?.focus();
+                focusSessionToolsToggle(tabId, connectionId);
             }
         }
-    }, [isOpen, restoreTerminalFocus]);
+    }, [isOpen, restoreTerminalFocus, tabId, connectionId]);
 
     useEffect(() => {
         if (!isOpen) return;

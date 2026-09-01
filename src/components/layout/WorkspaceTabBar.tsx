@@ -7,6 +7,7 @@ import type { ShellEntry } from '../../lib/shells/types';
 
 export interface WorkspaceTabBarProps {
     connectionId: string;
+    tabId: string;
     activeView: string;
     openFeatures: string[];
     pinnedFeatures: string[];
@@ -27,6 +28,7 @@ export interface WorkspaceTabBarProps {
  */
 export const WorkspaceTabBar = memo(function WorkspaceTabBar({
     connectionId,
+    tabId,
     activeView,
     openFeatures,
     pinnedFeatures,
@@ -55,6 +57,7 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
     return (
         <CombinedTabBar
             connectionId={connectionId}
+            tabId={tabId}
             activeView={activeView}
             activeTerminalId={activeTerminalId}
             openFeatures={openFeatures}

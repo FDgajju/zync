@@ -5,6 +5,7 @@ import {
     catalogBySection,
     normalizeTerminalFocusPolicy,
 } from '../../../features/shortcuts';
+import { formatShortcutLabel } from '../../../lib/shortcuts';
 import { KeybindingRow } from '../common/KeybindingRow';
 import { Section } from '../common/Section';
 import { Toggle } from '../common/Toggle';
@@ -39,7 +40,7 @@ export function ShortcutsTab({ settings, updateKeybindings, updateKeyboardSettin
             <Section title="When a terminal is focused">
                 <Toggle
                     label="Give keys to the shell"
-                    description="Ctrl+T, Ctrl+W, Ctrl+F, and Ctrl+N go to the shell. Sidebar (Ctrl+B), palette (Ctrl+P), and AI (Ctrl+I) still open Zync. Turn off so all Zync shortcuts win in the terminal."
+                    description={`${formatShortcutLabel('Mod+T')}, ${formatShortcutLabel('Mod+W')}, ${formatShortcutLabel('Mod+F')}, and ${formatShortcutLabel('Mod+N')} go to the shell. Sidebar (${formatShortcutLabel('Mod+B')}), palette (${formatShortcutLabel('Mod+P')}), and AI (${formatShortcutLabel('Mod+I')}) still open Zync. Turn off so all Zync shortcuts win in the terminal.`}
                     checked={shellFirst}
                     onChange={handlePolicyChange}
                 />

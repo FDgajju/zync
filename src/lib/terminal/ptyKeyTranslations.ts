@@ -9,7 +9,9 @@ export function isCtrlSlash(event: KeyboardEvent): boolean {
     if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
         return false;
     }
-    return event.key === '/' || event.code === 'Slash' || event.code === 'NumpadDivide';
+    // Character `/`, not US-layout physical `Slash` (other layouts produce `-`, etc.).
+    // Numpad `/` is kept via code because Ctrl can make `key` unhelpful.
+    return event.key === '/' || event.code === 'NumpadDivide';
 }
 
 const TRANSLATIONS: Array<{ match: (event: KeyboardEvent) => boolean; data: string }> = [

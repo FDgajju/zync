@@ -15,6 +15,7 @@ import { TopbarDropdown } from '../ui/TopbarDropdown';
 
 interface CombinedTabBarProps {
     connectionId: string;
+    tabId: string;
     activeView: string;
     activeTerminalId: string | null;
     openFeatures: string[];
@@ -98,6 +99,7 @@ function getContextMenuItems(
 
 export const CombinedTabBar = memo(function CombinedTabBar({
     connectionId,
+    tabId,
     activeView,
     activeTerminalId,
     openFeatures,
@@ -538,7 +540,7 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                     >
                         <button
                             type="button"
-                            id={`session-tools-toggle-${connectionId}`}
+                            id={`session-tools-toggle-${tabId}`}
                             onClick={onToggleSessionTools}
                             aria-pressed={sessionToolsOpen}
                             aria-label="Toggle session tools"

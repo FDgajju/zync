@@ -9,9 +9,9 @@ function emit(name: string, detail?: unknown): void {
 
 function connectionFeature(feature: string): boolean {
     const { activeTabId, tabs } = useAppStore.getState();
-    if (!activeTabId) return true;
+    if (!activeTabId) return false;
     const current = tabs.find((t: Tab) => t.id === activeTabId);
-    if (current?.type !== 'connection') return true;
+    if (current?.type !== 'connection') return false;
     emit('ssh-ui:open-feature', { feature, tabId: activeTabId });
     return true;
 }

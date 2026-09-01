@@ -8,6 +8,7 @@ import {
 import { Toggle } from '../settings/common/Toggle';
 import { cn } from '../../lib/utils';
 import { normalizeTerminalFocusPolicy } from '../../features/shortcuts';
+import { formatShortcutLabel } from '../../lib/shortcuts';
 
 const CURSOR_STYLES = [
     { id: 'block' as const, label: 'Block' },
@@ -101,7 +102,7 @@ export function TerminalQuickSettings() {
                 />
                 <Toggle
                     label="Give keys to the shell"
-                    description="Ctrl+T/W/F/N stay in the shell. Ctrl+B/P/I still open Zync."
+                    description={`${formatShortcutLabel('Mod+T')}, ${formatShortcutLabel('Mod+W')}, ${formatShortcutLabel('Mod+F')}, and ${formatShortcutLabel('Mod+N')} stay in the shell. ${formatShortcutLabel('Mod+B')}, ${formatShortcutLabel('Mod+P')}, and ${formatShortcutLabel('Mod+I')} still open Zync.`}
                     checked={shellFirst}
                     onChange={(v) => {
                         void updateKeyboardSettings({ terminalFocusPolicy: v ? 'shell' : 'app' }).catch((e) =>

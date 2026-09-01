@@ -14,6 +14,10 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ### Fixed
 - **Ctrl+/ in the terminal (#104)**: xterm.js dropped the chord; it is now sent as `^_` (`0x1F`) so nano go-to-line works. Not a remappable Zync shortcut. ([0631f20])
+- **Ctrl+/ keyboard layout**: Match the produced `/` (and numpad divide), not the US physical `Slash` key.
+- **Session-tools toggle id**: Scoped to the workspace tab so closing the rail focuses the matching button when several hosts are open.
+- **Feature shortcuts with no host tab**: Files / Port Forwarding / Dashboard chords no longer consume the key when the active tab is not a connection.
+- **Shell-first shortcut copy**: Settings and session-tools labels use platform Mod (Command on macOS, Ctrl elsewhere).
 - **Public URLs after reopen**: Agents start again on hydrate/sign-in for reserved/active shares. ([51b3c7d])
 
 ## [2.27.1] - 2026-08-29

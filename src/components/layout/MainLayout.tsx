@@ -541,6 +541,7 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
                     {tab.connectionId !== GLOBAL_SNIPPETS_CONNECTION_ID && (
                         <WorkspaceTabBar
                             connectionId={tab.connectionId}
+                            tabId={tab.id}
                             activeView={tab.view}
                             openFeatures={openFeatures}
                             pinnedFeatures={pinnedFeatures}

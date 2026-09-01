@@ -157,7 +157,7 @@ Second module, **not** Settings. Frozen list of chords **xterm.js drops** that r
 
 | Chord | Bytes | Why |
 |-------|-------|-----|
-| Ctrl+/ (`Slash` / `NumpadDivide`, no Shift/Alt/Meta) | `0x1F` (`US` / `^_`) | xterm maps Ctrl+_ only; nano go-to-line expects this. [#104](https://github.com/zync-sh/zync/issues/104) |
+| Ctrl+/ (`event.key === '/'` or `NumpadDivide`, no Shift/Alt/Meta) | `0x1F` (`US` / `^_`) | xterm maps Ctrl+_ only; nano go-to-line expects this. Match the produced `/`, not the US physical `Slash` key. [#104](https://github.com/zync-sh/zync/issues/104) |
 
 Later emulator holes are **one row** here. Same dispatch path: match → `queueTerminalInput(sessionId, bytes)` → stop xterm default.
 
