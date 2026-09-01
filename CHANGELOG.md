@@ -4,6 +4,18 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Shortcut catalog**: Named Zync commands with `when` clauses (`always` / `app` / `xterm` / `files`) and a single dispatcher. Settings → Shortcuts is generated from the catalog. New shortcuts are one catalog row plus an action. ([0631f20])
+- **Shell-first keys**: Default policy sends Ctrl+letter to the PTY while a terminal is focused. Settings → Shortcuts (and the session-tools Terminal tab) can switch to Zync-first. Shift chords, Ctrl+Tab, and tab numbers still belong to Zync. ([0631f20])
+- **Session tools rail**: Snippets | Terminal overlay with quick font, cursor, GPU, and shell-key controls. Toggle from the far right of the shell/feature tab bar or Ctrl+Shift+S. ([516edb0])
+
+### Changed
+- **Public URLs signed-in line**: Header and profile menu show “Signed in” instead of the account email. ([51b3c7d], [0631f20])
+
+### Fixed
+- **Ctrl+/ in the terminal (#104)**: xterm.js dropped the chord; it is now sent as `^_` (`0x1F`) so nano go-to-line works. Not a remappable Zync shortcut. ([0631f20])
+- **Public URLs after reopen**: Agents start again on hydrate/sign-in for reserved/active shares. ([51b3c7d])
+
 ## [2.27.1] - 2026-08-29
 
 ### Added
