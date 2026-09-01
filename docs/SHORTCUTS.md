@@ -79,9 +79,9 @@ Small, closed set:
 
 | `when` | Runs if |
 |--------|---------|
-| `always` | Even with xterm focused: Shift-chords, tab switch, settings. Not raw Ctrl+letter that nano/vim use. |
+| `always` | Even with xterm focused. Includes Zync chrome Ctrl+B / Ctrl+P / Ctrl+I (sidebar, palette, AI), plus Shift chords, tab switch, and settings. |
 | `xterm` | Only while the terminal is focused (unused for defaults; available for future chrome) |
-| `app` | **Not** xterm — PTY gets the chord. Use for Ctrl+W/B/F/T/N/P/I so nano/vim keep them. |
+| `app` | **Not** xterm under shell-first — PTY gets the chord. Use for Ctrl+W / F / T / N. |
 | `field` | **Never steal** — leave to the editor (CodeMirror Ctrl+/ etc.) |
 | `files` | File Manager surface only (`fm*`); never handled by the global dispatcher |
 
@@ -90,15 +90,16 @@ Small, closed set:
 | Chord | Owner in terminal | Command |
 |-------|-------------------|---------|
 | Ctrl+/ | PTY (`^_`) | nano go-to-line ([#104](https://github.com/zync-sh/zync/issues/104)) |
-| Ctrl+W / B / F / T / N / P / I | PTY | nano where-is, back, forward, … |
+| Ctrl+W / F / T / N | PTY when shell-first | nano where-is, forward, … |
 | Ctrl+C / K / U / … | PTY | not in catalog |
+| Mod+B / P / I | Zync (`always`) | sidebar, palette, AI — still work in the terminal |
 | Mod+Shift+C / V | Zync | terminal copy / paste |
 | Mod+Shift+W / T / P | Zync | close terminal tab, new host terminal, command palette (commands) |
 | Ctrl+Tab, Mod+1–9 | Zync | tab switch |
 | Mod+, | Zync | settings |
 | Mod+= / - | terminal font (xterm) or app zoom (`when: app`) | |
 
-Palette / AI / close-tab / sidebar / new local terminal / buffer find: **app only**. In a terminal use Mod+Shift+P for the palette and Mod+Shift+W to close the terminal tab.
+Close-tab / new local terminal / buffer find stay **app only** under shell-first. In a terminal use Mod+Shift+W to close the terminal tab.
 
 Adding a command is adding a row with a `when`. That **is** the “skip if terminal focused” rule. No extra `if (xtermFocused) return` in a capture listener.
 
@@ -108,12 +109,12 @@ Adding a command is adding a row with a `when`. That **is** the “skip if termi
 
 | Value | Default | While xterm is focused |
 |-------|---------|------------------------|
-| `shell` | **yes** | `when: 'app'` commands do **not** run. Ctrl+letter goes to the PTY. |
-| `app` | | `when: 'app'` is treated like `always`. Zync shortcuts win (old feel). |
+| `shell` | **yes** | `when: 'app'` commands do **not** run. Ctrl+W / F / T / N go to the PTY. Ctrl+B / P / I stay Zync (`always`). |
+| `app` | | `when: 'app'` is treated like `always`. Remaining Zync shortcuts also win in the terminal. |
 
 This is a **policy**, not a keymap. New `when: 'app'` commands pick it up automatically. It does **not** change:
 
-- `when: 'always'` (Shift chords, Ctrl+Tab, tab numbers)
+- `when: 'always'` (sidebar, palette, AI, Shift chords, Ctrl+Tab, tab numbers)
 - PTY translations (Ctrl+/ → `^_` still runs if Zync did not consume the event)
 - File Manager (`when: 'files'`)
 
@@ -133,7 +134,7 @@ Conceptual row:
 {
   id: 'commandPalette',
   defaultKeys: 'Mod+P',
-  when: 'app',
+  when: 'always',
   run: { type: 'event', name: 'zync:open-command-palette' },
 }
 ```

@@ -28,8 +28,8 @@ const FILE_MANAGER: ShortcutCommand[] = [
 /**
  * Zync commands. PTY chords (Ctrl+/) are not listed here.
  *
- * `when: 'app'` — do not steal Ctrl+letter from nano/vim/the shell while xterm is focused.
- * `when: 'always'` — workbench chrome that should still work in a terminal (Shift chords, tab switch).
+ * `when: 'app'` — skip while xterm is focused under shell-first (Ctrl+T/W/F/N).
+ * `when: 'always'` — still work in a terminal (sidebar, palette, AI, Shift chords, tab switch).
  * `settings.keybindings` overrides `defaultKeys` when `settingsKey` is set.
  */
 export const SHORTCUT_CATALOG: readonly ShortcutCommand[] = [
@@ -47,7 +47,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutCommand[] = [
         label: 'Toggle Sidebar',
         section: 'global',
         defaultKeys: 'Mod+B',
-        when: 'app',
+        when: 'always',
         settingsKey: 'toggleSidebar',
         configurable: true,
     },
@@ -74,7 +74,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutCommand[] = [
         label: 'Command Palette',
         section: 'global',
         defaultKeys: 'Mod+P',
-        when: 'app',
+        when: 'always',
         settingsKey: 'commandPalette',
         configurable: true,
     },
@@ -91,7 +91,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutCommand[] = [
         label: 'AI Command Bar',
         section: 'global',
         defaultKeys: 'Mod+I',
-        when: 'app',
+        when: 'always',
         settingsKey: 'aiCommandBar',
         configurable: true,
     },

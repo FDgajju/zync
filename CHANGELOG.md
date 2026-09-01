@@ -6,7 +6,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ### Added
 - **Shortcut catalog**: Named Zync commands with `when` clauses (`always` / `app` / `xterm` / `files`) and a single dispatcher. Settings → Shortcuts is generated from the catalog. New shortcuts are one catalog row plus an action. ([0631f20])
-- **Shell-first keys**: Default policy sends Ctrl+letter to the PTY while a terminal is focused. Settings → Shortcuts (and the session-tools Terminal tab) can switch to Zync-first. Shift chords, Ctrl+Tab, and tab numbers still belong to Zync. ([0631f20])
+- **Shell-first keys**: Default policy sends Ctrl+T / W / F / N to the PTY while a terminal is focused. **Ctrl+B** (sidebar), **Ctrl+P** (palette), and **Ctrl+I** (AI) still open Zync. Settings → Shortcuts (and the session-tools Terminal tab) can switch to Zync-first so the remaining app shortcuts win too. ([0631f20])
 - **Session tools rail**: Snippets | Terminal overlay with quick font, cursor, GPU, and shell-key controls. Toggle from the far right of the shell/feature tab bar or Ctrl+Shift+S. ([516edb0])
 
 ### Changed

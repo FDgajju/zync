@@ -101,7 +101,7 @@ export function TerminalQuickSettings() {
                 />
                 <Toggle
                     label="Give keys to the shell"
-                    description="Ctrl+letter stays in nano/vim. Off = Zync shortcuts win."
+                    description="Ctrl+T/W/F/N stay in the shell. Ctrl+B/P/I still open Zync."
                     checked={shellFirst}
                     onChange={(v) => {
                         void updateKeyboardSettings({ terminalFocusPolicy: v ? 'shell' : 'app' }).catch((e) =>

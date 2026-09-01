@@ -39,7 +39,7 @@ export function ShortcutsTab({ settings, updateKeybindings, updateKeyboardSettin
             <Section title="When a terminal is focused">
                 <Toggle
                     label="Give keys to the shell"
-                    description="Ctrl+letter goes to nano, vim, tmux, and the prompt. Turn off so Zync shortcuts (new terminal, close tab, palette) win instead. Shift chords and tab switching still belong to Zync."
+                    description="Ctrl+T, Ctrl+W, Ctrl+F, and Ctrl+N go to the shell. Sidebar (Ctrl+B), palette (Ctrl+P), and AI (Ctrl+I) still open Zync. Turn off so all Zync shortcuts win in the terminal."
                     checked={shellFirst}
                     onChange={handlePolicyChange}
                 />
