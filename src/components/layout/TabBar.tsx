@@ -13,7 +13,6 @@ import { Button } from '../ui/Button';
 import { Tooltip } from '../ui/Tooltip';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { TopbarDropdown } from '../ui/TopbarDropdown';
-import { matchShortcut } from '../../lib/shortcuts';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import { isEditorOverlayOpen } from '../editor/overlayState';
 import { syncIpc, SYNC_STATUS_CHANGED_EVENT, type SyncProviderStatus } from '../../vault/syncIpc';
@@ -258,28 +257,18 @@ export function TabBar() {
         }
     };
 
-    // Handle Ctrl+W (or configured keybinding) to close active tab
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
+        const onCloseActiveTab = () => {
             if (isEditorOverlayOpen()) {
                 return;
             }
-
-            const state = useAppStore.getState();
-            const closeTabShortcut = state.settings.keybindings?.closeTab || 'Mod+W';
-
-            if (matchShortcut(e, closeTabShortcut)) {
-                e.preventDefault();
-                e.stopPropagation(); // Stop terminal from receiving it
-                const activeId = state.activeTabId;
-                if (activeId) {
-                    handleCloseTab(activeId);
-                }
+            const activeId = useAppStore.getState().activeTabId;
+            if (activeId) {
+                handleCloseTab(activeId);
             }
         };
-
-        window.addEventListener('keydown', handleKeyDown, true); // Use capture phase
-        return () => window.removeEventListener('keydown', handleKeyDown, true);
+        window.addEventListener('zync:close-active-tab', onCloseActiveTab);
+        return () => window.removeEventListener('zync:close-active-tab', onCloseActiveTab);
     }, []);
 
 
@@ -615,7 +604,7 @@ export function TabBar() {
                                                 </span>
                                                 <span className="block text-[10px] font-normal text-app-muted truncate">
                                                     {shareAuth.signed_in
-                                                        ? (shareAuth.email || 'Signed in to Zync')
+                                                        ? 'Signed in to Zync'
                                                         : 'Sign in to Zync'}
                                                 </span>
                                             </span>
