@@ -1,6 +1,7 @@
 import { parsePaneLayout } from './persist';
 import { dropTerm, sanitizePaneLayout } from './ops';
 import {
+    activeTermId,
     firstLeaf,
     isPaneSplit,
     isSafePaneLayout,
@@ -30,6 +31,24 @@ export function layoutForTerm(
 ): PaneLayout | undefined {
     const owner = findLayoutOwner(groups, termId);
     return owner ? groups![owner] : undefined;
+}
+
+/** Prefer the layout's focused leaf over a stale active-terminal id after restore. */
+export function focusedTermIdForRestore(
+    groups: PaneLayoutGroups | null | undefined,
+    requestedTermId: string | null | undefined,
+    fallbackTermId: string | null,
+): string | null {
+    const fromLayout = (termId: string | null | undefined): string | null => {
+        if (!termId || !groups) return null;
+        const owner = findLayoutOwner(groups, termId);
+        if (!owner) return null;
+        return activeTermId(groups[owner]) ?? termId;
+    };
+    return fromLayout(requestedTermId)
+        ?? fromLayout(fallbackTermId)
+        ?? requestedTermId
+        ?? fallbackTermId;
 }
 
 /**

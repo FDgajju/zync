@@ -12,8 +12,10 @@ import {
     isSplitLayout,
     layoutActiveTermId,
     findLayoutOwner,
+    focusedTermIdForRestore,
     detachTermFromGroups,
     layoutForTerm,
+    neighborPaneId,
     parsePaneLayoutGroups,
     setSplitSizes,
     singlePane,
@@ -22,6 +24,7 @@ import {
     visibleTermIds,
     type PaneLayout,
     type PaneLayoutGroups,
+    type PaneNavDirection,
     type SplitDirection,
 } from '../lib/paneLayout';
 
@@ -123,6 +126,8 @@ export interface TerminalSlice {
     togglePanes: (connectionId: string) => void;
     resizePanes: (connectionId: string, splitId: string, sizes: [number, number], persist?: boolean) => void;
     focusPane: (connectionId: string, paneId: string) => void;
+    /** Move keyboard focus to the neighboring pane. False if there is no split. */
+    focusPaneInDirection: (connectionId: string, direction: PaneNavDirection) => boolean;
 
     /**
      * Clears the pendingRestore flag on all terminal tabs for a connection.
@@ -538,6 +543,12 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             ...t,
             tabVisible: !hidden.has(t.id),
         }));
+        const knownRequested = tabs.some(t => t.id === activeTerminalId) ? activeTerminalId : null;
+        const restoredActive = focusedTermIdForRestore(
+            restoredGroups,
+            knownRequested,
+            tabs[0]?.id ?? null,
+        );
         set(state => {
             const nextLayouts = { ...state.paneLayouts };
             if (Object.keys(restoredGroups).length > 0) {
@@ -552,7 +563,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                 },
                 activeTerminalIds: {
                     ...state.activeTerminalIds,
-                    [connectionId]: activeTerminalId ?? (tabs[0]?.id ?? null),
+                    [connectionId]: restoredActive,
                 },
                 syncedTerminalId: {
                     ...state.syncedTerminalId,
@@ -700,5 +711,18 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             };
         });
         scheduleSaveSession(() => get().saveSession());
+    },
+
+    focusPaneInDirection: (connectionId, direction) => {
+        const activeId = get().activeTerminalIds[connectionId];
+        if (!activeId) return false;
+        const groups = get().paneLayouts[connectionId];
+        const owner = findLayoutOwner(groups, activeId);
+        const layout = owner ? groups?.[owner] : undefined;
+        if (!owner || !layout || !isSplitLayout(layout)) return false;
+        const nextId = neighborPaneId(layout, direction);
+        if (!nextId) return true;
+        get().focusPane(connectionId, nextId);
+        return true;
     },
 });

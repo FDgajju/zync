@@ -84,3 +84,35 @@ runTest('formatShortcutLabel shortens arrow key names', () => {
   assert.equal(formatShortcutLabel('Ctrl+Shift+ArrowRight', false), 'Ctrl+Shift+Right');
   assert.equal(formatShortcutLabel('Ctrl+Shift+ArrowDown', true), '⌃⇧Down');
 });
+
+runTest('matchShortcut accepts Ctrl+Alt+Arrow chords for pane focus', () => {
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowRight', ctrlKey: true, altKey: true }),
+      'Ctrl+Alt+ArrowRight',
+    ),
+    true,
+  );
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowLeft', ctrlKey: true, altKey: true }),
+      'Ctrl+Alt+ArrowLeft',
+    ),
+    true,
+  );
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowRight', ctrlKey: true, shiftKey: true }),
+      'Ctrl+Alt+ArrowRight',
+    ),
+    false,
+  );
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowRight', ctrlKey: true, altKey: true, shiftKey: true }),
+      'Ctrl+Alt+ArrowRight',
+    ),
+    false,
+  );
+  assert.equal(formatShortcutLabel('Ctrl+Alt+ArrowRight', false), 'Ctrl+Alt+Right');
+});

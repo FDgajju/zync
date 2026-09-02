@@ -3,10 +3,13 @@ import {
   canSplit,
   dropTerm,
   focusPane,
+  neighborPaneId,
+  paneNavDirectionFromKey,
   isSplitLayout,
   leafCount,
   parsePaneLayout,
   parsePaneLayoutGroups,
+  focusedTermIdForRestore,
   detachTermFromGroups,
   sanitizePaneLayout,
   selectTerm,
@@ -108,6 +111,23 @@ runTest('selectTerm focuses an on-screen shell or replaces the active pane', () 
   assert.equal(leafCount(replaced.root), 2);
 });
 
+runTest('detachTermFromGroups drops an extra pane and keeps the owner tab', () => {
+  const first = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const left = first.layout.root.type === 'split' ? first.layout.root.children[0] : null;
+  assert.ok(left);
+  const nested = splitPane(first.layout, left.id, 'vertical', { kind: 'term', termId: 'term-c' });
+  assert.equal(nested.ok, true);
+  if (!nested.ok) return;
+  const { next, nextOwner, remainingIds } = detachTermFromGroups({ 'term-a': nested.layout }, 'term-c');
+  assert.equal(nextOwner, 'term-a');
+  assert.ok(remainingIds.includes('term-a'));
+  assert.equal(remainingIds.includes('term-c'), false);
+  assert.equal(isSplitLayout(next?.['term-a']), true);
+  assert.deepEqual(visibleTermIds(next['term-a']).sort(), ['term-a', 'term-b']);
+});
+
 runTest('dropTerm unsplits when a visible shell is closed', () => {
   const base = singlePane('term-a', 'pane-a');
   const split = splitPane(base, 'pane-a', 'vertical', { kind: 'term', termId: 'term-b' });
@@ -146,6 +166,62 @@ runTest('setSplitSizes clamps so neither pane collapses', () => {
 runTest('focusPane ignores unknown ids', () => {
   const layout = singlePane('term-a', 'pane-a');
   assert.equal(focusPane(layout, 'missing').activePaneId, 'pane-a');
+});
+
+runTest('neighborPaneId follows side-by-side and stacked splits', () => {
+  assert.equal(paneNavDirectionFromKey('ArrowRight'), 'right');
+  assert.equal(paneNavDirectionFromKey('a'), null);
+
+  const side = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(side.ok, true);
+  if (!side.ok) return;
+  const left = side.layout.root.type === 'split' ? side.layout.root.children[0] : null;
+  const right = side.layout.root.type === 'split' ? side.layout.root.children[1] : null;
+  assert.ok(left && right && left.type === 'pane' && right.type === 'pane');
+  const focusedRight = focusPane(side.layout, left.id);
+  assert.equal(neighborPaneId(focusedRight, 'right'), right.id);
+  assert.equal(neighborPaneId(focusedRight, 'left'), null);
+  assert.equal(neighborPaneId(singlePane('term-a', 'pane-a'), 'right'), null);
+
+  const stacked = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'vertical', { kind: 'term', termId: 'term-b' });
+  assert.equal(stacked.ok, true);
+  if (!stacked.ok) return;
+  const top = stacked.layout.root.type === 'split' ? stacked.layout.root.children[0] : null;
+  const bottom = stacked.layout.root.type === 'split' ? stacked.layout.root.children[1] : null;
+  assert.ok(top && bottom && top.type === 'pane' && bottom.type === 'pane');
+  assert.equal(neighborPaneId(focusPane(stacked.layout, top.id), 'down'), bottom.id);
+  assert.equal(neighborPaneId(focusPane(stacked.layout, bottom.id), 'up'), top.id);
+});
+
+runTest('neighborPaneId prefers the overlapping pane in a 2x2', () => {
+  const first = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const left = first.layout.root.type === 'split' ? first.layout.root.children[0] : null;
+  const right = first.layout.root.type === 'split' ? first.layout.root.children[1] : null;
+  assert.ok(left && right);
+  const downLeft = splitPane(first.layout, left.id, 'vertical', { kind: 'term', termId: 'term-c' });
+  assert.equal(downLeft.ok, true);
+  if (!downLeft.ok) return;
+  const downBoth = splitPane(downLeft.layout, right.id, 'vertical', { kind: 'term', termId: 'term-d' });
+  assert.equal(downBoth.ok, true);
+  if (!downBoth.ok) return;
+  const root = downBoth.layout.root;
+  assert.equal(root.type, 'split');
+  if (root.type !== 'split') return;
+  const leftSplit = root.children[0];
+  const rightSplit = root.children[1];
+  assert.equal(leftSplit.type, 'split');
+  assert.equal(rightSplit.type, 'split');
+  if (leftSplit.type !== 'split' || rightSplit.type !== 'split') return;
+  const a = leftSplit.children[0];
+  const c = leftSplit.children[1];
+  const b = rightSplit.children[0];
+  const d = rightSplit.children[1];
+  assert.equal(neighborPaneId(focusPane(downBoth.layout, a.id), 'right'), b.id);
+  assert.equal(neighborPaneId(focusPane(downBoth.layout, a.id), 'down'), c.id);
+  assert.equal(neighborPaneId(focusPane(downBoth.layout, b.id), 'left'), a.id);
+  assert.equal(neighborPaneId(focusPane(downBoth.layout, d.id), 'up'), b.id);
 });
 
 runTest('parsePaneLayout rejects more leaves than MAX_VISIBLE_PANES', () => {
@@ -234,6 +310,21 @@ runTest('snapshot keeps only real splits', () => {
   );
   assert.ok(snapped.host);
   assert.equal(snapped.local, undefined);
+});
+
+runTest('focusedTermIdForRestore uses the layout focused leaf, not the owner tab id', () => {
+  const first = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const right = first.layout.root.type === 'split' ? first.layout.root.children[1] : null;
+  assert.ok(right && right.type === 'pane');
+  const focused = focusPane(first.layout, right.id);
+  const groups = { 'term-a': focused };
+  assert.equal(focusedTermIdForRestore(groups, 'term-a', 'term-a'), 'term-b');
+  assert.equal(focusedTermIdForRestore(groups, 'term-b', 'term-a'), 'term-b');
+  assert.equal(focusedTermIdForRestore({}, 'term-a', 'term-z'), 'term-a');
+  assert.equal(focusedTermIdForRestore(groups, null, 'term-a'), 'term-b');
+  assert.equal(focusedTermIdForRestore(groups, 'stale', 'term-a'), 'term-b');
 });
 
 runTest('parsePaneLayoutGroups keeps disjoint owners and drops overlapping or ownerless trees', () => {

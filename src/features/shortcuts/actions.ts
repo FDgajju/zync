@@ -1,4 +1,5 @@
 import { isEditorOverlayOpen } from '../../components/editor/overlayState';
+import { paneNavDirectionFromKey } from '../../lib/paneLayout';
 import { useAppStore, type Tab } from '../../store/useAppStore';
 
 let sidebarCollapseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -52,6 +53,16 @@ export function runShortcutCommand(id: string, event: KeyboardEvent): boolean {
             const stacked = event.key === 'ArrowUp' || event.key === 'ArrowDown';
             store.splitPanes(store.activeConnectionId, stacked ? 'vertical' : 'horizontal');
             return true;
+        }
+        case 'focusSplitPane': {
+            if (!store.activeConnectionId) return false;
+            const direction = paneNavDirectionFromKey(event.key);
+            if (!direction) return false;
+            const tab = store.activeTabId
+                ? store.tabs.find((item: Tab) => item.id === store.activeTabId)
+                : undefined;
+            if (tab?.view && tab.view !== 'terminal') return false;
+            return store.focusPaneInDirection(store.activeConnectionId, direction);
         }
         case 'toggleSettings':
             if (store.isSettingsOpen) store.closeSettings();

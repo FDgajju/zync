@@ -1,5 +1,11 @@
 export { createPaneId } from './ids';
 export {
+    focusPaneInDirection,
+    neighborPaneId,
+    paneNavDirectionFromKey,
+    type PaneNavDirection,
+} from './nav';
+export {
     canSplit,
     dropTerm,
     focusPane,
@@ -16,6 +22,7 @@ export { parsePaneLayout, snapshotPaneLayouts } from './persist';
 export {
     detachTermFromGroups,
     findLayoutOwner,
+    focusedTermIdForRestore,
     layoutForTerm,
     parsePaneLayoutGroups,
     snapshotPaneLayoutGroups,

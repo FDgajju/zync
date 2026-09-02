@@ -133,6 +133,16 @@ export const SHORTCUT_CATALOG: readonly ShortcutCommand[] = [
         configurable: true,
     },
     {
+        id: 'focusSplitPane',
+        label: 'Focus pane in direction',
+        section: 'terminal',
+        defaultKeys: 'Ctrl+Alt+ArrowRight',
+        extraKeys: ['Ctrl+Alt+ArrowLeft', 'Ctrl+Alt+ArrowUp', 'Ctrl+Alt+ArrowDown'],
+        when: 'always',
+        settingsKey: 'focusSplitPane',
+        configurable: true,
+    },
+    {
         id: 'switchTabNext',
         label: 'Next Tab',
         section: 'tabs',
