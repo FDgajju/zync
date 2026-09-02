@@ -123,6 +123,16 @@ export const SHORTCUT_CATALOG: readonly ShortcutCommand[] = [
         configurable: true,
     },
     {
+        id: 'splitPanes',
+        label: 'Split / Unsplit',
+        section: 'terminal',
+        defaultKeys: 'Mod+Shift+\\',
+        extraKeys: ['Mod+Shift+|'],
+        when: 'always',
+        settingsKey: 'splitPanes',
+        configurable: true,
+    },
+    {
         id: 'switchTabNext',
         label: 'Next Tab',
         section: 'tabs',

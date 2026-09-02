@@ -1,5 +1,6 @@
 import type { Tab } from '../features/connections/domain/types.js';
 import type { VaultProfileId } from '../vault/profileTypes.js';
+import { snapshotPaneLayouts, type PaneLayout } from '../lib/paneLayout';
 
 export interface TerminalTabSnapshot {
     id: string;
@@ -27,6 +28,7 @@ export interface SessionData {
     tabs: TabSnapshot[];
     terminals: Record<string, TerminalTabSnapshot[]>;
     activeTerminalIds: Record<string, string>;
+    paneLayouts?: Record<string, PaneLayout>;
 }
 
 export interface SessionStoreSnapshot {
@@ -36,6 +38,7 @@ export interface SessionStoreSnapshot {
     tabs: Tab[];
     terminals: Record<string, SessionTerminalTabState[]>;
     activeTerminalIds: Record<string, string | null>;
+    paneLayouts?: Record<string, PaneLayout | undefined>;
 }
 
 export interface SessionTerminalTabState {
@@ -90,5 +93,6 @@ export function buildSessionData(state: SessionStoreSnapshot): SessionData {
                         (terminals[entry[0]] ?? []).some(tab => tab.id === entry[1]),
                 ),
         ),
+        paneLayouts: snapshotPaneLayouts(state.paneLayouts ?? {}, terminals),
     };
 }

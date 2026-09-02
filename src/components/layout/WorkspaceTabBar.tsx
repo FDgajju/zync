@@ -4,6 +4,7 @@ import { useAvailableShells } from '../../hooks/useAvailableShells';
 import { LOCAL_TERMINAL_CONNECTION_ID } from '../../features/connections/application/tabService';
 import { CombinedTabBar } from './CombinedTabBar';
 import type { ShellEntry } from '../../lib/shells/types';
+import { isSplitLayout } from '../../lib/paneLayout';
 
 export interface WorkspaceTabBarProps {
     connectionId: string;
@@ -45,6 +46,8 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
     const activeTerminalId = useAppStore(
         state => state.activeTerminalIds[connectionId] ?? null,
     );
+    const isSplit = useAppStore(state => isSplitLayout(state.paneLayouts[connectionId]));
+    const togglePanes = useAppStore(state => state.togglePanes);
     const hostIsWindows = connectionId === LOCAL_TERMINAL_CONNECTION_ID
         && window.electronUtils?.platform === 'win32';
     const {
@@ -75,6 +78,8 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
             onTogglePin={onTogglePin}
             sessionToolsOpen={sessionToolsOpen}
             onToggleSessionTools={onToggleSessionTools}
+            isSplit={isSplit}
+            onToggleSplit={() => togglePanes(connectionId)}
         />
     );
 });

@@ -44,6 +44,9 @@ pub struct SessionData {
     pub terminals: HashMap<String, Vec<TerminalTabSnapshot>>,
     /// Active terminal ID per connection scope.
     pub active_terminal_ids: HashMap<String, String>,
+    /// Optional pane-layout tree per connection scope. Missing = one pane.
+    #[serde(default)]
+    pub pane_layouts: HashMap<String, serde_json::Value>,
 }
 
 // ─── Schema migration ────────────────────────────────────────────────────────

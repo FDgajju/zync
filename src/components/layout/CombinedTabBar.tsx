@@ -2,13 +2,14 @@ import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { cn } from '../../lib/utils';
-import { Plus, ChevronDown, X, Plug, Terminal as TerminalIcon, Loader2, RotateCw, PanelRight } from 'lucide-react';
+import { Plus, ChevronDown, X, Plug, Terminal as TerminalIcon, Loader2, RotateCw, PanelRight, SquareSplitVertical } from 'lucide-react';
 import { ContextMenu } from '../ui/ContextMenu';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import type { ShellEntry } from '../../lib/shells/types';
 import { ShellIcon } from '../icons/ShellIcon';
 import { FEATURE_META, formatFeatureShortcut, type FeatureId } from './featureMeta';
 import { formatShortcutLabel } from '../../lib/shortcuts';
+import { defaultSettings } from '../../store/settingsSlice';
 import { Tooltip } from '../ui/Tooltip';
 import { TopbarDropdown } from '../ui/TopbarDropdown';
 
@@ -33,6 +34,8 @@ interface CombinedTabBarProps {
     onTogglePin: (feature: string) => void;
     sessionToolsOpen?: boolean;
     onToggleSessionTools?: () => void;
+    isSplit?: boolean;
+    onToggleSplit?: () => void;
 }
 
 type ContextMenuTarget =
@@ -117,8 +120,13 @@ export const CombinedTabBar = memo(function CombinedTabBar({
     onTogglePin,
     sessionToolsOpen = false,
     onToggleSessionTools,
+    isSplit = false,
+    onToggleSplit,
 }: CombinedTabBarProps) {
     const terminals = useAppStore(useShallow(state => state.terminals[connectionId] || []));
+    const splitBinding = useAppStore(state =>
+        state.settings.keybindings?.splitPanes || defaultSettings.keybindings.splitPanes,
+    );
     const canOpenFeature = Boolean(onOpenFeature);
     const shellById = useMemo(
         () => new Map(availableShells.map(shell => [shell.id, shell] as const)),
@@ -347,7 +355,33 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                 })}
             </div>
 
-            {/* 3. Actions: Split button [+|⌄] */}
+            {onToggleSplit && (
+                <div className="drag-none shrink-0 ml-1" data-tauri-drag-region="false">
+                    <Tooltip
+                        content={isSplit
+                            ? `Unsplit (${formatShortcutLabel(splitBinding)})`
+                            : `Split this shell (${formatShortcutLabel(splitBinding)})`}
+                        position="bottom"
+                    >
+                        <button
+                            type="button"
+                            onClick={onToggleSplit}
+                            aria-pressed={isSplit}
+                            aria-label={isSplit ? 'Unsplit' : 'Split this shell'}
+                            className={cn(
+                                'h-7 w-7 flex items-center justify-center rounded-md border transition-colors',
+                                isSplit
+                                    ? 'bg-app-accent/20 text-app-text border-app-accent/40'
+                                    : 'text-app-muted border-transparent hover:text-app-text hover:bg-app-surface hover:border-app-border/40',
+                            )}
+                        >
+                            <SquareSplitVertical size={14} />
+                        </button>
+                    </Tooltip>
+                </div>
+            )}
+
+            {/* 3. Actions: [+|⌄] */}
             <div className="flex items-center bg-app-surface/30 rounded-lg p-0.5 border border-app-border/30 drag-none shrink-0 ml-1" data-tauri-drag-region="false">
                 <Tooltip content="New Shell" position="bottom">
                     <button

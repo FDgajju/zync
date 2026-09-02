@@ -3,6 +3,23 @@ import type { AppStore } from './useAppStore';
 import { terminalService } from '../lib/terminal';
 import type { TerminalTabSnapshot } from './sessionPersistence';
 import { scheduleSaveSession } from './sessionSlice';
+import {
+    canSplit,
+    dropTerm,
+    findNode,
+    firstLeaf,
+    focusPane as focusPaneInLayout,
+    isSplitLayout,
+    layoutActiveTermId,
+    parsePaneLayout,
+    selectTerm,
+    setSplitSizes,
+    singlePane,
+    splitPane,
+    visibleTermIds,
+    type PaneLayout,
+    type SplitDirection,
+} from '../lib/paneLayout';
 
 export interface TerminalTab {
     id: string;
@@ -24,6 +41,8 @@ export interface TerminalSlice {
     activeTerminalIds: Record<string, string | null>;
     /** Keyed by connectionId, stores the ID of the terminal that is currently synced with the File Manager */
     syncedTerminalId: Record<string, string | null>;
+    /** Split tree per connection. Missing/null = one pane (the active terminal). */
+    paneLayouts: Record<string, PaneLayout | undefined>;
 
     // Actions
     /**
@@ -86,7 +105,14 @@ export interface TerminalSlice {
         connectionId: string,
         snapshots: TerminalTabSnapshot[],
         activeTerminalId: string | null,
+        paneLayout?: unknown,
     ) => void;
+
+    splitPanes: (connectionId: string, direction?: SplitDirection) => void;
+    unsplitPanes: (connectionId: string) => void;
+    togglePanes: (connectionId: string) => void;
+    resizePanes: (connectionId: string, splitId: string, sizes: [number, number], persist?: boolean) => void;
+    focusPane: (connectionId: string, paneId: string) => void;
 
     /**
      * Clears the pendingRestore flag on all terminal tabs for a connection.
@@ -102,6 +128,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
     terminals: {},
     activeTerminalIds: {},
     syncedTerminalId: {},
+    paneLayouts: {},
 
     /** @inheritdoc */
     createTerminal: (connectionId, opts) => {
@@ -125,6 +152,12 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                 nextSyncedIds[connectionId] = newId;
             }
 
+            const storedLayout = state.paneLayouts[connectionId];
+            const nextLayouts = { ...state.paneLayouts };
+            if (storedLayout && isSplitLayout(storedLayout)) {
+                nextLayouts[connectionId] = selectTerm(storedLayout, newId);
+            }
+
             return {
                 terminals: {
                     ...state.terminals,
@@ -134,7 +167,8 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                     ...state.activeTerminalIds,
                     [connectionId]: newId
                 },
-                syncedTerminalId: nextSyncedIds
+                syncedTerminalId: nextSyncedIds,
+                paneLayouts: nextLayouts,
             };
         });
         scheduleSaveSession(() => get().saveSession());
@@ -193,6 +227,21 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             // 🗑️ Free AI display history for the closed tab
             const { [termId]: __, ...nextDisplay } = state.aiDisplayHistory;
 
+            const nextLayouts = { ...state.paneLayouts };
+            const storedLayout = state.paneLayouts[connectionId];
+            if (storedLayout) {
+                const dropped = dropTerm(storedLayout, termId);
+                if (dropped && isSplitLayout(dropped)) {
+                    nextLayouts[connectionId] = dropped;
+                    const remaining = layoutActiveTermId(dropped);
+                    if (remaining) newActiveId = remaining;
+                } else {
+                    const remaining = dropped ? layoutActiveTermId(dropped) : null;
+                    if (remaining) newActiveId = remaining;
+                    delete nextLayouts[connectionId];
+                }
+            }
+
             return {
                 terminals: {
                     ...state.terminals,
@@ -203,6 +252,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                     [connectionId]: newActiveId
                 },
                 syncedTerminalId: nextSyncedIds,
+                paneLayouts: nextLayouts,
                 aiConversations: nextConversations,
                 aiDisplayHistory: nextDisplay,
             };
@@ -212,12 +262,20 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
 
     /** @inheritdoc */
     setActiveTerminal: (connectionId, termId) => {
-        set(state => ({
-            activeTerminalIds: {
-                ...state.activeTerminalIds,
-                [connectionId]: termId
+        set(state => {
+            const storedLayout = state.paneLayouts[connectionId];
+            const nextLayouts = { ...state.paneLayouts };
+            if (storedLayout && isSplitLayout(storedLayout)) {
+                nextLayouts[connectionId] = selectTerm(storedLayout, termId);
             }
-        }));
+            return {
+                activeTerminalIds: {
+                    ...state.activeTerminalIds,
+                    [connectionId]: termId
+                },
+                paneLayouts: nextLayouts,
+            };
+        });
         scheduleSaveSession(() => get().saveSession());
     },
 
@@ -254,6 +312,9 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             const newSyncedIds = { ...state.syncedTerminalId };
             delete newSyncedIds[connectionId];
 
+            const nextLayouts = { ...state.paneLayouts };
+            delete nextLayouts[connectionId];
+
             // 🗑️ Prune AI history for all cleared terminals
             const termIdsToRemove = new Set(tabs.map(t => t.id));
             const nextConversations = Object.fromEntries(
@@ -267,6 +328,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                 terminals: newTerminals,
                 activeTerminalIds: newActiveIds,
                 syncedTerminalId: newSyncedIds,
+                paneLayouts: nextLayouts,
                 aiConversations: nextConversations,
                 aiDisplayHistory: nextDisplay
             };
@@ -327,7 +389,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
     },
 
     /** @inheritdoc */
-    restoreTerminalTabs: (connectionId, snapshots, activeTerminalId) => {
+    restoreTerminalTabs: (connectionId, snapshots, activeTerminalId, paneLayout) => {
         const isSSH = connectionId !== 'local';
         const tabs: TerminalTab[] = snapshots.map(s => ({
             id: s.id,
@@ -340,20 +402,31 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
         }));
 
         const syncedTab = tabs.find(t => t.isSynced);
-        set(state => ({
-            terminals: {
-                ...state.terminals,
-                [connectionId]: tabs,
-            },
-            activeTerminalIds: {
-                ...state.activeTerminalIds,
-                [connectionId]: activeTerminalId ?? (tabs[0]?.id ?? null),
-            },
-            syncedTerminalId: {
-                ...state.syncedTerminalId,
-                [connectionId]: syncedTab?.id ?? null,
-            },
-        }));
+        const known = new Set(tabs.map(t => t.id));
+        const restoredLayout = parsePaneLayout(paneLayout, known);
+        set(state => {
+            const nextLayouts = { ...state.paneLayouts };
+            if (restoredLayout && isSplitLayout(restoredLayout)) {
+                nextLayouts[connectionId] = restoredLayout;
+            } else {
+                delete nextLayouts[connectionId];
+            }
+            return {
+                terminals: {
+                    ...state.terminals,
+                    [connectionId]: tabs,
+                },
+                activeTerminalIds: {
+                    ...state.activeTerminalIds,
+                    [connectionId]: activeTerminalId ?? (tabs[0]?.id ?? null),
+                },
+                syncedTerminalId: {
+                    ...state.syncedTerminalId,
+                    [connectionId]: syncedTab?.id ?? null,
+                },
+                paneLayouts: nextLayouts,
+            };
+        });
     },
 
     /** @inheritdoc */
@@ -370,5 +443,101 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                 },
             };
         });
+    },
+
+    splitPanes: (connectionId, direction = 'vertical') => {
+        set(state => {
+            const tabs = state.terminals[connectionId] || [];
+            const activeId = state.activeTerminalIds[connectionId] ?? tabs[0]?.id ?? null;
+            if (!activeId) return state;
+
+            let nextTabs = tabs;
+            let layout = state.paneLayouts[connectionId] ?? singlePane(activeId);
+            if (!canSplit(layout)) return state;
+
+            const visible = new Set(visibleTermIds(layout));
+            let otherId = nextTabs.find(t => t.id !== activeId && !visible.has(t.id))?.id;
+            if (!otherId) {
+                otherId = nextTabs.find(t => t.id !== activeId)?.id;
+            }
+            if (!otherId) {
+                otherId = `term-${crypto.randomUUID()}`;
+                nextTabs = [
+                    ...nextTabs,
+                    {
+                        id: otherId,
+                        title: `Shell ${nextTabs.length + 1}`,
+                    },
+                ];
+            }
+
+            const target = findNode(layout.root, layout.activePaneId) ?? firstLeaf(layout.root);
+            const result = splitPane(layout, target.id, direction, { kind: 'term', termId: otherId });
+            if (!result.ok) return state;
+
+            return {
+                terminals: { ...state.terminals, [connectionId]: nextTabs },
+                paneLayouts: { ...state.paneLayouts, [connectionId]: result.layout },
+            };
+        });
+        scheduleSaveSession(() => get().saveSession());
+    },
+
+    unsplitPanes: (connectionId) => {
+        set(state => {
+            const layout = state.paneLayouts[connectionId];
+            if (!layout || !isSplitLayout(layout)) return state;
+            const nextLayouts = { ...state.paneLayouts };
+            delete nextLayouts[connectionId];
+            const keepId = layoutActiveTermId(layout);
+            return {
+                paneLayouts: nextLayouts,
+                activeTerminalIds: keepId
+                    ? { ...state.activeTerminalIds, [connectionId]: keepId }
+                    : state.activeTerminalIds,
+            };
+        });
+        scheduleSaveSession(() => get().saveSession());
+    },
+
+    togglePanes: (connectionId) => {
+        const layout = get().paneLayouts[connectionId];
+        if (layout && isSplitLayout(layout)) {
+            get().unsplitPanes(connectionId);
+        } else {
+            get().splitPanes(connectionId);
+        }
+    },
+
+    resizePanes: (connectionId, splitId, sizes, persist = false) => {
+        set(state => {
+            const layout = state.paneLayouts[connectionId];
+            if (!layout) return state;
+            return {
+                paneLayouts: {
+                    ...state.paneLayouts,
+                    [connectionId]: setSplitSizes(layout, splitId, sizes),
+                },
+            };
+        });
+        if (persist) {
+            scheduleSaveSession(() => get().saveSession());
+        }
+    },
+
+    focusPane: (connectionId, paneId) => {
+        set(state => {
+            const layout = state.paneLayouts[connectionId];
+            if (!layout) return state;
+            const next = focusPaneInLayout(layout, paneId);
+            const termId = layoutActiveTermId(next);
+            return {
+                paneLayouts: { ...state.paneLayouts, [connectionId]: next },
+                activeTerminalIds: termId
+                    ? { ...state.activeTerminalIds, [connectionId]: termId }
+                    : state.activeTerminalIds,
+            };
+        });
+        scheduleSaveSession(() => get().saveSession());
     },
 });

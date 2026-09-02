@@ -103,6 +103,7 @@ export interface AppSettings {
         toggleSettings: string;
         closeTab: string;
         closeTerminalTab: string;
+        splitPanes: string;
         commandPalette: string;
         switchTabNext: string;
         switchTabPrev: string;
@@ -232,6 +233,7 @@ export const defaultSettings: AppSettings = {
         toggleSettings: 'Mod+,',
         closeTab: 'Mod+W',
         closeTerminalTab: 'Mod+Shift+W',
+        splitPanes: 'Mod+Shift+\\',
         commandPalette: 'Mod+P',
         switchTabNext: 'Ctrl+Tab',
         switchTabPrev: 'Ctrl+Shift+Tab',

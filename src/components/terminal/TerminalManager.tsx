@@ -7,6 +7,8 @@ import { Terminal as TerminalIcon, Plus, X, Zap } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { once, type UnlistenFn } from '@tauri-apps/api/event';
 import { queueTerminalInput } from '../../lib/terminal';
+import { isSplitLayout } from '../../lib/paneLayout';
+import { PaneLayoutView } from './PaneLayoutView';
 
 // TerminalTab interface is now in store/terminalSlice
 // export interface TerminalTab ... removed
@@ -35,6 +37,7 @@ export function TerminalManager({
     // Zustand Store Hooks - Optimized
     const tabs = useAppStore(useShallow(state => activeConnectionId ? (state.terminals[activeConnectionId] || []) : []));
     const activeTabId = useAppStore(state => activeConnectionId ? (state.activeTerminalIds[activeConnectionId] || null) : null);
+    const paneLayout = useAppStore(state => activeConnectionId ? state.paneLayouts[activeConnectionId] : undefined);
 
     // Actions (stable)
     const createTerminal = useAppStore(state => state.createTerminal);
@@ -250,6 +253,15 @@ export function TerminalManager({
                         <TerminalIcon size={48} className="mb-4 opacity-20" />
                         <p>No active terminals</p>
                         <button onClick={handleNewTab} className="mt-4 text-app-accent hover:underline">Open New Terminal</button>
+                    </div>
+                ) : activeTabId && terminalView && paneLayout && isSplitLayout(paneLayout) ? (
+                    <div className="absolute inset-0 z-10">
+                        <PaneLayoutView
+                            connectionId={activeConnectionId}
+                            layout={paneLayout}
+                            workspaceActive={workspaceActive}
+                            panelVisible={panelVisible}
+                        />
                     </div>
                 ) : activeTabId && terminalView ? (
                     <div className="absolute inset-0 z-10">

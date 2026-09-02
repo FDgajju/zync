@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildSessionData, MAX_TABS_PER_SCOPE } from '../.tmp-agent-tests/src/store/sessionPersistence.js';
+import { singlePane, splitPane } from '../.tmp-agent-tests/src/lib/paneLayout/index.js';
 import { DEFAULT_VAULT_PROFILE_ID } from '../.tmp-agent-tests/src/vault/profileTypes.js';
 
 function runTest(name, fn) {
@@ -128,6 +129,26 @@ runTest('buildSessionData preserves vault tab profile metadata', () => {
     activeTerminalIds: {},
   });
   assert.equal(customProfileData.tabs[0].vaultProfileId, 'custom-profile');
+});
+
+runTest('buildSessionData paneLayouts ignore tabs beyond MAX_TABS_PER_SCOPE', () => {
+  const tabs = Array.from({ length: MAX_TABS_PER_SCOPE + 2 }, (_, index) => makeTerminal(index));
+  const overflowId = `term-${MAX_TABS_PER_SCOPE}`;
+  const split = splitPane(singlePane('term-0', 'pane-a'), 'pane-a', 'vertical', { kind: 'term', termId: overflowId });
+  assert.equal(split.ok, true);
+  if (!split.ok) return;
+
+  const data = buildSessionData({
+    activeTabId: 'tab-1',
+    activeConnectionId: 'conn-1',
+    tabs: [makeConnectionTab()],
+    terminals: { conn1: tabs },
+    activeTerminalIds: { conn1: 'term-0' },
+    paneLayouts: { conn1: split.layout },
+  });
+
+  assert.equal(data.terminals.conn1.some((tab) => tab.id === overflowId), false);
+  assert.equal(data.paneLayouts.conn1, undefined);
 });
 
 console.log('Session persistence tests passed.');

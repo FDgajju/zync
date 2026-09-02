@@ -46,7 +46,7 @@ Zync embeds a full terminal per workspace connection (plus a local shell) using 
 - **GPU rendering** — WebGL2 primary with automatic DOM fallback
 - **Opt-in resource reclaim** — background remote host PTYs can suspend after idle timeout
 
-Each workspace can have multiple shell tabs. A **local shell** (`LOCAL_TERMINAL_CONNECTION_ID`) runs without SSH; **remote shells** attach to the active host connection. Only one shell terminal is mounted in the UI at a time, but inactive tabs keep their xterm instance and scrollback in `terminalCache`.
+Each workspace can have multiple shell tabs. A **local shell** (`LOCAL_TERMINAL_CONNECTION_ID`) runs without SSH; **remote shells** attach to the active host connection. By default only the active shell is mounted; a **split** can mount two visible shells. Inactive tabs keep their xterm instance and scrollback in `terminalCache`. Pane layout lives in `src/lib/paneLayout` (tree + cap). Files / Port Forwarding / Dashboard stay full-view.
 
 ---
 
@@ -138,7 +138,8 @@ flowchart TB
 
 | File | Role |
 |------|------|
-| `TerminalManager.tsx` | Mounts one active shell terminal; keeps inactive tabs warm; routes snippet/plugin writes through `queueTerminalInput` |
+| `TerminalManager.tsx` | Mounts visible shells (one, or two when split); keeps inactive tabs warm; routes snippet/plugin writes through `queueTerminalInput` |
+| `PaneLayoutView.tsx` / `PaneDivider.tsx` | Split tree renderer + drag divider |
 | `Terminal.tsx` | Hook wiring (~270 lines): lifecycle, theme, search, ghost, keybindings, global shortcuts |
 | `TerminalHost.tsx` | Connected-state presentation: search bar, context menu, ghost overlays, xterm container |
 | `TerminalDisconnectedView.tsx` | Connecting / error / reconnect UI for remote hosts |
@@ -505,12 +506,14 @@ Minor items that do not change core shell behavior today:
 ```
 src/components/terminal/
   Terminal.tsx, TerminalHost.tsx, TerminalManager.tsx
+  PaneLayoutView.tsx, PaneDivider.tsx
   TerminalDisconnectedView.tsx, TerminalSearchBar.tsx, TerminalContextMenu.tsx
   GhostSuggestionOverlay.tsx
   useTerminalLifecycle.ts, useTerminalTheme.ts, useTerminalSearch.ts
   useTerminalGhost.ts, useTerminalKeybindings.ts, useTerminalGlobalShortcuts.ts
   terminalTheme.ts
 
+src/lib/paneLayout/        # Split tree, cap, persist helpers
 src/lib/terminal/          # See §5 — 38 modules, index.ts public API
 src/lib/ghostSuggestions/  # See §15
 
