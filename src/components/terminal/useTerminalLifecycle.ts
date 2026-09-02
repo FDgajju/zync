@@ -59,6 +59,8 @@ export interface UseTerminalLifecycleOptions {
   isWorkspaceActive?: boolean;
   isTerminalView?: boolean;
   isActiveTab?: boolean;
+  /** Keyboard owner among split panes. Defaults to isActiveTab. */
+  isFocused?: boolean;
   remoteReady: boolean;
   terminalSettings: TerminalSettingsSlice & {
     padding?: number;
@@ -84,6 +86,7 @@ export function useTerminalLifecycle({
   isWorkspaceActive = true,
   isTerminalView = true,
   isActiveTab = true,
+  isFocused,
   remoteReady,
   terminalSettings,
   resolveInitialTheme,
@@ -129,6 +132,7 @@ export function useTerminalLifecycle({
   const isWorkspaceActiveRef = useRef(isWorkspaceActive);
   const isTerminalViewRef = useRef(isTerminalView);
   const isActiveTabRef = useRef(isActiveTab);
+  const isKeyboardOwnerRef = useRef(isFocused ?? isActiveTab);
   const isConnectedRef = useRef(isConnected);
   const sessionIdRef = useRef(sessionId);
   const lastAppliedRendererSettingsBySessionRef = useRef(new Map<string, string>());
@@ -148,6 +152,10 @@ export function useTerminalLifecycle({
   useEffect(() => {
     isActiveTabRef.current = isActiveTab;
   }, [isActiveTab]);
+
+  useEffect(() => {
+    isKeyboardOwnerRef.current = isFocused ?? isActiveTab;
+  }, [isFocused, isActiveTab]);
 
   useEffect(() => {
     isConnectedRef.current = isConnected;
@@ -335,7 +343,9 @@ export function useTerminalLifecycle({
           if (term) {
             refreshTerminalScreen(term);
           }
-          term?.focus();
+          if (isKeyboardOwnerRef.current) {
+            term?.focus();
+          }
         } catch (e) {
           console.warn('Fit/Focus failed on shell tab switch', e);
         }
@@ -362,7 +372,9 @@ export function useTerminalLifecycle({
             if (term) {
               refreshTerminalScreen(term);
             }
-            term?.focus();
+            if (isKeyboardOwnerRef.current) {
+              term?.focus();
+            }
           } catch (e) {
             console.warn('Fit/Focus failed on visibility change', e);
           }
@@ -526,8 +538,18 @@ export function useTerminalLifecycle({
         } else {
           term.open(containerRef.current);
         }
-        if (isVisibleRef.current) {
-          focusTimer = setTimeout(() => term.focus(), 50);
+        if (isVisibleRef.current && isKeyboardOwnerRef.current) {
+          focusTimer = setTimeout(() => {
+            if (
+              !isVisibleRef.current
+              || !isKeyboardOwnerRef.current
+              || !isWorkspaceActiveRef.current
+              || !isTerminalViewRef.current
+            ) {
+              return;
+            }
+            term.focus();
+          }, 50);
         }
       }
     } else {
@@ -588,8 +610,18 @@ export function useTerminalLifecycle({
 
       onCreateTerminalRef.current?.(term);
 
-      if (isVisibleRef.current) {
-        focusTimer = setTimeout(() => term.focus(), 100);
+      if (isVisibleRef.current && isKeyboardOwnerRef.current) {
+        focusTimer = setTimeout(() => {
+          if (
+            !isVisibleRef.current
+            || !isKeyboardOwnerRef.current
+            || !isWorkspaceActiveRef.current
+            || !isTerminalViewRef.current
+          ) {
+            return;
+          }
+          term.focus();
+        }, 100);
       }
     }
 

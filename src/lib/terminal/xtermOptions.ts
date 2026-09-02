@@ -36,6 +36,7 @@ export function buildXtermOptions({
 }: BuildXtermOptionsParams): ITerminalOptions {
   return {
     cursorBlink: true,
+    cursorInactiveStyle: 'outline',
     fontSize: settings.fontSize,
     fontFamily: settings.fontFamily,
     fontWeight: settings.fontWeight ?? 'normal',

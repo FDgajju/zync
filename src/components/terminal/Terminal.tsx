@@ -166,6 +166,7 @@ export const TerminalComponent = memo(function TerminalComponent({
     isWorkspaceActive,
     isTerminalView,
     isActiveTab,
+    isFocused,
     remoteReady,
     terminalSettings: settings.terminal,
     resolveInitialTheme,
@@ -178,6 +179,12 @@ export const TerminalComponent = memo(function TerminalComponent({
     termRef,
     onOpenSearch: openSearch,
   });
+
+  useEffect(() => {
+    if (isFocused !== true || isSearchOpen) return;
+    if (!isVisible || !isWorkspaceActive || !isTerminalView) return;
+    termRef.current?.focus();
+  }, [isFocused, isSearchOpen, sessionId, isVisible, isWorkspaceActive, isTerminalView]);
 
   if (!isLocal && !activeConnectionId) {
     return <div className="p-8 text-gray-400">Please connect to a server first.</div>;

@@ -43,7 +43,7 @@ State is serialised to `session.json` in the app data directory after every mean
   - Calls `saveSession()` after every tab mutation: `openTab`, `openPortForwardingTab`, `openReleaseNotesTab`, `openSnippetsTab`, `closeTab`, `activateTab`, `reorderTabs`
 
 - `src/store/terminalSlice.ts`
-  - `restoreTerminalTabs()` — rebuilds terminal tabs from snapshots; sets `pendingRestore: true` on SSH tabs; restores `syncedTerminalId`
+  - `restoreTerminalTabs()` — rebuilds terminal tabs from snapshots; sets `pendingRestore: true` on SSH tabs; restores `syncedTerminalId`; split groups set the active terminal to the layout's focused leaf
   - `clearPendingRestore()` — called after a successful SSH reconnect to mark tabs as live
 
 - `src/components/terminal/Terminal.tsx`
