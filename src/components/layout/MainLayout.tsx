@@ -541,6 +541,7 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
                     {tab.connectionId !== GLOBAL_SNIPPETS_CONNECTION_ID && (
                         <WorkspaceTabBar
                             connectionId={tab.connectionId}
+                            tabId={tab.id}
                             activeView={tab.view}
                             openFeatures={openFeatures}
                             pinnedFeatures={pinnedFeatures}
@@ -551,6 +552,8 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
                             onNewTerminal={handleNewTerminal}
                             onOpenFeature={handleOpenFeature}
                             onTogglePin={handleTogglePin}
+                            sessionToolsOpen={isSnippetSidebarOpen}
+                            onToggleSessionTools={() => setIsSnippetSidebarOpen((open) => !open)}
                         />
                     )}
 
@@ -625,13 +628,15 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
                                     isTerminalView={tab.view === 'terminal'}
                                     hideTabs={true}
                                 />
-                                {/* Snippet overlay sidebar — slides in from right over terminal */}
-                                <SnippetSidebar
-                                    connectionId={tab.connectionId}
-                                    isOpen={isSnippetSidebarOpen}
-                                    onClose={() => setIsSnippetSidebarOpen(false)}
-                                />
                             </div>
+
+                            <SnippetSidebar
+                                connectionId={tab.connectionId}
+                                tabId={tab.id}
+                                isOpen={isSnippetSidebarOpen}
+                                onClose={() => setIsSnippetSidebarOpen(false)}
+                                restoreTerminalFocus={tab.view === 'terminal'}
+                            />
 
                         </Suspense>
                     </div>

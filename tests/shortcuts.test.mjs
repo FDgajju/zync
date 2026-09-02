@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { matchShortcut } from '../.tmp-agent-tests/src/lib/shortcuts.js';
+import { formatShortcutLabel, matchShortcut } from '../.tmp-agent-tests/src/lib/shortcuts.js';
+
+if (typeof globalThis.navigator === 'undefined') {
+  globalThis.navigator = { platform: 'Win32' };
+}
 
 function keyEvent(partial) {
   return {
@@ -47,4 +51,10 @@ runTest('matchShortcut resolves Mod to Ctrl on non-Mac platforms', () => {
   } finally {
     Object.defineProperty(navigator, 'platform', { configurable: true, value: previous });
   }
+});
+
+runTest('formatShortcutLabel maps Mod to Ctrl on Windows and Command on macOS', () => {
+  assert.equal(formatShortcutLabel('Mod+T', false), 'Ctrl+T');
+  assert.equal(formatShortcutLabel('Mod+T', true), '⌘T');
+  assert.equal(formatShortcutLabel('Ctrl+T', true), '⌃T');
 });

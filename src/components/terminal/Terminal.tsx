@@ -125,6 +125,7 @@ export const TerminalComponent = memo(function TerminalComponent({
     updateTerminalSettings,
     isSearchOpenRef,
     closeSearch: handleClose,
+    sessionId,
   });
 
   useEffect(() => {

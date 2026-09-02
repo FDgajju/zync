@@ -5,7 +5,7 @@
 
 This document describes **how Zync’s integrated terminal works today** — local and remote shells, stack choices, architecture, IPC, renderer, lifecycle, ghost suggestions, settings, and code layout. It is the single place to learn what the terminal system is and how it behaves, not a development plan or backlog.
 
-For workspace-wide tab/session restore, see [SESSION_PERSISTENCE.md](./SESSION_PERSISTENCE.md).
+For workspace-wide tab/session restore, see [SESSION_PERSISTENCE.md](./SESSION_PERSISTENCE.md). Keyboard ownership (Zync command vs PTY vs field) is [SHORTCUTS.md](./SHORTCUTS.md).
 
 ---
 
@@ -150,9 +150,9 @@ flowchart TB
 | `useTerminalTheme.ts` | Live theme/accent/opacity sync to open terminals |
 | `useTerminalSearch.ts` | Search addon state |
 | `useTerminalGhost.ts` | Ghost runtime binding |
-| `useTerminalKeybindings.ts` | xterm custom key handlers (Ctrl+I / Ctrl+P → AI event / `zync:open-command-palette`; font zoom; search Escape) |
+| `useTerminalKeybindings.ts` | PTY table (Ctrl+/ → `^_`), skip if dispatcher already consumed the event, terminal font zoom, search Escape. See [SHORTCUTS.md](./SHORTCUTS.md) |
 | `useTerminalGlobalShortcuts.ts` | App-level paste/find guards when xterm focused |
-| `ShortcutManager` + `lib/shortcuts.ts` | Global shortcuts; skips command-palette / AI when xterm focused (`isXtermKeyboardTarget`); listens for `zync:ai-command-bar` |
+| `ShortcutManager` + `features/shortcuts` | Window capture → command catalog dispatcher. See [SHORTCUTS.md](./SHORTCUTS.md) |
 | `terminalTheme.ts` | xterm theme resolution, transparency host styles |
 
 **Connection identity:**

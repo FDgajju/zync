@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import type { Terminal as XTerm } from '@xterm/xterm';
+import { queueTerminalInput } from '../../lib/terminal';
+import { ptyBytesForKeyEvent } from '../../lib/terminal/ptyKeyTranslations';
 import {
   TERMINAL_FONT_SIZE_MAX,
   TERMINAL_FONT_SIZE_MIN,
@@ -11,6 +13,7 @@ export interface UseTerminalKeybindingsOptions {
   updateTerminalSettings: (settings: Partial<TerminalSettingsSlice>) => void;
   isSearchOpenRef: MutableRefObject<boolean>;
   closeSearch: () => void;
+  sessionId: string;
 }
 
 export function useTerminalKeybindings({
@@ -18,12 +21,18 @@ export function useTerminalKeybindings({
   updateTerminalSettings,
   isSearchOpenRef,
   closeSearch,
+  sessionId,
 }: UseTerminalKeybindingsOptions) {
   const currentFontSizeRef = useRef(fontSize);
+  const sessionIdRef = useRef(sessionId);
 
   useEffect(() => {
     currentFontSizeRef.current = fontSize;
   }, [fontSize]);
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   const attachKeybindings = useCallback((term: XTerm) => {
     term.attachCustomKeyEventHandler((e) => {
@@ -31,30 +40,28 @@ export function useTerminalKeybindings({
         return true;
       }
 
-      // Same pattern as Ctrl+I: handle in xterm so the chord never reaches the PTY
-      // and works while the helper textarea is focused (window bubble listeners alone are flaky).
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent('zync:ai-command-bar'));
+      // Capture-phase dispatcher already ran; don't also feed xterm
+      // (including remapped chords that collide with PTY translations).
+      if (e.defaultPrevented) {
         return false;
       }
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+      const ptyBytes = ptyBytesForKeyEvent(e);
+      if (ptyBytes) {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent('zync:open-command-palette', {
-          detail: { commandMode: Boolean(e.shiftKey) },
-        }));
+        queueTerminalInput(sessionIdRef.current, ptyBytes);
         return false;
       }
 
-      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
+      // Terminal font zoom while xterm is focused (app zoom is `when: app` only).
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
         const currentSize = currentFontSizeRef.current;
         updateTerminalSettings({ fontSize: Math.min(currentSize + 1, TERMINAL_FONT_SIZE_MAX) });
         return false;
       }
 
-      if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '-') {
         e.preventDefault();
         const currentSize = currentFontSizeRef.current;
         updateTerminalSettings({ fontSize: Math.max(currentSize - 1, TERMINAL_FONT_SIZE_MIN) });

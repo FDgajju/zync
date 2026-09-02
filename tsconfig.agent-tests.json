@@ -119,6 +119,7 @@
         "src/features/connections/infrastructure/connectionOpQueue.ts",
         "src/features/connections/infrastructure/connectCancelState.ts",
         "src/lib/terminal/suspendAllTerminals.ts",
+        "src/lib/terminal/ptyKeyTranslations.ts",
         "src/lib/terminal/ptyLifecycle.ts",
         "src/lib/terminal/spawnContext.ts",
         "src/lib/terminal/terminalResizeSync.ts",

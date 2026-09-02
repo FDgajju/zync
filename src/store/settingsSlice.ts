@@ -32,6 +32,11 @@ import {
     normalizeSurveySettings,
 } from '../features/survey/settings.js';
 import type { SurveySettings } from '../features/survey/types.js';
+import {
+    DEFAULT_KEYBOARD_SETTINGS,
+    normalizeKeyboardSettings,
+    type KeyboardSettings,
+} from '../features/shortcuts/policy';
 
 export interface AppSettings {
     theme: string;
@@ -134,6 +139,8 @@ export interface AppSettings {
         fmSearch: string;
         aiCommandBar: string;
     };
+    /** Shortcut routing policy (not individual chords). See docs/SHORTCUTS.md. */
+    keyboard: KeyboardSettings;
     expandedFolders: string[];
     ai: {
         provider: 'ollama' | 'gemini' | 'openai' | 'claude' | 'groq' | 'mistral';
@@ -260,7 +267,8 @@ export const defaultSettings: AppSettings = {
         fmForward: 'Alt+Right',
         fmSearch: 'Mod+F',
         aiCommandBar: 'Mod+I',
-    }
+    },
+    keyboard: { ...DEFAULT_KEYBOARD_SETTINGS },
 };
 
 function normalizeTerminalFontWeightBold(fontWeight: unknown): FontWeight | undefined {
@@ -385,6 +393,7 @@ export interface SettingsSlice {
     updateSurveySettings: (updates: Partial<AppSettings['survey']>) => Promise<void>;
     updateGhostSuggestionsSettings: (updates: Partial<AppSettings['ghostSuggestions']>) => Promise<void>;
     updateKeybindings: (updates: Partial<AppSettings['keybindings']>) => Promise<void>;
+    updateKeyboardSettings: (updates: Partial<AppSettings['keyboard']>) => Promise<void>;
     toggleExpandedFolder: (folderPath: string) => Promise<void>;
     /** In-memory only (responsive layout). Does not write settings.json. */
     setSidebarCollapsedLocal: (collapsed: boolean) => void;
@@ -445,6 +454,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
                     },
                 },
                 keybindings: { ...defaultSettings.keybindings, ...(loaded?.keybindings || {}) },
+                keyboard: normalizeKeyboardSettings(loaded?.keyboard),
                 ai: { ...defaultSettings.ai, ...(loaded?.ai || {}) },
                 privacy: { ...defaultSettings.privacy, ...(loaded?.privacy || {}) },
                 notifications: normalizeNotificationSettings(loaded?.notifications),
@@ -784,6 +794,33 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
                     },
                 },
             });
+            throw error;
+        }
+    },
+
+    updateKeyboardSettings: async (updates) => {
+        const previous = get().settings;
+        const currentKeyboard = normalizeKeyboardSettings(previous.keyboard);
+        const nextKeyboard = normalizeKeyboardSettings({ ...currentKeyboard, ...updates });
+        set({ settings: { ...previous, keyboard: nextKeyboard } });
+        const changedKeys = Object.keys(updates) as Array<keyof AppSettings['keyboard']>;
+        try {
+            await persistSettings({ keyboard: nextKeyboard });
+        } catch (error) {
+            console.error('Failed to save keyboard settings:', error);
+            const current = get().settings;
+            const latest = normalizeKeyboardSettings(current.keyboard);
+            const rollbackPatch = Object.fromEntries(
+                changedKeys.filter((key) => latest[key] === nextKeyboard[key]).map((key) => [key, currentKeyboard[key]]),
+            ) as Partial<AppSettings['keyboard']>;
+            if (Object.keys(rollbackPatch).length > 0) {
+                set({
+                    settings: {
+                        ...current,
+                        keyboard: normalizeKeyboardSettings({ ...current.keyboard, ...rollbackPatch }),
+                    },
+                });
+            }
             throw error;
         }
     },

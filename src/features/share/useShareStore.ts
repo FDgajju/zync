@@ -119,6 +119,13 @@ export const useShareStore = create<ShareStore>((set, get) => ({
             }
             const payload = await shareIpc.status();
             applyPayload(set, payload);
+            if (payload.auth?.signed_in) {
+                try {
+                    await shareIpc.agentStart();
+                } catch {
+                    // Relay/API may be down; panel still lists owned URLs.
+                }
+            }
         } catch (error) {
             set({
                 loading: false,
@@ -133,6 +140,11 @@ export const useShareStore = create<ShareStore>((set, get) => ({
         try {
             const payload = await shareIpc.login(provider);
             applyPayload(set, payload);
+            try {
+                await shareIpc.agentStart();
+            } catch {
+                // Presence reconnect is best-effort after sign-in.
+            }
             set({ busy: false, signingIn: null });
         } catch (error) {
             const parsed = parseShareError(error);

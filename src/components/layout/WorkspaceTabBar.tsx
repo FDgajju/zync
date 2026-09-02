@@ -7,6 +7,7 @@ import type { ShellEntry } from '../../lib/shells/types';
 
 export interface WorkspaceTabBarProps {
     connectionId: string;
+    tabId: string;
     activeView: string;
     openFeatures: string[];
     pinnedFeatures: string[];
@@ -17,6 +18,8 @@ export interface WorkspaceTabBarProps {
     onNewTerminal: (shell?: ShellEntry) => void;
     onOpenFeature?: (feature: string) => void;
     onTogglePin: (feature: string) => void;
+    sessionToolsOpen?: boolean;
+    onToggleSessionTools?: () => void;
 }
 
 /**
@@ -25,6 +28,7 @@ export interface WorkspaceTabBarProps {
  */
 export const WorkspaceTabBar = memo(function WorkspaceTabBar({
     connectionId,
+    tabId,
     activeView,
     openFeatures,
     pinnedFeatures,
@@ -35,6 +39,8 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
     onNewTerminal,
     onOpenFeature,
     onTogglePin,
+    sessionToolsOpen,
+    onToggleSessionTools,
 }: WorkspaceTabBarProps) {
     const activeTerminalId = useAppStore(
         state => state.activeTerminalIds[connectionId] ?? null,
@@ -51,6 +57,7 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
     return (
         <CombinedTabBar
             connectionId={connectionId}
+            tabId={tabId}
             activeView={activeView}
             activeTerminalId={activeTerminalId}
             openFeatures={openFeatures}
@@ -66,6 +73,8 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
             onNewTerminal={onNewTerminal}
             onOpenFeature={onOpenFeature}
             onTogglePin={onTogglePin}
+            sessionToolsOpen={sessionToolsOpen}
+            onToggleSessionTools={onToggleSessionTools}
         />
     );
 });
