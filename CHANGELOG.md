@@ -5,7 +5,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 ## [Unreleased]
 
 ### Added
-- **Nested split shells**: Up to four live xterms in one tab, side by side or stacked. Split controls sit next to session tools (side-by-side and stacked icons). Remappable **Mod+Shift+\\** splits the focused pane side by side (not Ctrl+B). Extra panes stay off the tab bar; the owner tab shows a split mark. Unsplit is on that tab’s context menu. ([5181d5e], [7c7ebc5], [655a71c])
+- **Nested split shells**: Up to four live xterms in one tab, side by side or stacked. Split controls sit next to session tools (side-by-side and stacked icons). **Ctrl+Shift+Left / Right** splits side by side; **Ctrl+Shift+Up / Down** splits stacked (not Ctrl+B). Extra panes stay off the tab bar; the owner tab shows a split mark. Unsplit is on that tab’s context menu. ([5181d5e], [7c7ebc5], [655a71c])
 
 ### Changed
 - **Split this pane**: Split always creates a new shell on the **current** tab instead of pulling other tabs into the layout. **New Shell** (`+`) always adds a real tab. Unsplit removes the focused pane and does not kill the PTY — leftover shells become tabs. Layout persists per tab; corrupt or oversized trees are ignored on restore. Closing an owner tab also closes its extra pane PTYs. ([655a71c])
@@ -15,6 +15,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Unsplit leftover tabs**: The sibling kept when a split group is removed is shown on the tab bar (`tabVisible`), not left as a hidden pane. ([655a71c])
 - **One reconnect card while split**: A disconnected host no longer repeats Resume session in every pane. The split comes back after connect.
 - **Shell exit in a split pane**: `exit` / Ctrl+D closes that pane only. The rest of the split tab stays; closing the tab with × still closes every pane in the group. SSH channel EOF no longer drops the whole host while other panes are still live.
+- **Pane drag prompt reprint**: Dragging a split divider no longer SIGWINCHes the PTY on every move, which reprinted `user@host` prompts. The shell is resized once when the drag ends.
 
 ## [2.28.0] - 2026-09-02
 
