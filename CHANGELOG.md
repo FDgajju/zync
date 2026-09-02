@@ -5,7 +5,14 @@ All notable changes to Zync are documented in this file. The format is based on 
 ## [Unreleased]
 
 ### Added
-- **Split shells**: Nested panes (stacked or side by side), cap four live xterms. Split opens a new pane on the **current** tab (split mark on that tab; extra panes stay off the tab bar). New Shell always adds a real tab. Unsplit removes the focused pane from the layout and does not kill the PTY. Tab bar Split menu plus remappable **Mod+Shift+\\** (stacked). Layout persists per tab; corrupt or oversized trees are ignored on restore.
+- **Nested split shells**: Up to four live xterms in one tab, side by side or stacked. Split controls sit next to session tools (side-by-side and stacked icons). Remappable **Mod+Shift+\\** splits the focused pane side by side (not Ctrl+B). Extra panes stay off the tab bar; the owner tab shows a split mark. Unsplit is on that tab’s context menu. ([5181d5e], [7c7ebc5], [655a71c])
+
+### Changed
+- **Split this pane**: Split always creates a new shell on the **current** tab instead of pulling other tabs into the layout. **New Shell** (`+`) always adds a real tab. Unsplit removes the focused pane and does not kill the PTY — leftover shells become tabs. Layout persists per tab; corrupt or oversized trees are ignored on restore. Closing an owner tab also closes its extra pane PTYs. ([655a71c])
+
+### Fixed
+- **Session tab cap with splits**: Hidden split panes whose owner is kept are persisted; combined visible + hidden tabs never exceed 20 per host. Owners that cannot fit with their extra panes are dropped so restore does not reference discarded shells. ([655a71c])
+- **Unsplit leftover tabs**: The sibling kept when a split group is removed is shown on the tab bar (`tabVisible`), not left as a hidden pane. ([655a71c])
 
 ## [2.28.0] - 2026-09-02
 
