@@ -62,6 +62,7 @@ export {
 } from './rendererSetup.js';
 
 export { destroyTerminalInstance, getTerminalRecentLines } from './instanceApi.js';
+export { resolveShellExitConnectionId } from './shellExit.js';
 export { terminalService } from './terminalService.js';
 export {
   buildXtermOptions,

@@ -139,7 +139,8 @@ flowchart TB
 | File | Role |
 |------|------|
 | `TerminalManager.tsx` | Mounts one to four visible shells; keeps inactive tabs warm; routes snippet/plugin writes through `queueTerminalInput` |
-| `PaneLayoutView.tsx` / `PaneDivider.tsx` | Split tree renderer + drag divider |
+| `PaneLayoutView.tsx` / `PaneDivider.tsx` | Split tree renderer; 1px seams; accent on the focused pane's inner edges only; drag to resize; double-click a seam to even both sides |
+| `paneLayout/nav.ts` | Spatial neighbor for Ctrl+Alt+arrows |
 | `Terminal.tsx` | Hook wiring (~270 lines): lifecycle, theme, search, ghost, keybindings, global shortcuts |
 | `TerminalHost.tsx` | Connected-state presentation: search bar, context menu, ghost overlays, xterm container |
 | `TerminalDisconnectedView.tsx` | Connecting / error / reconnect UI for remote hosts |
@@ -245,7 +246,7 @@ Each spawn/suspend bumps `generation` on the cache entry. Output channel frames 
 
 | Path | `terminal-exit` emitted? | Frontend behavior |
 |------|--------------------------|-----------------|
-| User types `exit` / shell ends | Yes | Close shell tab via `terminalService.closeTabOnShellExit` |
+| User types `exit` / Ctrl+D / shell ends | Yes | Close that pane (or the tab if it is the last pane) via `closePaneOnShellExit` |
 | Idle suspend kill | No | Write suspend notice; `suspendedByIdle` flag |
 | Panel overlay suspend | No | `suspendedByPanel`; respawn on return |
 | Programmatic close | No | Tear down handles only |
@@ -327,6 +328,8 @@ Decoded in `terminalOutputStream.ts` → `term.write()` after generation check.
 | Active shell tab, not spawned | `spawn` |
 | Active shell tab, spawned | `none` |
 
+Split extras pass `isActiveTab` so every visible pane still spawns a PTY. Only `isFocused` takes DOM focus (blinking cursor). After restore, `focusedTermIdForRestore` aligns `activeTerminalIds` with the layout's focused leaf.
+
 **Intentional:** Switching sidebar hosts or internal shell tabs **keeps PTYs alive** (scrollback + running processes). Opt-in idle suspend (§12) is the separate background reclaim path.
 
 ### Spawn flow (simplified)
@@ -372,7 +375,7 @@ Historical scrollback **does not reflow** when the window is resized. Lines writ
 - `ResizeObserver` on terminal container — **gated on `isVisibleRef`**
 - Window resize
 - Layout transitions (sidebar, panel) — visual `fit()` immediately; PTY IPC deferred until settle (500ms safety timeout)
-- Split divider drag — visual `fit()` while dragging; one PTY resize (`SIGWINCH`) on pointer up (`zync:pane-resize-end`)
+- Split divider drag — visual `fit()` while dragging; one PTY resize (`SIGWINCH`) on pointer up (`zync:pane-resize-end`). Double-click a seam to even both sides, then the same pointer-up resize path runs.
 - Renderer kind changes — refit + screen refresh
 - Files/Dashboard return — `terminalPanelRestore` + `isTerminalDomMeasurable`
 

@@ -3,6 +3,8 @@ import { suspendAllTerminalsForConnection } from './suspendAllTerminals.js';
 import type { SuspendTerminalPtyOptions } from './ptyLifecycle.js';
 import { terminalCache } from './terminalCache.js';
 
+export { resolveShellExitConnectionId } from './shellExit.js';
+
 type CloseTerminalTabHandler = (connectionId: string, termId: string) => void;
 
 let closeTerminalTabHandler: CloseTerminalTabHandler | null = null;
@@ -18,11 +20,10 @@ export const terminalService = {
   },
 
   closeTabOnShellExit(termId: string): void {
-    const connectionId = terminalCache.get(termId)?.connectionId;
-    if (!connectionId || !closeTerminalTabHandler) {
+    if (!closeTerminalTabHandler) {
       return;
     }
-    closeTerminalTabHandler(connectionId, termId);
+    closeTerminalTabHandler(terminalCache.get(termId)?.connectionId ?? '', termId);
   },
 
   destroy(sessionId: string): void {

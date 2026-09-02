@@ -36,6 +36,7 @@ import {
     resolveIdleHostPtySuspendDelayMs,
     scheduleIdlePtySuspend,
     shouldIdleSuspendConnection,
+    resolveShellExitConnectionId,
     terminalService,
 } from '../../lib/terminal';
 import { resolveLocalWindowsShellId } from '../../lib/terminal/spawnContext';
@@ -726,7 +727,11 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         terminalService.setCloseTabHandler((connectionId, termId) => {
-            useAppStore.getState().closePaneOnShellExit(connectionId, termId);
+            const store = useAppStore.getState();
+            const resolved = resolveShellExitConnectionId(termId, connectionId || undefined, store.terminals);
+            if (resolved) {
+                store.closePaneOnShellExit(resolved, termId);
+            }
         });
         return () => terminalService.setCloseTabHandler(null);
     }, []);

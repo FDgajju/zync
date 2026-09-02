@@ -877,16 +877,38 @@ impl PtyManager {
                                     flush_deadline = Some(Instant::now() + Duration::from_millis(OUTPUT_BATCH_MS));
                                 }
                             }
+                            Some(ChannelMsg::ExtendedData { ref data, .. }) => {
+                                pending_output.extend_from_slice(data.as_ref());
+                                if pending_output.len() >= OUTPUT_FLUSH_THRESHOLD {
+                                    flush_pending_output(&output_channel_clone, generation, &mut pending_output);
+                                    flush_deadline = None;
+                                } else if flush_deadline.is_none() {
+                                    flush_deadline = Some(Instant::now() + Duration::from_millis(OUTPUT_BATCH_MS));
+                                }
+                            }
                             Some(ChannelMsg::ExitStatus { exit_status }) => {
                                 flush_pending_output(&output_channel_clone, generation, &mut pending_output);
                                 drop_transport = false;
                                 exit_code = Some(Some(exit_status));
                                 break;
                             }
+                            Some(ChannelMsg::ExitSignal { .. }) => {
+                                flush_pending_output(&output_channel_clone, generation, &mut pending_output);
+                                drop_transport = false;
+                                exit_code = Some(None);
+                                break;
+                            }
                             Some(ChannelMsg::Eof) => {
                                 flush_pending_output(&output_channel_clone, generation, &mut pending_output);
                                 exit_code = Some(None);
                                 drop_transport = true;
+                                break;
+                            }
+                            Some(ChannelMsg::Close) => {
+                                flush_pending_output(&output_channel_clone, generation, &mut pending_output);
+                                // This channel ended. Other shells on the same host stay up.
+                                drop_transport = false;
+                                exit_code = Some(None);
                                 break;
                             }
                             None => {

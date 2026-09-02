@@ -64,6 +64,7 @@ const tests = [
   'tests/requestContext.test.mjs',
   'tests/sessionPersistence.test.mjs',
   'tests/paneLayout.test.mjs',
+  'tests/shellExit.test.mjs',
   'tests/shortcuts.test.mjs',
   'tests/terminalRendererPolicy.test.mjs',
   'tests/terminalWebglCapability.test.mjs',
