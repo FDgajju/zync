@@ -14,6 +14,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Session tab cap with splits**: Hidden split panes whose owner is kept are persisted; combined visible + hidden tabs never exceed 20 per host. Owners that cannot fit with their extra panes are dropped so restore does not reference discarded shells. ([655a71c])
 - **Unsplit leftover tabs**: The sibling kept when a split group is removed is shown on the tab bar (`tabVisible`), not left as a hidden pane. ([655a71c])
 - **One reconnect card while split**: A disconnected host no longer repeats Resume session in every pane. The split comes back after connect.
+- **Shell exit in a split pane**: `exit` / Ctrl+D closes that pane only. The rest of the split tab stays; closing the tab with × still closes every pane in the group. SSH channel EOF no longer drops the whole host while other panes are still live.
 
 ## [2.28.0] - 2026-09-02
 

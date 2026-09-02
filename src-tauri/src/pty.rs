@@ -294,6 +294,16 @@ fn emit_terminal_exit(
     }
 }
 
+fn connection_has_other_sessions(
+    sessions: &HashMap<String, PtySession>,
+    connection_id: &str,
+    except_term_id: &str,
+) -> bool {
+    sessions.iter().any(|(id, session)| {
+        id != except_term_id && session.connection_id == connection_id
+    })
+}
+
 fn emit_connection_transport_lost(app_handle: &AppHandle, connection_id: &str) {
     if let Err(e) = app_handle.emit(
         "connection:transport-lost",
@@ -850,6 +860,8 @@ impl PtyManager {
             let app_handle = app_handle_clone;
             let mut pending_output = Vec::new();
             let mut flush_deadline: Option<Instant> = None;
+            let drop_transport;
+            let exit_code;
 
             loop {
                 tokio::select! {
@@ -867,24 +879,20 @@ impl PtyManager {
                             }
                             Some(ChannelMsg::ExitStatus { exit_status }) => {
                                 flush_pending_output(&output_channel_clone, generation, &mut pending_output);
-                                emit_terminal_exit(
-                                    &app_handle,
-                                    &term_id_clone,
-                                    generation,
-                                    Some(exit_status),
-                                );
+                                drop_transport = false;
+                                exit_code = Some(Some(exit_status));
                                 break;
                             }
                             Some(ChannelMsg::Eof) => {
                                 flush_pending_output(&output_channel_clone, generation, &mut pending_output);
-                                emit_connection_transport_lost(&app_handle, &connection_id_for_transport);
-                                emit_terminal_exit(&app_handle, &term_id_clone, generation, None);
+                                exit_code = Some(None);
+                                drop_transport = true;
                                 break;
                             }
                             None => {
                                 flush_pending_output(&output_channel_clone, generation, &mut pending_output);
-                                emit_connection_transport_lost(&app_handle, &connection_id_for_transport);
-                                emit_terminal_exit(&app_handle, &term_id_clone, generation, None);
+                                exit_code = Some(None);
+                                drop_transport = true;
                                 break;
                             }
                             _ => {}
@@ -903,7 +911,8 @@ impl PtyManager {
                     Some(input) = rx.recv() => {
                         if let Err(e) = channel.data(&input[..]).await {
                              eprintln!("[PTY] Failed to send data to channel: {}", e);
-                             emit_connection_transport_lost(&app_handle, &connection_id_for_transport);
+                             exit_code = Some(None);
+                             drop_transport = true;
                              break;
                         }
                     }
@@ -926,6 +935,21 @@ impl PtyManager {
             let mut sessions = sessions_for_exit.lock().await;
             if let Some(mut session) = sessions.remove(&term_id_for_exit) {
                 PtyManager::finalize_session_after_natural_exit(&mut session.handle);
+            }
+            let lost = drop_transport
+                && !connection_has_other_sessions(
+                    &sessions,
+                    &connection_id_for_transport,
+                    &term_id_for_exit,
+                );
+            drop(sessions);
+            // If this was the last PTY, tell the frontend the host dropped before
+            // terminal-exit so remaining tabs suspend instead of auto-closing.
+            if lost {
+                emit_connection_transport_lost(&app_handle, &connection_id_for_transport);
+            }
+            if let Some(code) = exit_code {
+                emit_terminal_exit(&app_handle, &term_id_clone, generation, code);
             }
         });
 
