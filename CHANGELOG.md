@@ -4,20 +4,21 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.28.0] - 2026-09-02
+
 ### Added
 - **Shortcut catalog**: Named Zync commands with `when` clauses (`always` / `app` / `xterm` / `files`) and a single dispatcher. Settings → Shortcuts is generated from the catalog. New shortcuts are one catalog row plus an action. ([0631f20])
-- **Shell-first keys**: Default policy sends Ctrl+T / W / F / N to the PTY while a terminal is focused. **Ctrl+B** (sidebar), **Ctrl+P** (palette), and **Ctrl+I** (AI) still open Zync. Settings → Shortcuts (and the session-tools Terminal tab) can switch to Zync-first so the remaining app shortcuts win too. ([0631f20])
+- **Shell-first keys**: Default policy sends Ctrl+T / W / F / N to the PTY while a terminal is focused. **Ctrl+B** (sidebar), **Ctrl+P** (palette), and **Ctrl+I** (AI) still open Zync. Settings → Shortcuts (and the session-tools Terminal tab) can switch to Zync-first so the remaining app shortcuts win too. ([0631f20], [ea9a822])
 - **Session tools rail**: Snippets | Terminal overlay with quick font, cursor, GPU, and shell-key controls. Toggle from the far right of the shell/feature tab bar or Ctrl+Shift+S. ([516edb0])
 
 ### Changed
 - **Public URLs signed-in line**: Header and profile menu show “Signed in” instead of the account email. ([51b3c7d], [0631f20])
 
 ### Fixed
-- **Ctrl+/ in the terminal (#104)**: xterm.js dropped the chord; it is now sent as `^_` (`0x1F`) so nano go-to-line works. Not a remappable Zync shortcut. ([0631f20])
-- **Ctrl+/ keyboard layout**: Match the produced `/` (and numpad divide), not the US physical `Slash` key.
-- **Session-tools toggle id**: Scoped to the workspace tab so closing the rail focuses the matching button when several hosts are open.
-- **Feature shortcuts with no host tab**: Files / Port Forwarding / Dashboard chords no longer consume the key when the active tab is not a connection.
-- **Shell-first shortcut copy**: Settings and session-tools labels use platform Mod (Command on macOS, Ctrl elsewhere).
+- **PTY table (#104)**: xterm.js dropped Ctrl+/; the missing `^_` (`0x1F`) sequence is sent so nano go-to-line works. Match the produced `/` (and numpad divide), not the US physical Slash key. Not a remappable Zync shortcut. ([0631f20], [e6ce0f5])
+- **Session-tools toggle id**: Scoped to the workspace tab so closing the rail focuses the matching button when several hosts are open. ([e6ce0f5])
+- **Feature shortcuts with no host tab**: Files / Port Forwarding / Dashboard chords no longer consume the key when the active tab is not a connection. ([e6ce0f5])
+- **Shell-first shortcut copy**: Settings and session-tools labels use platform Mod (Command on macOS, Ctrl elsewhere). ([e6ce0f5])
 - **Public URLs after reopen**: Agents start again on hydrate/sign-in for reserved/active shares. ([51b3c7d])
 
 ## [2.27.1] - 2026-08-29
@@ -1330,8 +1331,14 @@ Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` publishe
 [d3f4060]: https://github.com/zync-sh/zync/commit/d3f4060
 [840afc2]: https://github.com/zync-sh/zync/commit/840afc2
 [193f568]: https://github.com/zync-sh/zync/commit/193f568
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.27.1...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.28.0...HEAD
+[2.28.0]: https://github.com/zync-sh/zync/compare/v2.27.1...v2.28.0
 [2.27.1]: https://github.com/zync-sh/zync/compare/v2.26.1...v2.27.1
+[0631f20]: https://github.com/zync-sh/zync/commit/0631f20
+[516edb0]: https://github.com/zync-sh/zync/commit/516edb0
+[51b3c7d]: https://github.com/zync-sh/zync/commit/51b3c7d
+[ea9a822]: https://github.com/zync-sh/zync/commit/ea9a822
+[e6ce0f5]: https://github.com/zync-sh/zync/commit/e6ce0f5
 [2.26.1]: https://github.com/zync-sh/zync/compare/v2.26.0...v2.26.1
 [2.26.0]: https://github.com/zync-sh/zync/compare/v2.25.8...v2.26.0
 [b44475a]: https://github.com/zync-sh/zync/commit/b44475a
