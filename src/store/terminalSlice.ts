@@ -536,7 +536,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
         }
         const tabsWithVisibility = tabs.map(t => ({
             ...t,
-            tabVisible: hidden.has(t.id) ? false : t.tabVisible !== false,
+            tabVisible: !hidden.has(t.id),
         }));
         set(state => {
             const nextLayouts = { ...state.paneLayouts };
