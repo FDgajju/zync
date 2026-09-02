@@ -1,6 +1,7 @@
 import { isEditorOverlayOpen } from '../../components/editor/overlayState';
-import { paneNavDirectionFromKey } from '../../lib/paneLayout';
+import { canSplit, layoutForTerm, paneNavDirectionFromKey } from '../../lib/paneLayout';
 import { useAppStore, type Tab } from '../../store/useAppStore';
+import { keyboardFocus } from './focus';
 
 let sidebarCollapseTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -50,6 +51,16 @@ export function runShortcutCommand(id: string, event: KeyboardEvent): boolean {
             return true;
         case 'splitPanes': {
             if (!store.activeConnectionId) return false;
+            if (keyboardFocus(event.target) === 'field') return false;
+            const tab = store.activeTabId
+                ? store.tabs.find((item: Tab) => item.id === store.activeTabId)
+                : undefined;
+            if (tab?.view && tab.view !== 'terminal') return false;
+            const activeId = store.activeTerminalIds[store.activeConnectionId];
+            const layout = activeId
+                ? layoutForTerm(store.paneLayouts[store.activeConnectionId], activeId)
+                : undefined;
+            if (!canSplit(layout ?? null)) return false;
             const stacked = event.key === 'ArrowUp' || event.key === 'ArrowDown';
             store.splitPanes(store.activeConnectionId, stacked ? 'vertical' : 'horizontal');
             return true;
