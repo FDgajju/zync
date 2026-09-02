@@ -5,7 +5,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 ## [Unreleased]
 
 ### Added
-- **Split shells**: Two panes of existing shells in a host workspace (stacked by default). Tabs stay the inventory; Unsplit does not kill the PTY. Cap two live xterms. Split / Unsplit on the tab bar or the remappable **Mod+Shift+\\** chord. Layout persists per host; corrupt or oversized trees are ignored on restore. Closing a visible shell keeps the remaining pane active.
+- **Split shells**: Nested panes (stacked or side by side), cap four live xterms. Split opens a new pane on the **current** tab (split mark on that tab; extra panes stay off the tab bar). New Shell always adds a real tab. Unsplit removes the focused pane from the layout and does not kill the PTY. Tab bar Split menu plus remappable **Mod+Shift+\\** (stacked). Layout persists per tab; corrupt or oversized trees are ignored on restore.
 
 ## [2.28.0] - 2026-09-02
 
