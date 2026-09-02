@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { cn } from '../../lib/utils';
-import { Plus, ChevronDown, X, Plug, Terminal as TerminalIcon, Loader2, RotateCw, PanelRight, SquareSplitVertical, SquareSplitHorizontal } from 'lucide-react';
-import { ContextMenu } from '../ui/ContextMenu';
+import { Plus, ChevronDown, X, Plug, Terminal as TerminalIcon, Loader2, RotateCw, PanelRight } from 'lucide-react';
+import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import type { ShellEntry } from '../../lib/shells/types';
 import { ShellIcon } from '../icons/ShellIcon';
@@ -57,6 +57,34 @@ function findPreferredShellId(shells: ShellEntry[]): string | undefined {
     return shells.find(isCommonShellCandidate)?.id ?? shells[0]?.id;
 }
 
+/** Rounded pane with one divider — reads cleaner at 14–16px than lucide SquareSplit. */
+function SplitPaneIcon({
+    direction,
+    size = 15,
+}: {
+    direction: SplitDirection;
+    size?: number;
+}) {
+    const stacked = direction === 'vertical';
+    return (
+        <svg
+            width={size}
+            height={size}
+            viewBox="0 0 16 16"
+            fill="none"
+            aria-hidden
+            className="shrink-0"
+        >
+            <rect x="2" y="2.5" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" />
+            {stacked ? (
+                <path d="M2 8h12" stroke="currentColor" strokeWidth="1.5" />
+            ) : (
+                <path d="M8 2.5v11" stroke="currentColor" strokeWidth="1.5" />
+            )}
+        </svg>
+    );
+}
+
 function normalizeTerminalTitle(title: string): string {
     const match = /^Terminal\s+(\d+)$/i.exec(title.trim());
     if (match) return `Shell ${match[1]}`;
@@ -69,15 +97,23 @@ function getContextMenuItems(
     onTerminalClose: (termId: string) => void,
     onFeatureClose: (feature: string) => void,
     onTogglePin: (feature: string) => void,
+    onUnsplit?: () => void,
+    canUnsplitTab?: boolean,
 ) {
     if (target.type === 'terminal') {
-        return [
-            {
-                label: 'Close Tab',
-                variant: 'danger' as const,
-                action: () => onTerminalClose(target.termId),
-            },
-        ];
+        const items: ContextMenuItem[] = [];
+        if (canUnsplitTab && onUnsplit) {
+            items.push({
+                label: 'Unsplit focused pane',
+                action: onUnsplit,
+            });
+        }
+        items.push({
+            label: 'Close Tab',
+            variant: 'danger' as const,
+            action: () => onTerminalClose(target.termId),
+        });
+        return items;
     }
     if (target.type === 'plugin') {
         return [
@@ -188,17 +224,12 @@ export const CombinedTabBar = memo(function CombinedTabBar({
     const [dropdownAlign, setDropdownAlign] = useState<'left' | 'right'>('left');
     const dropdownRef = useRef<HTMLDivElement>(null);
     const dropdownButtonRef = useRef<HTMLButtonElement>(null);
-    const [isSplitMenuOpen, setIsSplitMenuOpen] = useState(false);
-    const splitMenuRef = useRef<HTMLDivElement>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, target: ContextMenuTarget } | null>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setIsDropdownOpen(false);
-            }
-            if (splitMenuRef.current && !splitMenuRef.current.contains(event.target as Node)) {
-                setIsSplitMenuOpen(false);
             }
             // Close context menu if click outside
             if (contextMenu && !(event.target as Element).closest('.context-menu-container')) {
@@ -269,10 +300,9 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                                 )}
                                 <span className="truncate flex-1">{normalizeTerminalTitle(term.title)}</span>
                                 {hasSplit && (
-                                    <SquareSplitVertical
-                                        size={11}
-                                        className={cn(isActive ? 'text-app-accent' : 'text-app-muted')}
-                                    />
+                                    <span className={cn(isActive ? 'text-app-accent' : 'text-app-muted')}>
+                                        <SplitPaneIcon direction="horizontal" size={12} />
+                                    </span>
                                 )}
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onTerminalClose(term.id); }}
@@ -379,100 +409,6 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                     );
                 })}
             </div>
-
-            {onSplit && (
-                <div
-                    ref={splitMenuRef}
-                    className="flex items-center bg-app-surface/30 rounded-lg p-0.5 border border-app-border/30 drag-none shrink-0 ml-1 relative"
-                    data-tauri-drag-region="false"
-                >
-                    <Tooltip
-                        content={`Split stacked (${formatShortcutLabel(splitBinding)})`}
-                        position="bottom"
-                    >
-                        <button
-                            type="button"
-                            onClick={() => onSplit('vertical')}
-                            disabled={!canSplit}
-                            aria-label="Split stacked"
-                            className={cn(
-                                'h-6 w-7 flex items-center justify-center rounded transition-colors',
-                                isSplit
-                                    ? 'text-app-text'
-                                    : 'text-app-muted hover:text-app-text hover:bg-app-surface',
-                                !canSplit && 'opacity-40 cursor-default hover:bg-transparent',
-                            )}
-                        >
-                            <SquareSplitVertical size={14} />
-                        </button>
-                    </Tooltip>
-                    <div className="w-px h-4 bg-app-border/50" />
-                    <button
-                        type="button"
-                        onClick={() => setIsSplitMenuOpen((open) => !open)}
-                        aria-label="More split actions"
-                        className={cn(
-                            'h-6 w-6 flex items-center justify-center rounded transition-colors',
-                            isSplitMenuOpen ? 'text-app-text bg-app-surface' : 'text-app-muted hover:text-app-text hover:bg-app-surface',
-                        )}
-                    >
-                        <ChevronDown size={12} />
-                    </button>
-                    {isSplitMenuOpen && (
-                        <TopbarDropdown
-                            widthClass="w-52"
-                            align="left"
-                            className="px-1 py-1 flex flex-col shadow-xl zoom-in-95 duration-100 slide-in-from-top-2"
-                        >
-                            <button
-                                type="button"
-                                disabled={!canSplit}
-                                onClick={() => {
-                                    onSplit('vertical');
-                                    setIsSplitMenuOpen(false);
-                                }}
-                                className={cn(
-                                    'w-full text-left px-3 py-1.5 text-xs flex items-center gap-2.5 rounded-md',
-                                    canSplit ? 'text-app-text hover:bg-app-surface' : 'text-app-muted cursor-default',
-                                )}
-                            >
-                                <SquareSplitVertical size={14} />
-                                <span className="flex-1 font-medium">Split stacked</span>
-                                <span className="text-[10px] text-app-muted">{formatShortcutLabel(splitBinding)}</span>
-                            </button>
-                            <button
-                                type="button"
-                                disabled={!canSplit}
-                                onClick={() => {
-                                    onSplit('horizontal');
-                                    setIsSplitMenuOpen(false);
-                                }}
-                                className={cn(
-                                    'w-full text-left px-3 py-1.5 text-xs flex items-center gap-2.5 rounded-md',
-                                    canSplit ? 'text-app-text hover:bg-app-surface' : 'text-app-muted cursor-default',
-                                )}
-                            >
-                                <SquareSplitHorizontal size={14} />
-                                <span className="flex-1 font-medium">Split side by side</span>
-                            </button>
-                            <button
-                                type="button"
-                                disabled={!isSplit || !onUnsplit}
-                                onClick={() => {
-                                    onUnsplit?.();
-                                    setIsSplitMenuOpen(false);
-                                }}
-                                className={cn(
-                                    'w-full text-left px-3 py-1.5 text-xs flex items-center gap-2.5 rounded-md',
-                                    isSplit ? 'text-app-text hover:bg-app-surface' : 'text-app-muted cursor-default',
-                                )}
-                            >
-                                <span className="flex-1 font-medium">Unsplit focused pane</span>
-                            </button>
-                        </TopbarDropdown>
-                    )}
-                </div>
-            )}
 
             {/* 3. Actions: [+|⌄] */}
             <div className="flex items-center bg-app-surface/30 rounded-lg p-0.5 border border-app-border/30 drag-none shrink-0 ml-1" data-tauri-drag-region="false">
@@ -659,28 +595,75 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                 </div>
             </div>
 
-            {onToggleSessionTools && (
-                <div className="ml-auto shrink-0 pr-0.5 drag-none" data-tauri-drag-region="false">
-                    <Tooltip
-                        content={`Session tools (${formatShortcutLabel('Ctrl+Shift+S')})`}
-                        position="bottom"
-                    >
-                        <button
-                            type="button"
-                            id={`session-tools-toggle-${tabId}`}
-                            onClick={onToggleSessionTools}
-                            aria-pressed={sessionToolsOpen}
-                            aria-label="Toggle session tools"
-                            className={cn(
-                                'h-7 w-7 flex items-center justify-center rounded-md border transition-colors',
-                                sessionToolsOpen
-                                    ? 'bg-app-accent/20 text-app-text border-app-accent/40'
-                                    : 'text-app-muted border-transparent hover:text-app-text hover:bg-app-surface hover:border-app-border/40',
-                            )}
+            {(onSplit || onToggleSessionTools) && (
+                <div
+                    className="ml-auto flex items-center shrink-0 gap-1 pr-0.5 drag-none"
+                    data-tauri-drag-region="false"
+                >
+                    {onSplit && (
+                        <div className="flex items-center bg-app-surface/30 rounded-lg p-0.5 border border-app-border/30">
+                            <Tooltip
+                                content={`Split side by side (${formatShortcutLabel(splitBinding)})`}
+                                position="bottom"
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => onSplit('horizontal')}
+                                    disabled={!canSplit}
+                                    aria-label="Split side by side"
+                                    className={cn(
+                                        'h-6 w-7 flex items-center justify-center rounded transition-colors',
+                                        isSplit
+                                            ? 'text-app-text'
+                                            : 'text-app-muted hover:text-app-text hover:bg-app-surface',
+                                        !canSplit && 'opacity-40 cursor-default hover:bg-transparent',
+                                    )}
+                                >
+                                    <SplitPaneIcon direction="horizontal" />
+                                </button>
+                            </Tooltip>
+                            <div className="w-px h-4 bg-app-border/50" />
+                            <Tooltip content="Split stacked" position="bottom">
+                                <button
+                                    type="button"
+                                    onClick={() => onSplit('vertical')}
+                                    disabled={!canSplit}
+                                    aria-label="Split stacked"
+                                    className={cn(
+                                        'h-6 w-7 flex items-center justify-center rounded transition-colors',
+                                        isSplit
+                                            ? 'text-app-text'
+                                            : 'text-app-muted hover:text-app-text hover:bg-app-surface',
+                                        !canSplit && 'opacity-40 cursor-default hover:bg-transparent',
+                                    )}
+                                >
+                                    <SplitPaneIcon direction="vertical" />
+                                </button>
+                            </Tooltip>
+                        </div>
+                    )}
+                    {onToggleSessionTools && (
+                        <Tooltip
+                            content={`Session tools (${formatShortcutLabel('Ctrl+Shift+S')})`}
+                            position="bottom"
                         >
-                            <PanelRight size={14} />
-                        </button>
-                    </Tooltip>
+                            <button
+                                type="button"
+                                id={`session-tools-toggle-${tabId}`}
+                                onClick={onToggleSessionTools}
+                                aria-pressed={sessionToolsOpen}
+                                aria-label="Toggle session tools"
+                                className={cn(
+                                    'h-7 w-7 flex items-center justify-center rounded-md border transition-colors',
+                                    sessionToolsOpen
+                                        ? 'bg-app-accent/20 text-app-text border-app-accent/40'
+                                        : 'text-app-muted border-transparent hover:text-app-text hover:bg-app-surface hover:border-app-border/40',
+                                )}
+                            >
+                                <PanelRight size={14} />
+                            </button>
+                        </Tooltip>
+                    )}
                 </div>
             )}
 
@@ -695,6 +678,10 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                         onTerminalClose,
                         onFeatureClose,
                         onTogglePin,
+                        onUnsplit,
+                        contextMenu.target.type === 'terminal'
+                            && isSplit
+                            && findLayoutOwner(paneGroups, activeTerminalId ?? '') === contextMenu.target.termId,
                     )}
                 />
             )}

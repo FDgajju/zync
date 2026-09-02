@@ -46,7 +46,7 @@ Zync embeds a full terminal per workspace connection (plus a local shell) using 
 - **GPU rendering** — WebGL2 primary with automatic DOM fallback
 - **Opt-in resource reclaim** — background remote host PTYs can suspend after idle timeout
 
-Each workspace can have multiple shell tabs. A **local shell** (`LOCAL_TERMINAL_CONNECTION_ID`) runs without SSH; **remote shells** attach to the active host connection. By default only the active shell is mounted; a **split** can mount up to four nested visible shells (stacked or side by side). Inactive tabs keep their xterm instance and scrollback in `terminalCache`. Pane layout lives in `src/lib/paneLayout` (tree + cap). Files / Port Forwarding / Dashboard stay full-view.
+Each workspace can have multiple shell tabs. A **local shell** (`LOCAL_TERMINAL_CONNECTION_ID`) runs without SSH; **remote shells** attach to the active host connection. By default only the active shell is mounted; a **split** can mount up to four nested visible shells (side by side first, or stacked). Inactive tabs keep their xterm instance and scrollback in `terminalCache`. Pane layout lives in `src/lib/paneLayout` (tree + cap). Files / Port Forwarding / Dashboard stay full-view.
 
 ---
 

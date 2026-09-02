@@ -124,7 +124,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutCommand[] = [
     },
     {
         id: 'splitPanes',
-        label: 'Split stacked',
+        label: 'Split side by side',
         section: 'terminal',
         defaultKeys: 'Mod+Shift+\\',
         extraKeys: ['Mod+Shift+|'],

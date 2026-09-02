@@ -499,7 +499,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
         });
     },
 
-    splitPanes: (connectionId, direction = 'vertical') => {
+    splitPanes: (connectionId, direction = 'horizontal') => {
         set(state => {
             const tabs = state.terminals[connectionId] || [];
             const activeId = state.activeTerminalIds[connectionId] ?? tabs.find(isTabVisible)?.id ?? null;

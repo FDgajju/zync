@@ -49,7 +49,7 @@ export function runShortcutCommand(id: string, event: KeyboardEvent): boolean {
             return true;
         case 'splitPanes':
             if (!store.activeConnectionId) return false;
-            store.splitPanes(store.activeConnectionId, 'vertical');
+            store.splitPanes(store.activeConnectionId, 'horizontal');
             return true;
         case 'toggleSettings':
             if (store.isSettingsOpen) store.closeSettings();
