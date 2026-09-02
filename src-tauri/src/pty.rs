@@ -958,20 +958,21 @@ impl PtyManager {
             if let Some(mut session) = sessions.remove(&term_id_for_exit) {
                 PtyManager::finalize_session_after_natural_exit(&mut session.handle);
             }
-            let lost = drop_transport
-                && !connection_has_other_sessions(
-                    &sessions,
-                    &connection_id_for_transport,
-                    &term_id_for_exit,
-                );
+            let others = connection_has_other_sessions(
+                &sessions,
+                &connection_id_for_transport,
+                &term_id_for_exit,
+            );
             drop(sessions);
-            // If this was the last PTY, tell the frontend the host dropped before
-            // terminal-exit so remaining tabs suspend instead of auto-closing.
-            if lost {
+            if drop_transport {
                 emit_connection_transport_lost(&app_handle, &connection_id_for_transport);
             }
+            // Eof with siblings still mapped is a host drop: suspend them, do not
+            // treat this channel as a user `exit` that unsplits the layout.
             if let Some(code) = exit_code {
-                emit_terminal_exit(&app_handle, &term_id_clone, generation, code);
+                if !(drop_transport && others) {
+                    emit_terminal_exit(&app_handle, &term_id_clone, generation, code);
+                }
             }
         });
 
