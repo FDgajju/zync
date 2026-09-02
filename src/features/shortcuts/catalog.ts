@@ -124,10 +124,10 @@ export const SHORTCUT_CATALOG: readonly ShortcutCommand[] = [
     },
     {
         id: 'splitPanes',
-        label: 'Split side by side',
+        label: 'Split focused pane',
         section: 'terminal',
-        defaultKeys: 'Mod+Shift+\\',
-        extraKeys: ['Mod+Shift+|'],
+        defaultKeys: 'Ctrl+Shift+ArrowRight',
+        extraKeys: ['Ctrl+Shift+ArrowLeft', 'Ctrl+Shift+ArrowUp', 'Ctrl+Shift+ArrowDown'],
         when: 'always',
         settingsKey: 'splitPanes',
         configurable: true,

@@ -58,3 +58,29 @@ runTest('formatShortcutLabel maps Mod to Ctrl on Windows and Command on macOS', 
   assert.equal(formatShortcutLabel('Mod+T', true), '⌘T');
   assert.equal(formatShortcutLabel('Ctrl+T', true), '⌃T');
 });
+
+runTest('matchShortcut accepts Ctrl+Shift+Arrow chords for split panes', () => {
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowRight', ctrlKey: true, shiftKey: true }),
+      'Ctrl+Shift+ArrowRight',
+    ),
+    true,
+  );
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowDown', ctrlKey: true, shiftKey: true }),
+      'Ctrl+Shift+ArrowDown',
+    ),
+    true,
+  );
+  assert.equal(
+    matchShortcut(keyEvent({ key: 'ArrowRight', ctrlKey: true }), 'Ctrl+Shift+ArrowRight'),
+    false,
+  );
+});
+
+runTest('formatShortcutLabel shortens arrow key names', () => {
+  assert.equal(formatShortcutLabel('Ctrl+Shift+ArrowRight', false), 'Ctrl+Shift+Right');
+  assert.equal(formatShortcutLabel('Ctrl+Shift+ArrowDown', true), '⌃⇧Down');
+});

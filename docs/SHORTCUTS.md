@@ -95,7 +95,9 @@ Small, closed set:
 | Mod+B / P / I | Zync (`always`) | sidebar, palette, AI — still work in the terminal |
 | Mod+Shift+C / V | Zync | terminal copy / paste |
 | Mod+Shift+W / T / P | Zync | close terminal tab, new host terminal, command palette (commands) |
-| Mod+Shift+\\ | Zync (`always`) | split the focused pane side by side (not Ctrl+B); stacked is the second split icon; Unsplit is on the owner tab’s context menu |
+| Ctrl+Shift+Left / Right | Zync (`always`) | split the focused pane side by side |
+| Ctrl+Shift+Up / Down | Zync (`always`) | split the focused pane stacked |
+| — | — | Unsplit is on the owner tab’s context menu |
 | Ctrl+Tab, Mod+1–9 | Zync | tab switch |
 | Mod+, | Zync | settings |
 | Mod+= / - | terminal font (xterm) or app zoom (`when: app`) | |

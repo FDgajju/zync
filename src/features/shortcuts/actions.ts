@@ -47,10 +47,12 @@ export function runShortcutCommand(id: string, event: KeyboardEvent): boolean {
                 emit('ssh-ui:close-terminal-tab', { connectionId: store.activeConnectionId });
             }
             return true;
-        case 'splitPanes':
+        case 'splitPanes': {
             if (!store.activeConnectionId) return false;
-            store.splitPanes(store.activeConnectionId, 'horizontal');
+            const stacked = event.key === 'ArrowUp' || event.key === 'ArrowDown';
+            store.splitPanes(store.activeConnectionId, stacked ? 'vertical' : 'horizontal');
             return true;
+        }
         case 'toggleSettings':
             if (store.isSettingsOpen) store.closeSettings();
             else store.openSettings();

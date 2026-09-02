@@ -623,7 +623,10 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                                 </button>
                             </Tooltip>
                             <div className="w-px h-4 bg-app-border/50" />
-                            <Tooltip content="Split stacked" position="bottom">
+                            <Tooltip
+                                content={`Split stacked (${formatShortcutLabel('Ctrl+Shift+ArrowDown')})`}
+                                position="bottom"
+                            >
                                 <button
                                     type="button"
                                     onClick={() => onSplit('vertical')}

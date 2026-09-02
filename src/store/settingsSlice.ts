@@ -233,7 +233,7 @@ export const defaultSettings: AppSettings = {
         toggleSettings: 'Mod+,',
         closeTab: 'Mod+W',
         closeTerminalTab: 'Mod+Shift+W',
-        splitPanes: 'Mod+Shift+\\',
+        splitPanes: 'Ctrl+Shift+ArrowRight',
         commandPalette: 'Mod+P',
         switchTabNext: 'Ctrl+Tab',
         switchTabPrev: 'Ctrl+Shift+Tab',
@@ -329,6 +329,19 @@ function normalizeTerminalFontWeight(fontWeight: unknown): TerminalFontWeightSet
  * Custom stacks (including Nerd Font first families) must pass through unchanged (#93).
  * Only expand legacy single-name aliases into built-in preset stacks.
  */
+function migrateSplitPaneKeybinding(
+    keybindings: AppSettings['keybindings'],
+): AppSettings['keybindings'] {
+    if (
+        keybindings.splitPanes === 'Mod+Shift+\\'
+        || keybindings.splitPanes === 'Mod+Shift+|'
+        || keybindings.splitPanes === 'Ctrl+ArrowRight'
+    ) {
+        return { ...keybindings, splitPanes: defaultSettings.keybindings.splitPanes };
+    }
+    return keybindings;
+}
+
 function normalizeTerminalFontFamily(fontFamily: string | undefined): string | undefined {
     if (typeof fontFamily !== 'string' || !fontFamily.trim()) return undefined;
     const trimmed = fontFamily.trim();
@@ -455,7 +468,10 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
                         ...(loaded?.ghostSuggestions?.providers || {}),
                     },
                 },
-                keybindings: { ...defaultSettings.keybindings, ...(loaded?.keybindings || {}) },
+                keybindings: migrateSplitPaneKeybinding({
+                    ...defaultSettings.keybindings,
+                    ...(loaded?.keybindings || {}),
+                }),
                 keyboard: normalizeKeyboardSettings(loaded?.keyboard),
                 ai: { ...defaultSettings.ai, ...(loaded?.ai || {}) },
                 privacy: { ...defaultSettings.privacy, ...(loaded?.privacy || {}) },
