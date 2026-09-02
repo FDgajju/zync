@@ -77,9 +77,11 @@ SessionData
 ├── tabs: Vec<TabSnapshot>
 │   ├── id, tabType, title, connectionId, view
 ├── terminals: HashMap<scopeId, Vec<TerminalTabSnapshot>>
-│   ├── id, title, cwd, initialPath, isSynced
+│   ├── id, title, cwd, initialPath, isSynced, shellOverride
+│   └── tabVisible  // false = extra pane in a split; omitted means visible
 ├── activeTerminalIds: HashMap<scopeId, String>
-└── paneLayouts: HashMap<scopeId, PaneLayout>   // optional; missing = one pane
+└── paneLayouts: HashMap<scopeId, PaneLayoutGroups>  // optional; missing = one pane
+    └── ownerTermId → PaneLayout
 ```
 
 Rust structs use `#[serde(rename_all = "camelCase", default)]` so all fields are optional on deserialise — missing fields from older session files default gracefully.

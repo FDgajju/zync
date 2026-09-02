@@ -116,6 +116,7 @@ export function PaneLayoutView({
                 </div>
                 <PaneDivider
                     direction={node.direction}
+                    firstRatio={node.sizes[0]}
                     onDrag={(ratio) => onDrag(node.id, ratio)}
                     onDragEnd={() => onDragEnd(node.id)}
                     onEqualize={() => onEqualize(node.id)}

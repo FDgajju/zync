@@ -169,6 +169,19 @@ runTest('sanitize drops missing term ids', () => {
   assert.equal(parsePaneLayout({ nope: true }, new Set(['term-a'])), null);
 });
 
+runTest('sanitize falls back when activePaneId is a split node', () => {
+  const base = singlePane('term-a', 'pane-a');
+  const split = splitPane(base, 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(split.ok, true);
+  if (!split.ok) return;
+  const dirty = { ...split.layout, activePaneId: split.layout.root.id };
+  const clean = sanitizePaneLayout(dirty, new Set(['term-a', 'term-b']));
+  assert.ok(clean);
+  assert.equal(clean.root.type, 'split');
+  assert.notEqual(clean.activePaneId, clean.root.id);
+  assert.equal(clean.activePaneId, 'pane-a');
+});
+
 runTest('setSplitSizes clamps so neither pane collapses', () => {
   const base = singlePane('term-a', 'pane-a');
   const split = splitPane(base, 'pane-a', 'vertical', { kind: 'term', termId: 'term-b' });

@@ -162,7 +162,8 @@ export function sanitizePaneLayout(layout: PaneLayout, knownTermIds: ReadonlySet
 
     const root = prune(layout.root);
     if (!root) return null;
-    const active = findNode(root, layout.activePaneId) ? layout.activePaneId : firstLeaf(root).id;
+    const focused = findNode(root, layout.activePaneId);
+    const active = focused && isPaneLeaf(focused) ? layout.activePaneId : firstLeaf(root).id;
     return { version: PANE_LAYOUT_VERSION, root, activePaneId: active };
 }
 

@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { cn } from '../../lib/utils';
-import type { SplitDirection } from '../../lib/paneLayout';
+import { MIN_PANE_RATIO, type SplitDirection } from '../../lib/paneLayout';
 import { beginPaneDividerDrag, endPaneDividerDrag } from '../../lib/terminal';
+
+const KEY_STEP = 0.05;
 
 export function PaneDivider({
     direction,
+    firstRatio,
     onDrag,
     onDragEnd,
     onEqualize,
 }: {
     direction: SplitDirection;
+    firstRatio: number;
     onDrag: (firstRatio: number) => void;
     onDragEnd: () => void;
     onEqualize: () => void;
@@ -75,16 +79,42 @@ export function PaneDivider({
         window.addEventListener('pointercancel', onUp);
     }, [direction, onDrag, onEqualize, stopDrag]);
 
+    const onKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (event.key === 'Enter' || event.key === 'Home') {
+            event.preventDefault();
+            onEqualize();
+            return;
+        }
+        const stacked = direction === 'vertical';
+        const delta =
+            stacked
+                ? event.key === 'ArrowDown' ? KEY_STEP : event.key === 'ArrowUp' ? -KEY_STEP : 0
+                : event.key === 'ArrowRight' ? KEY_STEP : event.key === 'ArrowLeft' ? -KEY_STEP : 0;
+        if (delta === 0) return;
+        event.preventDefault();
+        onDrag(firstRatio + delta);
+        onDragEnd();
+    }, [direction, firstRatio, onDrag, onDragEnd, onEqualize]);
+
     const stacked = direction === 'vertical';
+    const valueNow = Math.round(firstRatio * 100);
+    const valueMin = Math.round(MIN_PANE_RATIO * 100);
     return (
         <div
             role="separator"
+            tabIndex={0}
             aria-orientation={stacked ? 'horizontal' : 'vertical'}
-            title="Drag to resize · double-click to even panes"
+            aria-valuemin={valueMin}
+            aria-valuemax={100 - valueMin}
+            aria-valuenow={valueNow}
+            aria-label="Resize panes"
+            title="Drag or arrow keys to resize · double-click or Enter to even panes"
             onPointerDown={onPointerDown}
+            onKeyDown={onKeyDown}
             className={cn(
                 'relative z-20 shrink-0 touch-none select-none transition-colors duration-150',
                 stacked ? 'h-px w-full cursor-row-resize' : 'w-px h-full cursor-col-resize',
+                'outline-none focus-visible:bg-app-accent',
                 held ? 'bg-app-accent' : 'bg-app-border/40 hover:bg-app-accent/55',
             )}
         >
