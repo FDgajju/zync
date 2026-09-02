@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { cn } from '../../lib/utils';
 import type { SplitDirection } from '../../lib/paneLayout';
 import { beginPaneDividerDrag, endPaneDividerDrag } from '../../lib/terminal';
@@ -16,6 +16,31 @@ export function PaneDivider({
 }) {
     const dragging = useRef(false);
     const [held, setHeld] = useState(false);
+    const listeners = useRef<{
+        move: (event: globalThis.PointerEvent) => void;
+        up: () => void;
+    } | null>(null);
+
+    const stopDrag = useCallback((commit: boolean) => {
+        if (!dragging.current) return;
+        dragging.current = false;
+        setHeld(false);
+        if (listeners.current) {
+            window.removeEventListener('pointermove', listeners.current.move);
+            window.removeEventListener('pointerup', listeners.current.up);
+            window.removeEventListener('pointercancel', listeners.current.up);
+            listeners.current = null;
+        }
+        endPaneDividerDrag();
+        if (commit) {
+            onDragEnd();
+        }
+        window.dispatchEvent(new Event('zync:pane-resize-end'));
+    }, [onDragEnd]);
+
+    useEffect(() => () => {
+        stopDrag(false);
+    }, [stopDrag]);
 
     const onPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         event.preventDefault();
@@ -25,6 +50,7 @@ export function PaneDivider({
         }
         const parent = event.currentTarget.parentElement;
         if (!parent) return;
+        stopDrag(false);
         dragging.current = true;
         setHeld(true);
         beginPaneDividerDrag();
@@ -41,19 +67,13 @@ export function PaneDivider({
             onDrag(ratio);
         };
         const onUp = () => {
-            dragging.current = false;
-            setHeld(false);
-            window.removeEventListener('pointermove', onMove);
-            window.removeEventListener('pointerup', onUp);
-            window.removeEventListener('pointercancel', onUp);
-            endPaneDividerDrag();
-            onDragEnd();
-            window.dispatchEvent(new Event('zync:pane-resize-end'));
+            stopDrag(true);
         };
+        listeners.current = { move: onMove, up: onUp };
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);
         window.addEventListener('pointercancel', onUp);
-    }, [direction, onDrag, onDragEnd, onEqualize]);
+    }, [direction, onDrag, onEqualize, stopDrag]);
 
     const stacked = direction === 'vertical';
     return (
