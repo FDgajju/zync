@@ -12,6 +12,7 @@ import {
   needsTerminalRendererSetup,
   clearTerminalPendingInput,
   createResizeScheduler,
+  isPaneDividerDragging,
   flushPendingInput,
   getTerminalRendererState,
   isTerminalDomMeasurable,
@@ -465,11 +466,17 @@ export function useTerminalLifecycle({
       finishLayoutTransition();
     };
 
+    const handlePaneResizeEnd = () => {
+      resizeSchedulerRef.current?.schedule({ forceSync: true, immediate: true });
+    };
+
     window.addEventListener('zync:layout-transition-start', handleStart);
     window.addEventListener('zync:layout-transition-end', handleEnd);
+    window.addEventListener('zync:pane-resize-end', handlePaneResizeEnd);
     return () => {
       window.removeEventListener('zync:layout-transition-start', handleStart);
       window.removeEventListener('zync:layout-transition-end', handleEnd);
+      window.removeEventListener('zync:pane-resize-end', handlePaneResizeEnd);
       if (layoutTransitionSafetyTimerRef.current) {
         clearTimeout(layoutTransitionSafetyTimerRef.current);
         layoutTransitionSafetyTimerRef.current = null;
@@ -661,7 +668,9 @@ export function useTerminalLifecycle({
 
         if (isLayoutTransitioning.current) return;
 
-        resizeSchedulerRef.current?.schedule();
+        resizeSchedulerRef.current?.schedule({
+          syncBackend: !isPaneDividerDragging(),
+        });
       } catch (e) {
         console.warn('Xterm fit resize failed', e);
       }

@@ -1,6 +1,7 @@
 import { useCallback, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { cn } from '../../lib/utils';
 import type { SplitDirection } from '../../lib/paneLayout';
+import { beginPaneDividerDrag, endPaneDividerDrag } from '../../lib/terminal';
 
 export function PaneDivider({
     direction,
@@ -18,6 +19,7 @@ export function PaneDivider({
         const parent = event.currentTarget.parentElement;
         if (!parent) return;
         dragging.current = true;
+        beginPaneDividerDrag();
         event.currentTarget.setPointerCapture(event.pointerId);
         const vertical = direction === 'vertical';
         const startSize = vertical ? parent.clientHeight : parent.clientWidth;
@@ -35,7 +37,9 @@ export function PaneDivider({
             window.removeEventListener('pointermove', onMove);
             window.removeEventListener('pointerup', onUp);
             window.removeEventListener('pointercancel', onUp);
+            endPaneDividerDrag();
             onDragEnd();
+            window.dispatchEvent(new Event('zync:pane-resize-end'));
         };
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);

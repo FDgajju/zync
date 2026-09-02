@@ -83,6 +83,7 @@ const tests = [
   'tests/terminalOutputPayload.test.mjs',
   'tests/terminalPanelRestore.test.mjs',
   'tests/terminalResizeSync.test.mjs',
+  'tests/terminalFit.test.mjs',
   'tests/terminalReconnectReset.test.mjs',
   'tests/sidebarSubmit.test.mjs',
   'tests/statusBarLatency.test.mjs',

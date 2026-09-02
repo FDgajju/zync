@@ -110,6 +110,9 @@ export {
   isTerminalFitReady,
   safeFitTerminal,
   createResizeScheduler,
+  beginPaneDividerDrag,
+  endPaneDividerDrag,
+  isPaneDividerDragging,
 } from './terminalFit.js';
 export { restoreTerminalDisplay } from './terminalPanelRestore.js';
 export type { ResizeScheduler, ResizeScheduleOptions } from './terminalFit.js';

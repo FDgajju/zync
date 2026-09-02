@@ -372,6 +372,7 @@ Historical scrollback **does not reflow** when the window is resized. Lines writ
 - `ResizeObserver` on terminal container — **gated on `isVisibleRef`**
 - Window resize
 - Layout transitions (sidebar, panel) — visual `fit()` immediately; PTY IPC deferred until settle (500ms safety timeout)
+- Split divider drag — visual `fit()` while dragging; one PTY resize (`SIGWINCH`) on pointer up (`zync:pane-resize-end`)
 - Renderer kind changes — refit + screen refresh
 - Files/Dashboard return — `terminalPanelRestore` + `isTerminalDomMeasurable`
 
