@@ -76,7 +76,12 @@ function keepTerminalsForSession(
             }
         }
         const needed = 1 + extraHidden.length;
-        if (needed > remaining) continue;
+        if (needed > remaining) {
+            if (remaining < 1) continue;
+            keptVisible.push(tab);
+            remaining -= 1;
+            continue;
+        }
         keptVisible.push(tab);
         keptHidden.push(...extraHidden);
         remaining -= needed;

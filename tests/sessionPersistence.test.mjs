@@ -220,7 +220,7 @@ runTest('buildSessionData keeps pane-referenced hidden tabs without exceeding th
   assert.equal(data.terminals.conn1.some((tab) => tab.id === `term-${MAX_TABS_PER_SCOPE - 1}`), false);
 });
 
-runTest('buildSessionData skips a split owner that cannot fit with its hidden panes', () => {
+runTest('buildSessionData keeps a split owner and drops extras that cannot fit', () => {
   const singles = Array.from({ length: MAX_TABS_PER_SCOPE - 1 }, (_, index) => makeTerminal(index));
   const owner = makeTerminal(MAX_TABS_PER_SCOPE - 1);
   const hidden = { ...makeTerminal(200), id: 'term-late-hidden', tabVisible: false };
@@ -237,8 +237,8 @@ runTest('buildSessionData skips a split owner that cannot fit with its hidden pa
     paneLayouts: { conn1: { [owner.id]: split.layout } },
   });
 
-  assert.equal(data.terminals.conn1.length, MAX_TABS_PER_SCOPE - 1);
-  assert.equal(data.terminals.conn1.some((tab) => tab.id === owner.id), false);
+  assert.equal(data.terminals.conn1.length, MAX_TABS_PER_SCOPE);
+  assert.equal(data.terminals.conn1.some((tab) => tab.id === owner.id), true);
   assert.equal(data.terminals.conn1.some((tab) => tab.id === hidden.id), false);
   assert.equal(data.paneLayouts.conn1, undefined);
 });
