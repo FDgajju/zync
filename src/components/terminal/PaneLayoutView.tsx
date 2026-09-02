@@ -12,6 +12,25 @@ import { useAppStore } from '../../store/useAppStore';
 import { TerminalComponent } from './Terminal';
 import { PaneDivider } from './PaneDivider';
 
+type InternalEdges = {
+    top?: boolean;
+    right?: boolean;
+    bottom?: boolean;
+    left?: boolean;
+};
+
+function FocusEdges({ edges }: { edges: InternalEdges }) {
+    const line = 'pointer-events-none absolute z-10 bg-app-accent/60';
+    return (
+        <>
+            {edges.top && <div aria-hidden className={cn(line, 'inset-x-0 top-0 h-px')} />}
+            {edges.right && <div aria-hidden className={cn(line, 'inset-y-0 right-0 w-px')} />}
+            {edges.bottom && <div aria-hidden className={cn(line, 'inset-x-0 bottom-0 h-px')} />}
+            {edges.left && <div aria-hidden className={cn(line, 'inset-y-0 left-0 w-px')} />}
+        </>
+    );
+}
+
 export function PaneLayoutView({
     connectionId,
     layout,
@@ -43,18 +62,21 @@ export function PaneLayoutView({
         }
     }, [connectionId, resizePanes]);
 
-    const renderNode = (node: PaneNode): ReactNode => {
+    const onEqualize = useCallback((splitId: string) => {
+        resizePanes(connectionId, splitId, [0.5, 0.5], true);
+        window.dispatchEvent(new Event('zync:pane-resize-end'));
+    }, [connectionId, resizePanes]);
+
+    const renderNode = (node: PaneNode, edges: InternalEdges = {}): ReactNode => {
         if (isPaneLeaf(node)) {
             if (node.content.kind !== 'term') return null;
             const focused = layout.activePaneId === node.id;
+            const showFocus = focused && workspaceActive && panelVisible;
             return (
                 <div
                     key={node.id}
                     data-pane-id={node.id}
-                    className={cn(
-                        'h-full w-full min-h-0 min-w-0 overflow-hidden',
-                        focused ? 'ring-1 ring-inset ring-app-accent/35' : 'ring-0',
-                    )}
+                    className="relative h-full w-full min-h-0 min-w-0 overflow-hidden"
                     onMouseDown={(event) => {
                         focusPane(connectionId, node.id);
                         if (!(event.target instanceof Element) || !event.target.closest('.xterm')) {
@@ -72,6 +94,7 @@ export function PaneLayoutView({
                         isFocused={focused}
                         isVisible={panelVisible}
                     />
+                    {showFocus && <FocusEdges edges={edges} />}
                 </div>
             );
         }
@@ -80,24 +103,31 @@ export function PaneLayoutView({
         return (
             <div
                 key={node.id}
-                className={cn('flex h-full w-full min-h-0 min-w-0', stacked ? 'flex-col' : 'flex-row')}
+                className={cn('relative flex h-full w-full min-h-0 min-w-0', stacked ? 'flex-col' : 'flex-row')}
             >
                 <div
                     className="min-h-0 min-w-0 overflow-hidden"
                     style={{ flexGrow: node.sizes[0], flexShrink: 1, flexBasis: 0 }}
                 >
-                    {renderNode(node.children[0])}
+                    {renderNode(
+                        node.children[0],
+                        stacked ? { ...edges, bottom: true } : { ...edges, right: true },
+                    )}
                 </div>
                 <PaneDivider
                     direction={node.direction}
                     onDrag={(ratio) => onDrag(node.id, ratio)}
                     onDragEnd={() => onDragEnd(node.id)}
+                    onEqualize={() => onEqualize(node.id)}
                 />
                 <div
                     className="min-h-0 min-w-0 overflow-hidden"
                     style={{ flexGrow: node.sizes[1], flexShrink: 1, flexBasis: 0 }}
                 >
-                    {renderNode(node.children[1])}
+                    {renderNode(
+                        node.children[1],
+                        stacked ? { ...edges, top: true } : { ...edges, left: true },
+                    )}
                 </div>
             </div>
         );
