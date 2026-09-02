@@ -4,6 +4,7 @@ export {
     dropTerm,
     focusPane,
     layoutActiveTermId,
+    normalizeSizes,
     sanitizePaneLayout,
     selectTerm,
     setSplitSizes,
@@ -12,6 +13,13 @@ export {
     unsplitPane,
 } from './ops';
 export { parsePaneLayout, snapshotPaneLayouts } from './persist';
+export {
+    findLayoutOwner,
+    layoutForTerm,
+    parsePaneLayoutGroups,
+    snapshotPaneLayoutGroups,
+    type PaneLayoutGroups,
+} from './groups';
 export {
     activeTermId,
     collectLeaves,

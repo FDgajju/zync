@@ -36,17 +36,44 @@ runTest('single pane is not a split', () => {
   assert.equal(canSplit(layout), true);
 });
 
-runTest('split adds a second leaf and respects cap', () => {
-  const base = singlePane('term-a', 'pane-a');
-  const split = splitPane(base, 'pane-a', 'vertical', { kind: 'term', termId: 'term-b' });
-  assert.equal(split.ok, true);
-  if (!split.ok) return;
-  assert.equal(leafCount(split.layout.root), 2);
-  assert.equal(isSplitLayout(split.layout), true);
-  assert.equal(canSplit(split.layout), MAX_VISIBLE_PANES > 2);
-  const again = splitPane(split.layout, split.layout.activePaneId, 'horizontal', { kind: 'term', termId: 'term-c' });
+runTest('split nests until the visible-pane cap', () => {
+  let layout = singlePane('term-a', 'pane-a');
+  for (let i = 1; i < MAX_VISIBLE_PANES; i += 1) {
+    const target = layout.activePaneId;
+    const result = splitPane(layout, target, i % 2 === 0 ? 'horizontal' : 'vertical', {
+      kind: 'term',
+      termId: `term-${String.fromCharCode(97 + i)}`,
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    layout = result.layout;
+  }
+  assert.equal(leafCount(layout.root), MAX_VISIBLE_PANES);
+  assert.equal(canSplit(layout), false);
+  const again = splitPane(layout, layout.activePaneId, 'horizontal', { kind: 'term', termId: 'term-z' });
   assert.equal(again.ok, false);
   if (!again.ok) assert.equal(again.reason, 'cap');
+});
+
+runTest('unsplit of a nested pane keeps the rest of the tree and focuses the sibling', () => {
+  const first = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'vertical', { kind: 'term', termId: 'term-b' });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const bLeaf = first.layout.root.type === 'split' ? first.layout.root.children[1] : null;
+  assert.ok(bLeaf && bLeaf.type === 'pane');
+  const nested = splitPane(first.layout, bLeaf.id, 'horizontal', { kind: 'term', termId: 'term-c' });
+  assert.equal(nested.ok, true);
+  if (!nested.ok) return;
+  assert.equal(leafCount(nested.layout.root), 3);
+  const cLeaf = nested.layout.root.type === 'split' ? nested.layout.root.children[1] : null;
+  const cPane = cLeaf && cLeaf.type === 'split' ? cLeaf.children[1] : null;
+  assert.ok(cPane && cPane.type === 'pane');
+  const focused = focusPane(nested.layout, cPane.id);
+  const next = unsplitPane(focused, cPane.id);
+  assert.equal(leafCount(next.root), 2);
+  assert.equal(isSplitLayout(next), true);
+  assert.deepEqual(visibleTermIds(next).sort(), ['term-a', 'term-b']);
+  assert.equal(next.activePaneId, bLeaf.id);
 });
 
 runTest('unsplit keeps the other shell as a tab-ready leaf', () => {
@@ -120,30 +147,64 @@ runTest('focusPane ignores unknown ids', () => {
 });
 
 runTest('parsePaneLayout rejects more leaves than MAX_VISIBLE_PANES', () => {
+  const leaf = (id) => ({ type: 'pane', id: `p-${id}`, content: { kind: 'term', termId: id } });
+  const split = (id, left, right) => ({
+    type: 'split',
+    id: `s-${id}`,
+    direction: 'vertical',
+    sizes: [0.5, 0.5],
+    children: [left, right],
+  });
   const raw = {
     version: 1,
-    activePaneId: 'p1',
+    activePaneId: 'p-a',
+    root: split('1', leaf('a'), split('2', leaf('b'), split('3', leaf('c'), split('4', leaf('d'), leaf('e'))))),
+  };
+  assert.equal(parsePaneLayout(raw, new Set(['a', 'b', 'c', 'd', 'e'])), null);
+  const three = {
+    version: 1,
+    activePaneId: 'p-a',
+    root: split('1', leaf('a'), split('2', leaf('b'), leaf('c'))),
+  };
+  assert.ok(parsePaneLayout(three, new Set(['a', 'b', 'c'])));
+});
+
+runTest('parsePaneLayout normalizes valid sizes and falls back when persisted sizes are invalid', () => {
+  const leaf = (id) => ({ type: 'pane', id: `p-${id}`, content: { kind: 'term', termId: id } });
+  const raw = (sizes) => ({
+    version: 1,
+    activePaneId: 'p-a',
     root: {
       type: 'split',
-      id: 's1',
+      id: 's-1',
       direction: 'vertical',
-      sizes: [0.5, 0.5],
-      children: [
-        { type: 'pane', id: 'p1', content: { kind: 'term', termId: 'a' } },
-        {
-          type: 'split',
-          id: 's2',
-          direction: 'vertical',
-          sizes: [0.5, 0.5],
-          children: [
-            { type: 'pane', id: 'p2', content: { kind: 'term', termId: 'b' } },
-            { type: 'pane', id: 'p3', content: { kind: 'term', termId: 'c' } },
-          ],
-        },
-      ],
+      sizes,
+      children: [leaf('a'), leaf('b')],
     },
-  };
-  assert.equal(parsePaneLayout(raw, new Set(['a', 'b', 'c'])), null);
+  });
+  const known = new Set(['a', 'b']);
+
+  const ok = parsePaneLayout(raw([0.6, 0.4]), known);
+  assert.ok(ok);
+  assert.equal(ok.root.type, 'split');
+  if (ok.root.type !== 'split') return;
+  assert.equal(ok.root.sizes[0], 0.6);
+  assert.equal(ok.root.sizes[1], 0.4);
+
+  for (const sizes of [undefined, [0, 1], [NaN, 0.5], [-1, 2], [1], 'nope']) {
+    const parsed = parsePaneLayout(raw(sizes), known);
+    assert.ok(parsed);
+    assert.equal(parsed.root.type, 'split');
+    if (parsed.root.type !== 'split') return;
+    assert.deepEqual(parsed.root.sizes, [0.5, 0.5]);
+  }
+
+  const clamped = parsePaneLayout(raw([0.01, 0.99]), known);
+  assert.ok(clamped);
+  assert.equal(clamped.root.type, 'split');
+  if (clamped.root.type !== 'split') return;
+  assert.ok(clamped.root.sizes[0] >= 0.2);
+  assert.ok(clamped.root.sizes[1] >= 0.2);
 });
 
 runTest('parsePaneLayout rejects trees deeper than MAX_PANE_NESTING', () => {

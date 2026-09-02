@@ -46,7 +46,7 @@ function mapNode(node: PaneNode, id: string, replace: (current: PaneNode) => Pan
     };
 }
 
-function normalizeSizes(sizes: [number, number]): [number, number] {
+export function normalizeSizes(sizes: [number, number]): [number, number] {
     const a = Number.isFinite(sizes[0]) ? sizes[0] : 1;
     const b = Number.isFinite(sizes[1]) ? sizes[1] : 1;
     const sum = a + b;
@@ -62,7 +62,7 @@ export function splitPane(
     direction: SplitDirection,
     content: PaneContent,
     cap = MAX_VISIBLE_PANES,
-): { ok: true; layout: PaneLayout } | { ok: false; reason: SplitFailReason } {
+): { ok: true; layout: PaneLayout; newPaneId: string } | { ok: false; reason: SplitFailReason } {
     if (leafCount(layout.root) >= cap) {
         return { ok: false, reason: 'cap' };
     }
@@ -80,7 +80,7 @@ export function splitPane(
         children: [current, newLeaf],
     }));
 
-    return { ok: true, layout: { ...layout, root } };
+    return { ok: true, layout: { ...layout, root }, newPaneId: newLeaf.id };
 }
 
 export function unsplitPane(layout: PaneLayout, paneId: string): PaneLayout {
@@ -93,7 +93,9 @@ export function unsplitPane(layout: PaneLayout, paneId: string): PaneLayout {
         ? sibling
         : mapNode(layout.root, parent.id, () => sibling);
 
-    const focused = findNode(root, layout.activePaneId) ? layout.activePaneId : firstLeaf(root).id;
+    const focused = findNode(root, layout.activePaneId)
+        ? layout.activePaneId
+        : firstLeaf(sibling).id;
     return { ...layout, root, activePaneId: focused };
 }
 

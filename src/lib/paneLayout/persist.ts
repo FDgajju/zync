@@ -1,4 +1,4 @@
-import { sanitizePaneLayout } from './ops';
+import { normalizeSizes, sanitizePaneLayout } from './ops';
 import { isPaneLeaf, isPaneSplit, isSafePaneLayout } from './query';
 import { MAX_PANE_NESTING, PANE_LAYOUT_VERSION, type PaneLayout, type PaneNode, type SplitDirection } from './types';
 
@@ -23,12 +23,23 @@ function parseNode(raw: unknown, depth = 1): PaneNode | null {
         const left = parseNode(raw.children[0], depth + 1);
         const right = parseNode(raw.children[1], depth + 1);
         if (!left || !right) return null;
-        const sizes = Array.isArray(raw.sizes) && raw.sizes.length === 2
-            ? [Number(raw.sizes[0]), Number(raw.sizes[1])] as [number, number]
-            : [0.5, 0.5] as [number, number];
-        return { type: 'split', id: raw.id, direction: direction as SplitDirection, sizes, children: [left, right] };
+        return {
+            type: 'split',
+            id: raw.id,
+            direction: direction as SplitDirection,
+            sizes: parseSizes(raw.sizes),
+            children: [left, right],
+        };
     }
     return null;
+}
+
+function parseSizes(raw: unknown): [number, number] {
+    if (!Array.isArray(raw) || raw.length !== 2) return [0.5, 0.5];
+    const a = Number(raw[0]);
+    const b = Number(raw[1]);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return [0.5, 0.5];
+    return normalizeSizes([a, b]);
 }
 
 /** Accept persisted JSON; drop unknown terms; null if unusable. */

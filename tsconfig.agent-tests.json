@@ -106,6 +106,7 @@
         "src/lib/paneLayout/query.ts",
         "src/lib/paneLayout/ops.ts",
         "src/lib/paneLayout/persist.ts",
+        "src/lib/paneLayout/groups.ts",
         "src/lib/paneLayout/index.ts",
         "src/lib/terminal/types.ts",
         "src/lib/terminal/rendererPolicy.ts",
