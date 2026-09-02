@@ -1,5 +1,5 @@
 import { parsePaneLayout } from './persist';
-import { sanitizePaneLayout } from './ops';
+import { dropTerm, sanitizePaneLayout } from './ops';
 import {
     firstLeaf,
     isPaneSplit,
@@ -30,6 +30,45 @@ export function layoutForTerm(
 ): PaneLayout | undefined {
     const owner = findLayoutOwner(groups, termId);
     return owner ? groups![owner] : undefined;
+}
+
+/**
+ * Drop one shell from its split group without closing the rest.
+ * Rekeys the group when the owner tab's PTY is the one that left.
+ */
+export function detachTermFromGroups(
+    groups: PaneLayoutGroups | undefined,
+    termId: string,
+): {
+    next: PaneLayoutGroups | undefined;
+    remainingIds: string[];
+    nextOwner: string | null;
+} {
+    const owner = findLayoutOwner(groups, termId);
+    if (!owner || !groups) {
+        return { next: groups, remainingIds: [], nextOwner: null };
+    }
+    const layout = groups[owner];
+    if (!layout) {
+        return { next: groups, remainingIds: [], nextOwner: null };
+    }
+
+    const dropped = dropTerm(layout, termId);
+    const next: PaneLayoutGroups = { ...groups };
+    delete next[owner];
+    const remainingIds = dropped ? visibleTermIds(dropped).filter((id) => id !== termId) : [];
+
+    if (dropped && isSplitLayout(dropped) && remainingIds.length > 0) {
+        const nextOwner = remainingIds.includes(owner) ? owner : remainingIds[0];
+        next[nextOwner] = dropped;
+        return { next, remainingIds, nextOwner };
+    }
+
+    return {
+        next: Object.keys(next).length > 0 ? next : undefined,
+        remainingIds,
+        nextOwner: remainingIds[0] ?? null,
+    };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

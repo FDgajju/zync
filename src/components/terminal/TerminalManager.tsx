@@ -8,7 +8,7 @@ import { cn } from '../../lib/utils';
 import { once, type UnlistenFn } from '@tauri-apps/api/event';
 import { queueTerminalInput } from '../../lib/terminal';
 import { LOCAL_TERMINAL_CONNECTION_ID } from '../../lib/terminal/connectionIds';
-import { isSplitLayout, layoutForTerm } from '../../lib/paneLayout';
+import { findLayoutOwner, isSplitLayout, layoutForTerm } from '../../lib/paneLayout';
 import { PaneLayoutView } from './PaneLayoutView';
 
 // TerminalTab interface is now in store/terminalSlice
@@ -56,7 +56,7 @@ export function TerminalManager({
     // Actions (stable)
     const createTerminal = useAppStore(state => state.createTerminal);
     const ensureTerminal = useAppStore(state => state.ensureTerminal);
-    const closeTerminal = useAppStore(state => state.closeTerminal);
+    const closeTerminalGroup = useAppStore(state => state.closeTerminalGroup);
     const setActiveTerminal = useAppStore(state => state.setActiveTerminal);
     const terminalTransparencyEnabled = useAppStore(
         state => state.settings.enableVibrancy && (state.settings.windowOpacity ?? 1) < 1
@@ -152,7 +152,12 @@ export function TerminalManager({
             const { connectionId: targetConnId } = e.detail;
             const currentActiveTabId = activeTabIdRef.current;
             if (targetConnId === activeConnectionId && currentActiveTabId) {
-                closeTerminal(activeConnectionId!, currentActiveTabId);
+                const store = useAppStore.getState();
+                const owner = findLayoutOwner(
+                    store.paneLayouts[activeConnectionId!],
+                    currentActiveTabId,
+                ) ?? currentActiveTabId;
+                store.closeTerminalGroup(activeConnectionId!, owner);
             }
         };
 
@@ -197,7 +202,7 @@ export function TerminalManager({
     const handleCloseTab = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (activeConnectionId) {
-            closeTerminal(activeConnectionId, id);
+            closeTerminalGroup(activeConnectionId, id);
         }
     };
 

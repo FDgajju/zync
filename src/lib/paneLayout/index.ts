@@ -14,6 +14,7 @@ export {
 } from './ops';
 export { parsePaneLayout, snapshotPaneLayouts } from './persist';
 export {
+    detachTermFromGroups,
     findLayoutOwner,
     layoutForTerm,
     parsePaneLayoutGroups,

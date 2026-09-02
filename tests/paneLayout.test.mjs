@@ -7,6 +7,7 @@ import {
   leafCount,
   parsePaneLayout,
   parsePaneLayoutGroups,
+  detachTermFromGroups,
   sanitizePaneLayout,
   selectTerm,
   setSplitSizes,
@@ -262,4 +263,31 @@ runTest('parsePaneLayoutGroups keeps disjoint owners and drops overlapping or ow
     known,
   );
   assert.equal(ownerless['term-z'], undefined);
+});
+
+runTest('detachTermFromGroups drops one pane and keeps the rest of the tab', () => {
+  const first = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'vertical', { kind: 'term', termId: 'term-b' });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const bLeaf = first.layout.root.type === 'split' ? first.layout.root.children[1] : null;
+  assert.ok(bLeaf && bLeaf.type === 'pane');
+  const nested = splitPane(first.layout, bLeaf.id, 'horizontal', { kind: 'term', termId: 'term-c' });
+  assert.equal(nested.ok, true);
+  if (!nested.ok) return;
+
+  const extraGone = detachTermFromGroups({ 'term-a': nested.layout }, 'term-c');
+  assert.ok(extraGone.next?.['term-a']);
+  assert.deepEqual(extraGone.remainingIds.sort(), ['term-a', 'term-b']);
+  assert.equal(extraGone.nextOwner, 'term-a');
+
+  const ownerGone = detachTermFromGroups({ 'term-a': nested.layout }, 'term-a');
+  assert.equal(ownerGone.next?.['term-a'], undefined);
+  assert.ok(ownerGone.next?.[ownerGone.nextOwner ?? '']);
+  assert.equal(ownerGone.remainingIds.includes('term-a'), false);
+  assert.equal(ownerGone.remainingIds.length, 2);
+
+  const lastExtra = detachTermFromGroups({ 'term-a': first.layout }, 'term-b');
+  assert.equal(lastExtra.next, undefined);
+  assert.deepEqual(lastExtra.remainingIds, ['term-a']);
+  assert.equal(lastExtra.nextOwner, 'term-a');
 });

@@ -256,7 +256,7 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
 
     // Terminal Store Selectors - Optimized
     const createTerminal = useAppStore(state => state.createTerminal);
-    const closeTerminal = useAppStore(state => state.closeTerminal);
+    const closeTerminalGroup = useAppStore(state => state.closeTerminalGroup);
     const setActiveTerminal = useAppStore(state => state.setActiveTerminal);
 
     // Feature Pinning
@@ -500,9 +500,9 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
 
     const handleTerminalClose = useCallback((termId: string) => {
         if (tab.connectionId) {
-            closeTerminal(tab.connectionId, termId);
+            closeTerminalGroup(tab.connectionId, termId);
         }
-    }, [tab.connectionId, closeTerminal]);
+    }, [tab.connectionId, closeTerminalGroup]);
 
     const handleNewTerminal = useCallback((shell?: ShellEntry) => {
         if (!tab.connectionId) return;
@@ -726,7 +726,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         terminalService.setCloseTabHandler((connectionId, termId) => {
-            useAppStore.getState().closeTerminal(connectionId, termId);
+            useAppStore.getState().closePaneOnShellExit(connectionId, termId);
         });
         return () => terminalService.setCloseTabHandler(null);
     }, []);
