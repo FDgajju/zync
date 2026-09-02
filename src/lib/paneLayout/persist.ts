@@ -1,5 +1,5 @@
 import { normalizeSizes, sanitizePaneLayout } from './ops';
-import { isPaneLeaf, isPaneSplit, isSafePaneLayout } from './query';
+import { isPaneSplit, isSafePaneLayout } from './query';
 import { MAX_PANE_NESTING, PANE_LAYOUT_VERSION, type PaneLayout, type PaneNode, type SplitDirection } from './types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -47,7 +47,7 @@ export function parsePaneLayout(raw: unknown, knownTermIds: ReadonlySet<string>)
     if (!isRecord(raw)) return null;
     const root = parseNode(raw.root);
     if (!root) return null;
-    const activePaneId = typeof raw.activePaneId === 'string' ? raw.activePaneId : (isPaneLeaf(root) ? root.id : root.id);
+    const activePaneId = typeof raw.activePaneId === 'string' ? raw.activePaneId : root.id;
     const layout: PaneLayout = {
         version: PANE_LAYOUT_VERSION,
         root,

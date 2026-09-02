@@ -13,12 +13,15 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Split chrome**: Focused pane shows a quiet accent on its inner seams only (1px hairline dividers; double-click a seam to even both sides). ([8169fbd])
 
 ### Fixed
-- **Session tab cap with splits**: Hidden split panes whose owner is kept are persisted; combined visible + hidden tabs never exceed 20 per host. Owners that cannot fit with their extra panes are dropped so restore does not reference discarded shells. ([655a71c])
+- **Session tab cap with splits**: Hidden split panes whose owner is kept are persisted; combined visible + hidden tabs never exceed 20 per host. If extras cannot fit, the owner tab is kept and extras are dropped. ([655a71c])
 - **Unsplit leftover tabs**: The sibling kept when a split group is removed is shown on the tab bar (`tabVisible`), not left as a hidden pane. ([655a71c])
 - **One reconnect card while split**: A disconnected host no longer repeats Resume session in every pane. The split comes back after connect.
 - **Shell exit in a split pane**: `exit` / Ctrl+D closes that pane only. The rest of the split tab stays; closing the tab with × still closes every pane in the group. SSH channel EOF no longer drops the whole host while other panes are still live. Channel Close / ExitSignal also end that pane so logout is not left stuck on screen. ([0a0e016], [0112f52], [e4b307a])
 - **Pane drag prompt reprint**: Dragging a split divider no longer SIGWINCHes the PTY on every move, which reprinted `user@host` prompts. The shell is resized once when the drag ends.
 - **Split cursor after restore**: Highlight and blinking cursor stay on the same pane after reconnect; only the focused pane takes DOM focus. ([e6e2aae], [72596b4])
+- **SSH drop while split**: A dead transport with several live panes suspends the group instead of closing extras as if each had typed `exit`.
+- **Unsplit owner in a nested split**: Removing the owner leaf rekeys the leftover group so that shell stays a real tab.
+- **Split chords in fields**: Ctrl+Shift+arrows are not consumed in inputs, off the terminal view, or when the pane cap is already reached.
 
 ## [2.28.0] - 2026-09-02
 

@@ -1,11 +1,4 @@
-/**
- * Workspace pane layout. A node is either a pane (one shell) or a split
- * (two children + sizes). Never both. v1 UI caps visible leaves at
- * MAX_VISIBLE_PANES (4). Nested splits are first-class; raising the cap
- * later does not change this module's shape.
- *
- * `vertical` = stacked (column). `horizontal` = side by side (row).
- */
+/** `vertical` = stacked (column). `horizontal` = side by side (row). */
 
 export const PANE_LAYOUT_VERSION = 1 as const;
 export const MAX_VISIBLE_PANES = 4;

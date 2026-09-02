@@ -9,6 +9,7 @@ import type { ShellEntry } from '../../lib/shells/types';
 import { ShellIcon } from '../icons/ShellIcon';
 import { FEATURE_META, formatFeatureShortcut, type FeatureId } from './featureMeta';
 import { formatShortcutLabel } from '../../lib/shortcuts';
+import { SHORTCUT_CATALOG } from '../../features/shortcuts/catalog';
 import { defaultSettings } from '../../store/settingsSlice';
 import { Tooltip } from '../ui/Tooltip';
 import { TopbarDropdown } from '../ui/TopbarDropdown';
@@ -57,7 +58,6 @@ function findPreferredShellId(shells: ShellEntry[]): string | undefined {
     return shells.find(isCommonShellCandidate)?.id ?? shells[0]?.id;
 }
 
-/** Rounded pane with one divider — reads cleaner at 14–16px than lucide SquareSplit. */
 function SplitPaneIcon({
     direction,
     size = 15,
@@ -171,6 +171,9 @@ export const CombinedTabBar = memo(function CombinedTabBar({
     const splitBinding = useAppStore(state =>
         state.settings.keybindings?.splitPanes || defaultSettings.keybindings.splitPanes,
     );
+    const stackedSplitBinding = SHORTCUT_CATALOG.find(command => command.id === 'splitPanes')
+        ?.extraKeys?.find(chord => chord.endsWith('ArrowDown'))
+        ?? 'Ctrl+Shift+ArrowDown';
     const canOpenFeature = Boolean(onOpenFeature);
     const shellById = useMemo(
         () => new Map(availableShells.map(shell => [shell.id, shell] as const)),
@@ -624,7 +627,7 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                             </Tooltip>
                             <div className="w-px h-4 bg-app-border/50" />
                             <Tooltip
-                                content={`Split stacked (${formatShortcutLabel('Ctrl+Shift+ArrowDown')})`}
+                                content={`Split stacked (${formatShortcutLabel(stackedSplitBinding)})`}
                                 position="bottom"
                             >
                                 <button
