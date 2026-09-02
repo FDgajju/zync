@@ -111,6 +111,24 @@ runTest('selectTerm focuses an on-screen shell or replaces the active pane', () 
   assert.equal(leafCount(replaced.root), 2);
 });
 
+runTest('detachTermFromGroups rekeys when the owner term leaves a nested split', () => {
+  const first = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const right = first.layout.root.type === 'split' ? first.layout.root.children[1] : null;
+  assert.ok(right);
+  const nested = splitPane(first.layout, right.id, 'vertical', { kind: 'term', termId: 'term-c' });
+  assert.equal(nested.ok, true);
+  if (!nested.ok) return;
+  const { next, nextOwner, remainingIds } = detachTermFromGroups({ 'term-a': nested.layout }, 'term-a');
+  assert.ok(nextOwner);
+  assert.notEqual(nextOwner, 'term-a');
+  assert.equal(remainingIds.includes('term-a'), false);
+  assert.ok(next?.[nextOwner]);
+  assert.equal(isSplitLayout(next[nextOwner]), true);
+  assert.deepEqual(visibleTermIds(next[nextOwner]).sort(), ['term-b', 'term-c']);
+});
+
 runTest('detachTermFromGroups drops an extra pane and keeps the owner tab', () => {
   const first = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
   assert.equal(first.ok, true);

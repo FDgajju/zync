@@ -9,6 +9,7 @@ import {
     findNode,
     firstLeaf,
     focusPane as focusPaneInLayout,
+    isPaneLeaf,
     isSplitLayout,
     layoutActiveTermId,
     findLayoutOwner,
@@ -20,7 +21,6 @@ import {
     setSplitSizes,
     singlePane,
     splitPane,
-    unsplitPane,
     visibleTermIds,
     type PaneLayout,
     type PaneLayoutGroups,
@@ -141,20 +141,6 @@ const ipc = window.ipcRenderer;
 
 function isTabVisible(tab: TerminalTab): boolean {
     return tab.tabVisible !== false;
-}
-
-function setGroupLayout(
-    groups: PaneLayoutGroups | undefined,
-    owner: string,
-    layout: PaneLayout | null,
-): PaneLayoutGroups | undefined {
-    const next = { ...(groups ?? {}) };
-    if (layout && isSplitLayout(layout)) {
-        next[owner] = layout;
-        return next;
-    }
-    delete next[owner];
-    return Object.keys(next).length > 0 ? next : undefined;
 }
 
 export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> = (set, get) => ({
@@ -601,6 +587,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             const layout = groups?.[owner] ?? singlePane(owner);
             if (!canSplit(layout)) return state;
 
+            const sourceTab = tabs.find(t => t.id === activeId) ?? tabs.find(t => t.id === owner);
             const otherId = `term-${crypto.randomUUID()}`;
             const nextTabs = [
                 ...tabs,
@@ -608,20 +595,24 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                     id: otherId,
                     title: `${tabs.find(t => t.id === owner)?.title ?? 'Shell'} · pane`,
                     tabVisible: false,
-                    shellOverride: tabs.find(t => t.id === owner)?.shellOverride,
+                    shellOverride: sourceTab?.shellOverride,
+                    initialPath: sourceTab?.lastKnownCwd ?? sourceTab?.initialPath,
+                    lastKnownCwd: sourceTab?.lastKnownCwd,
                 },
             ];
 
             const target = findNode(layout.root, layout.activePaneId) ?? firstLeaf(layout.root);
             const result = splitPane(layout, target.id, direction, { kind: 'term', termId: otherId });
             if (!result.ok) return state;
+            const focused = focusPaneInLayout(result.layout, result.newPaneId);
 
             const nextLayouts = { ...state.paneLayouts };
-            nextLayouts[connectionId] = { ...(groups ?? {}), [owner]: result.layout };
+            nextLayouts[connectionId] = { ...(groups ?? {}), [owner]: focused };
 
             return {
                 terminals: { ...state.terminals, [connectionId]: nextTabs },
                 paneLayouts: nextLayouts,
+                activeTerminalIds: { ...state.activeTerminalIds, [connectionId]: otherId },
             };
         });
         scheduleSaveSession(() => get().saveSession());
@@ -636,27 +627,28 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             const layout = owner ? groups?.[owner] : undefined;
             if (!owner || !layout || !isSplitLayout(layout)) return state;
 
-            const next = unsplitPane(layout, layout.activePaneId);
-            const stillSplit = isSplitLayout(next) ? new Set(visibleTermIds(next)) : new Set<string>();
-            const leftoverSet = new Set(visibleTermIds(layout).filter(id => !stillSplit.has(id)));
-            const nextTabs = (state.terminals[connectionId] || []).map(t =>
-                leftoverSet.has(t.id) && t.tabVisible === false
-                    ? { ...t, tabVisible: true }
-                    : t
-            );
+            const focused = findNode(layout.root, layout.activePaneId);
+            if (!focused || !isPaneLeaf(focused) || focused.content.kind !== 'term') return state;
+            const focusedTerm = focused.content.termId;
+            const { next, nextOwner } = detachTermFromGroups(groups, focusedTerm);
+
+            const nextTabs = (state.terminals[connectionId] || []).map(t => {
+                if (t.id === focusedTerm || (nextOwner && t.id === nextOwner)) {
+                    return { ...t, tabVisible: true };
+                }
+                return t;
+            });
 
             const nextLayouts = { ...state.paneLayouts };
-            const nextGroups = setGroupLayout(groups, owner, isSplitLayout(next) ? next : null);
-            if (nextGroups) {
-                nextLayouts[connectionId] = nextGroups;
+            if (next) {
+                nextLayouts[connectionId] = next;
             } else {
                 delete nextLayouts[connectionId];
             }
-            const keepId = layoutActiveTermId(next) ?? owner;
             return {
                 terminals: { ...state.terminals, [connectionId]: nextTabs },
                 paneLayouts: nextLayouts,
-                activeTerminalIds: { ...state.activeTerminalIds, [connectionId]: keepId },
+                activeTerminalIds: { ...state.activeTerminalIds, [connectionId]: focusedTerm },
             };
         });
         scheduleSaveSession(() => get().saveSession());
