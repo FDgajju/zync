@@ -52,12 +52,16 @@ export function parsePaneLayoutGroups(raw: unknown, knownTermIds: ReadonlySet<st
         return { [owner]: layout };
     }
     const out: PaneLayoutGroups = {};
+    const seen = new Set<string>();
     for (const [owner, value] of Object.entries(raw)) {
         if (!knownTermIds.has(owner)) continue;
         const layout = parsePaneLayout(value, knownTermIds);
-        if (layout && isSplitLayout(layout)) {
-            out[owner] = layout;
-        }
+        if (!layout || !isSplitLayout(layout)) continue;
+        const ids = visibleTermIds(layout);
+        if (!ids.includes(owner)) continue;
+        if (ids.some((id) => seen.has(id))) continue;
+        for (const id of ids) seen.add(id);
+        out[owner] = layout;
     }
     return out;
 }

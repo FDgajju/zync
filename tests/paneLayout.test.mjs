@@ -6,6 +6,7 @@ import {
   isSplitLayout,
   leafCount,
   parsePaneLayout,
+  parsePaneLayoutGroups,
   sanitizePaneLayout,
   selectTerm,
   setSplitSizes,
@@ -232,4 +233,33 @@ runTest('snapshot keeps only real splits', () => {
   );
   assert.ok(snapped.host);
   assert.equal(snapped.local, undefined);
+});
+
+runTest('parsePaneLayoutGroups keeps disjoint owners and drops overlapping or ownerless trees', () => {
+  const ab = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'vertical', { kind: 'term', termId: 'term-b' });
+  const cd = splitPane(singlePane('term-c', 'pane-c'), 'pane-c', 'horizontal', { kind: 'term', termId: 'term-d' });
+  const cb = splitPane(singlePane('term-c', 'pane-c'), 'pane-c', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(ab.ok && cd.ok && cb.ok, true);
+  if (!ab.ok || !cd.ok || !cb.ok) return;
+
+  const known = new Set(['term-a', 'term-b', 'term-c', 'term-d', 'term-z']);
+  const ok = parsePaneLayoutGroups(
+    { 'term-a': ab.layout, 'term-c': cd.layout },
+    known,
+  );
+  assert.ok(ok['term-a']);
+  assert.ok(ok['term-c']);
+
+  const overlap = parsePaneLayoutGroups(
+    { 'term-a': ab.layout, 'term-c': cb.layout },
+    known,
+  );
+  assert.ok(overlap['term-a']);
+  assert.equal(overlap['term-c'], undefined);
+
+  const ownerless = parsePaneLayoutGroups(
+    { 'term-z': ab.layout },
+    known,
+  );
+  assert.equal(ownerless['term-z'], undefined);
 });
