@@ -7,7 +7,7 @@ import { Terminal as TerminalIcon, Plus, X, Zap } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { once, type UnlistenFn } from '@tauri-apps/api/event';
 import { queueTerminalInput } from '../../lib/terminal';
-import { isSplitLayout } from '../../lib/paneLayout';
+import { isSplitLayout, layoutForTerm } from '../../lib/paneLayout';
 import { PaneLayoutView } from './PaneLayoutView';
 
 // TerminalTab interface is now in store/terminalSlice
@@ -35,9 +35,18 @@ export function TerminalManager({
     const activeConnectionId = connectionId || globalActiveId;
 
     // Zustand Store Hooks - Optimized
-    const tabs = useAppStore(useShallow(state => activeConnectionId ? (state.terminals[activeConnectionId] || []) : []));
+    const tabs = useAppStore(useShallow(state =>
+        activeConnectionId
+            ? (state.terminals[activeConnectionId] || []).filter(tab => tab.tabVisible !== false)
+            : [],
+    ));
     const activeTabId = useAppStore(state => activeConnectionId ? (state.activeTerminalIds[activeConnectionId] || null) : null);
-    const paneLayout = useAppStore(state => activeConnectionId ? state.paneLayouts[activeConnectionId] : undefined);
+    const paneLayout = useAppStore((state) => {
+        if (!activeConnectionId) return undefined;
+        const activeId = state.activeTerminalIds[activeConnectionId];
+        if (!activeId) return undefined;
+        return layoutForTerm(state.paneLayouts[activeConnectionId], activeId);
+    });
 
     // Actions (stable)
     const createTerminal = useAppStore(state => state.createTerminal);

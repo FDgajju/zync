@@ -1,6 +1,7 @@
 import { useCallback, type ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 import {
+    findLayoutOwner,
     findNode,
     isPaneLeaf,
     isPaneSplit,
@@ -30,7 +31,11 @@ export function PaneLayoutView({
     }, [connectionId, resizePanes]);
 
     const onDragEnd = useCallback((splitId: string) => {
-        const current = useAppStore.getState().paneLayouts[connectionId];
+        const store = useAppStore.getState();
+        const activeId = store.activeTerminalIds[connectionId];
+        if (!activeId) return;
+        const owner = findLayoutOwner(store.paneLayouts[connectionId], activeId);
+        const current = owner ? store.paneLayouts[connectionId]?.[owner] : undefined;
         if (!current) return;
         const node = findNode(current.root, splitId);
         if (node && isPaneSplit(node)) {
@@ -50,7 +55,13 @@ export function PaneLayoutView({
                         'h-full w-full min-h-0 min-w-0 overflow-hidden',
                         focused ? 'ring-1 ring-inset ring-app-accent/35' : 'ring-0',
                     )}
-                    onMouseDown={() => focusPane(connectionId, node.id)}
+                    onMouseDown={(event) => {
+                        focusPane(connectionId, node.id);
+                        if (!(event.target instanceof Element) || !event.target.closest('.xterm')) {
+                            const helper = event.currentTarget.querySelector<HTMLTextAreaElement>('.xterm-helper-textarea');
+                            helper?.focus();
+                        }
+                    }}
                 >
                     <TerminalComponent
                         connectionId={connectionId}
@@ -58,6 +69,7 @@ export function PaneLayoutView({
                         isWorkspaceActive={workspaceActive}
                         isTerminalView
                         isActiveTab
+                        isFocused={focused}
                         isVisible={panelVisible}
                     />
                 </div>

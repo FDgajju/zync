@@ -1,6 +1,6 @@
 import type { Tab } from '../features/connections/domain/types.js';
 import type { VaultProfileId } from '../vault/profileTypes.js';
-import { snapshotPaneLayouts, type PaneLayout } from '../lib/paneLayout';
+import { snapshotPaneLayoutGroups, visibleTermIds, type PaneLayoutGroups } from '../lib/paneLayout';
 
 export interface TerminalTabSnapshot {
     id: string;
@@ -9,6 +9,7 @@ export interface TerminalTabSnapshot {
     initialPath?: string;
     isSynced?: boolean;
     shellOverride?: string;
+    tabVisible?: boolean;
 }
 
 export interface TabSnapshot {
@@ -28,7 +29,7 @@ export interface SessionData {
     tabs: TabSnapshot[];
     terminals: Record<string, TerminalTabSnapshot[]>;
     activeTerminalIds: Record<string, string>;
-    paneLayouts?: Record<string, PaneLayout>;
+    paneLayouts?: Record<string, PaneLayoutGroups>;
 }
 
 export interface SessionStoreSnapshot {
@@ -38,7 +39,7 @@ export interface SessionStoreSnapshot {
     tabs: Tab[];
     terminals: Record<string, SessionTerminalTabState[]>;
     activeTerminalIds: Record<string, string | null>;
-    paneLayouts?: Record<string, PaneLayout | undefined>;
+    paneLayouts?: Record<string, PaneLayoutGroups | undefined>;
 }
 
 export interface SessionTerminalTabState {
@@ -48,24 +49,57 @@ export interface SessionTerminalTabState {
     initialPath?: string;
     isSynced?: boolean;
     shellOverride?: string;
+    tabVisible?: boolean;
 }
 
 export const MAX_TABS_PER_SCOPE = 20;
 
+function keepTerminalsForSession(
+    tabs: SessionTerminalTabState[],
+    groups: PaneLayoutGroups | undefined,
+    cap = MAX_TABS_PER_SCOPE,
+): SessionTerminalTabState[] {
+    const visibleAll = tabs.filter(t => t.tabVisible !== false);
+    const byId = new Map(tabs.map(t => [t.id, t]));
+    const keptVisible: SessionTerminalTabState[] = [];
+    const keptHidden: SessionTerminalTabState[] = [];
+    let remaining = cap;
+
+    for (const tab of visibleAll) {
+        const extraHidden: SessionTerminalTabState[] = [];
+        const layout = groups?.[tab.id];
+        if (layout) {
+            for (const id of visibleTermIds(layout)) {
+                if (id === tab.id) continue;
+                const extra = byId.get(id);
+                if (extra && extra.tabVisible === false) extraHidden.push(extra);
+            }
+        }
+        const needed = 1 + extraHidden.length;
+        if (needed > remaining) continue;
+        keptVisible.push(tab);
+        keptHidden.push(...extraHidden);
+        remaining -= needed;
+    }
+
+    return [...keptVisible, ...keptHidden];
+}
+
 export function buildSessionData(state: SessionStoreSnapshot): SessionData {
     const filteredTabs = (state.tabs ?? []).filter(t => t.type !== 'settings');
     const terminals = Object.fromEntries(
-        Object.entries(state.terminals ?? {}).map(([connId, tabs]) => [
-            connId,
-            tabs.slice(0, MAX_TABS_PER_SCOPE).map(t => ({
+        Object.entries(state.terminals ?? {}).map(([connId, tabs]) => {
+            const kept = keepTerminalsForSession(tabs, state.paneLayouts?.[connId]);
+            return [connId, kept.map(t => ({
                 id: t.id,
                 title: t.title,
                 cwd: t.lastKnownCwd,
                 initialPath: t.initialPath,
                 isSynced: t.isSynced,
                 ...(t.shellOverride !== undefined && { shellOverride: t.shellOverride }),
-            })),
-        ]),
+                ...(t.tabVisible === false && { tabVisible: false as const }),
+            }))];
+        }),
     ) as Record<string, TerminalTabSnapshot[]>;
 
     return {
@@ -93,6 +127,6 @@ export function buildSessionData(state: SessionStoreSnapshot): SessionData {
                         (terminals[entry[0]] ?? []).some(tab => tab.id === entry[1]),
                 ),
         ),
-        paneLayouts: snapshotPaneLayouts(state.paneLayouts ?? {}, terminals),
+        paneLayouts: snapshotPaneLayoutGroups(state.paneLayouts ?? {}, terminals),
     };
 }

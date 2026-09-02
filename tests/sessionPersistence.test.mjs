@@ -144,10 +144,102 @@ runTest('buildSessionData paneLayouts ignore tabs beyond MAX_TABS_PER_SCOPE', ()
     tabs: [makeConnectionTab()],
     terminals: { conn1: tabs },
     activeTerminalIds: { conn1: 'term-0' },
-    paneLayouts: { conn1: split.layout },
+    paneLayouts: { conn1: { 'term-0': split.layout } },
   });
 
   assert.equal(data.terminals.conn1.some((tab) => tab.id === overflowId), false);
+  assert.equal(data.paneLayouts.conn1, undefined);
+});
+
+runTest('buildSessionData drops hidden split panes whose owner was truncated', () => {
+  const visibleTabs = Array.from({ length: MAX_TABS_PER_SCOPE + 1 }, (_, index) => makeTerminal(index));
+  const overflowOwner = `term-${MAX_TABS_PER_SCOPE}`;
+  const hiddenChild = {
+    ...makeTerminal(99),
+    id: 'term-hidden',
+    tabVisible: false,
+  };
+  const keptSplit = splitPane(singlePane('term-0', 'pane-a'), 'pane-a', 'vertical', { kind: 'term', termId: 'term-kept-hidden' });
+  const overflowSplit = splitPane(singlePane(overflowOwner, 'pane-b'), 'pane-b', 'vertical', { kind: 'term', termId: 'term-hidden' });
+  assert.equal(keptSplit.ok && overflowSplit.ok, true);
+  if (!keptSplit.ok || !overflowSplit.ok) return;
+
+  const data = buildSessionData({
+    activeTabId: 'tab-1',
+    activeConnectionId: 'conn-1',
+    tabs: [makeConnectionTab()],
+    terminals: {
+      conn1: [
+        ...visibleTabs,
+        { ...makeTerminal(98), id: 'term-kept-hidden', tabVisible: false },
+        hiddenChild,
+      ],
+    },
+    activeTerminalIds: { conn1: 'term-0' },
+    paneLayouts: {
+      conn1: {
+        'term-0': keptSplit.layout,
+        [overflowOwner]: overflowSplit.layout,
+      },
+    },
+  });
+
+  assert.equal(data.terminals.conn1.some((tab) => tab.id === 'term-kept-hidden'), true);
+  assert.equal(data.terminals.conn1.some((tab) => tab.id === 'term-hidden'), false);
+  assert.ok(data.paneLayouts.conn1?.['term-0']);
+  assert.equal(data.paneLayouts.conn1?.[overflowOwner], undefined);
+  assert.ok(data.terminals.conn1.length <= MAX_TABS_PER_SCOPE);
+});
+
+runTest('buildSessionData keeps pane-referenced hidden tabs without exceeding the cap', () => {
+  const owner = makeTerminal(0);
+  const hiddenA = { ...makeTerminal(101), id: 'term-hidden-a', tabVisible: false };
+  const hiddenB = { ...makeTerminal(102), id: 'term-hidden-b', tabVisible: false };
+  const first = splitPane(singlePane(owner.id, 'pane-a'), 'pane-a', 'vertical', { kind: 'term', termId: hiddenA.id });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const nested = splitPane(first.layout, first.layout.root.children[1].id, 'horizontal', { kind: 'term', termId: hiddenB.id });
+  assert.equal(nested.ok, true);
+  if (!nested.ok) return;
+
+  const rest = Array.from({ length: MAX_TABS_PER_SCOPE - 1 }, (_, index) => makeTerminal(index + 1));
+  const data = buildSessionData({
+    activeTabId: 'tab-1',
+    activeConnectionId: 'conn-1',
+    tabs: [makeConnectionTab()],
+    terminals: { conn1: [owner, ...rest, hiddenA, hiddenB] },
+    activeTerminalIds: { conn1: owner.id },
+    paneLayouts: { conn1: { [owner.id]: nested.layout } },
+  });
+
+  assert.equal(data.terminals.conn1.length, MAX_TABS_PER_SCOPE);
+  assert.equal(data.terminals.conn1.filter((tab) => tab.tabVisible === false).length, 2);
+  assert.equal(data.terminals.conn1.some((tab) => tab.id === hiddenA.id), true);
+  assert.equal(data.terminals.conn1.some((tab) => tab.id === hiddenB.id), true);
+  assert.ok(data.paneLayouts.conn1?.[owner.id]);
+  assert.equal(data.terminals.conn1.some((tab) => tab.id === `term-${MAX_TABS_PER_SCOPE - 1}`), false);
+});
+
+runTest('buildSessionData skips a split owner that cannot fit with its hidden panes', () => {
+  const singles = Array.from({ length: MAX_TABS_PER_SCOPE - 1 }, (_, index) => makeTerminal(index));
+  const owner = makeTerminal(MAX_TABS_PER_SCOPE - 1);
+  const hidden = { ...makeTerminal(200), id: 'term-late-hidden', tabVisible: false };
+  const split = splitPane(singlePane(owner.id, 'pane-z'), 'pane-z', 'vertical', { kind: 'term', termId: hidden.id });
+  assert.equal(split.ok, true);
+  if (!split.ok) return;
+
+  const data = buildSessionData({
+    activeTabId: 'tab-1',
+    activeConnectionId: 'conn-1',
+    tabs: [makeConnectionTab()],
+    terminals: { conn1: [...singles, owner, hidden] },
+    activeTerminalIds: { conn1: owner.id },
+    paneLayouts: { conn1: { [owner.id]: split.layout } },
+  });
+
+  assert.equal(data.terminals.conn1.length, MAX_TABS_PER_SCOPE - 1);
+  assert.equal(data.terminals.conn1.some((tab) => tab.id === owner.id), false);
+  assert.equal(data.terminals.conn1.some((tab) => tab.id === hidden.id), false);
   assert.equal(data.paneLayouts.conn1, undefined);
 });
 
