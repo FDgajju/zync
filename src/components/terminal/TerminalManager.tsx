@@ -7,6 +7,7 @@ import { Terminal as TerminalIcon, Plus, X, Zap } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { once, type UnlistenFn } from '@tauri-apps/api/event';
 import { queueTerminalInput } from '../../lib/terminal';
+import { LOCAL_TERMINAL_CONNECTION_ID } from '../../lib/terminal/connectionIds';
 import { isSplitLayout, layoutForTerm } from '../../lib/paneLayout';
 import { PaneLayoutView } from './PaneLayoutView';
 
@@ -46,6 +47,10 @@ export function TerminalManager({
         const activeId = state.activeTerminalIds[activeConnectionId];
         if (!activeId) return undefined;
         return layoutForTerm(state.paneLayouts[activeConnectionId], activeId);
+    });
+    const hostConnected = useAppStore((state) => {
+        if (!activeConnectionId || activeConnectionId === LOCAL_TERMINAL_CONNECTION_ID) return true;
+        return state.connections.find((c) => c.id === activeConnectionId)?.status === 'connected';
     });
 
     // Actions (stable)
@@ -263,7 +268,7 @@ export function TerminalManager({
                         <p>No active terminals</p>
                         <button onClick={handleNewTab} className="mt-4 text-app-accent hover:underline">Open New Terminal</button>
                     </div>
-                ) : activeTabId && terminalView && paneLayout && isSplitLayout(paneLayout) ? (
+                ) : activeTabId && terminalView && hostConnected && paneLayout && isSplitLayout(paneLayout) ? (
                     <div className="absolute inset-0 z-10">
                         <PaneLayoutView
                             connectionId={activeConnectionId}
