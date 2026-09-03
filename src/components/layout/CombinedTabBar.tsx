@@ -2,18 +2,18 @@ import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { cn } from '../../lib/utils';
-import { Plus, ChevronDown, X, Plug, Terminal as TerminalIcon, Loader2, RotateCw, PanelRight } from 'lucide-react';
+import { Plus, X, Plug, PanelRight, Terminal as TerminalIcon } from 'lucide-react';
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import type { ShellEntry } from '../../lib/shells/types';
 import { ShellIcon } from '../icons/ShellIcon';
-import { FEATURE_META, formatFeatureShortcut, type FeatureId } from './featureMeta';
+import { FEATURE_META, type FeatureId } from './featureMeta';
 import { formatShortcutLabel } from '../../lib/shortcuts';
 import { SHORTCUT_CATALOG } from '../../features/shortcuts/catalog';
 import { defaultSettings } from '../../store/settingsSlice';
 import { Tooltip } from '../ui/Tooltip';
-import { TopbarDropdown } from '../ui/TopbarDropdown';
 import { findLayoutOwner, isSplitLayout, type SplitDirection } from '../../lib/paneLayout';
+import { WorkspaceOpenMenu } from './workspaceOpen';
 
 
 interface CombinedTabBarProps {
@@ -413,189 +413,63 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                 })}
             </div>
 
-            {/* 3. Actions: [+|⌄] */}
-            <div className="flex items-center bg-app-surface/30 rounded-lg p-0.5 border border-app-border/30 drag-none shrink-0 ml-1" data-tauri-drag-region="false">
-                <Tooltip content="New Shell" position="bottom">
+            <div
+                className="relative flex items-center bg-app-surface/30 rounded-lg p-0.5 border border-app-border/30 drag-none shrink-0 ml-1"
+                data-tauri-drag-region="false"
+                ref={dropdownRef}
+            >
+                <Tooltip content="Open a tab" position="bottom">
                     <button
-                        onClick={() => onNewTerminal()}
-                        className="h-6 w-7 flex items-center justify-center rounded hover:bg-app-surface hover:text-white text-app-accent transition-colors"
+                        ref={dropdownButtonRef}
+                        type="button"
+                        aria-haspopup="dialog"
+                        aria-expanded={isDropdownOpen}
+                        aria-label="Open a tab"
+                        onClick={() => {
+                            const opening = !isDropdownOpen;
+                            if (opening && dropdownButtonRef.current) {
+                                const rect = dropdownButtonRef.current.getBoundingClientRect();
+                                const spaceRight = window.innerWidth - rect.left;
+                                setDropdownAlign(spaceRight >= 288 ? 'left' : 'right');
+                            }
+                            setIsDropdownOpen(opening);
+                            if (opening && onRefetchShells) {
+                                requestAnimationFrame(() => onRefetchShells());
+                            }
+                        }}
+                        className={cn(
+                            'h-6 w-7 flex items-center justify-center rounded transition-colors',
+                            isDropdownOpen
+                                ? 'bg-app-surface text-white'
+                                : 'hover:bg-app-surface hover:text-white text-app-accent',
+                        )}
                     >
                         <Plus size={14} strokeWidth={3} />
                     </button>
                 </Tooltip>
-
-                <div className="w-px h-4 bg-app-border/50" />
-
-                <div className="relative" ref={dropdownRef}>
-                    <Tooltip content="Open shells and features" position="bottom">
-                        <button
-                            ref={dropdownButtonRef}
-                            onClick={() => {
-                                const opening = !isDropdownOpen;
-                                if (opening && dropdownButtonRef.current) {
-                                    const rect = dropdownButtonRef.current.getBoundingClientRect();
-                                    const spaceRight = window.innerWidth - rect.left;
-                                    setDropdownAlign(spaceRight >= 208 ? 'left' : 'right');
-                                }
-                                setIsDropdownOpen(opening);
-                                if (opening && onRefetchShells) {
-                                    requestAnimationFrame(() => onRefetchShells());
-                                }
-                            }}
-                            className={cn(
-                                "h-6 w-6 flex items-center justify-center rounded hover:bg-app-surface transition-colors",
-                                isDropdownOpen ? "text-app-text bg-app-surface" : "text-app-muted"
-                            )}
-                        >
-                            <ChevronDown size={12} />
-                        </button>
-                    </Tooltip>
-
-                    {isDropdownOpen && (
-                        <TopbarDropdown
-                            widthClass="w-52"
-                            align={dropdownAlign}
-                            className="px-1 py-1 flex flex-col shadow-xl zoom-in-95 duration-100 slide-in-from-top-2"
-                        >
-                            {/* Shell picker. Always shown so the user knows shells are
-                                being fetched even when nothing's cached yet. */}
-                            {(availableShells.length > 0 || shellsLoading || onRefetchShells) && (
-                                <>
-                                    <div className="px-3 py-1 text-[10px] font-bold text-app-muted uppercase tracking-wider flex items-center gap-1.5">
-                                        <span>Shells</span>
-                                        {onRefetchShells && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    onRefetchShells();
-                                                }}
-                                                disabled={shellsLoading}
-                                                className={cn(
-                                                    "h-5 w-5 inline-flex items-center justify-center rounded text-app-muted transition-colors",
-                                                    shellsLoading
-                                                        ? "cursor-wait opacity-70"
-                                                        : "hover:bg-app-surface hover:text-app-text"
-                                                )}
-                                                title="Reload shells"
-                                                aria-label="Reload shells"
-                                            >
-                                                <RotateCw size={11} className={cn(shellsLoading && "animate-spin")} />
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="overflow-y-auto max-h-[84px] pr-1">
-                                        {availableShells.map(shell => (
-                                            <button
-                                                key={shell.id}
-                                                onClick={() => { onNewTerminal(shell); setIsDropdownOpen(false); }}
-                                                className="w-full h-7 text-left px-3 text-xs flex items-center gap-2.5 transition-colors text-app-text hover:bg-app-surface rounded-md"
-                                            >
-                                                <ShellIcon shell={shell} />
-                                                <span className="truncate">{shell.label}</span>
-                                            </button>
-                                        ))}
-                                        {availableShells.length === 0 && shellsLoading && (
-                                            <div className="h-7 px-3 text-xs flex items-center gap-2.5 text-app-muted">
-                                                <Loader2 size={12} className="animate-spin" />
-                                                <span>Loading shells…</span>
-                                            </div>
-                                        )}
-                                        {availableShells.length === 0 && !shellsLoading && shellsError && (
-                                            <div
-                                                className="min-h-7 px-3 py-1 text-xs flex items-center gap-2.5 text-app-muted"
-                                                title={shellsError}
-                                            >
-                                                <TerminalIcon size={12} className="opacity-60" />
-                                                <span className="truncate">Couldn’t load shells</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="h-px bg-app-border/50 my-1 mx-1" />
-                                </>
-                            )}
-
-                            {/* Features */}
-                            {canOpenFeature && (
-                                <>
-                                    <div className="px-3 py-1 text-[10px] font-bold text-app-muted uppercase tracking-wider">Features</div>
-                                    {Object.entries(FEATURE_META).map(([key, conf]) => {
-                                const isOpen = openFeatures.includes(key);
-                                const isActive = activeView === key;
-                                const Icon = conf.icon;
-                                return (
-                                    <Tooltip
-                                        key={key}
-                                        content={`${conf.label} • ${formatFeatureShortcut(conf.keys)}`}
-                                        position="right"
-                                        className="w-full"
-                                    >
-                                        <button
-                                            onClick={() => {
-                                                onOpenFeature!(key);
-                                                setIsDropdownOpen(false);
-                                            }}
-                                            disabled={isActive}
-                                            className={cn(
-                                                "w-full text-left px-3 py-1.5 text-xs flex items-center gap-2.5 transition-colors rounded-md",
-                                                isActive ? "bg-app-accent/10 text-app-accent cursor-default" : "text-app-text hover:bg-app-surface"
-                                            )}
-                                        >
-                                            <span className={cn(
-                                                "inline-flex h-5 w-5 items-center justify-center rounded-md shrink-0",
-                                                isActive ? "text-app-accent" : "text-app-muted"
-                                            )}>
-                                                <Icon size={12} />
-                                            </span>
-                                            <span className="flex-1 font-medium truncate">{conf.label}</span>
-                                            {isActive ? (
-                                                <span className="text-[10px] opacity-70">Active</span>
-                                            ) : isOpen ? (
-                                                <span className="text-[10px] opacity-50">Open</span>
-                                            ) : null}
-                                        </button>
-                                    </Tooltip>
-                                );
-                                    })}
-                                </>
-                            )}
-
-                            {/* Plugin Panels */}
-                            {canOpenFeature && pluginPanels.length > 0 && (
-                                <>
-                                    <div className="h-px bg-app-border/50 my-1 mx-1" />
-                                    <div className="px-3 py-1 text-[10px] font-bold text-app-muted uppercase tracking-wider flex items-center gap-1.5">
-                                        <Plug size={10} />
-                                        Plugin Panels
-                                    </div>
-                                    {pluginPanels.map(panel => {
-                                        const featureId = `plugin:${panel.id}`;
-                                        const isActive = activeView === featureId;
-                                        return (
-                                            <button
-                                                key={panel.id}
-                                                onClick={() => {
-                                                    onOpenFeature!(featureId);
-                                                    setIsDropdownOpen(false);
-                                                }}
-                                                disabled={isActive}
-                                                className={cn(
-                                                    "w-full text-left px-3 py-1.5 text-xs flex items-center gap-2.5 transition-colors rounded-md",
-                                                    isActive ? "bg-app-accent/10 text-app-accent cursor-default" : "text-app-text hover:bg-app-surface"
-                                                )}
-                                            >
-                                                <Plug size={14} className={cn("opacity-80 text-app-accent", isActive && "opacity-100")} />
-                                                <span className="flex-1 font-medium">{panel.title}</span>
-                                                {isActive && <span className="text-[10px] opacity-70">Active</span>}
-                                            </button>
-                                        );
-                                    })}
-                                </>
-                            )}
-                        </TopbarDropdown>
-                    )}
-                </div>
+                {isDropdownOpen && (
+                    <WorkspaceOpenMenu
+                        align={dropdownAlign}
+                        shells={availableShells}
+                        shellsLoading={shellsLoading}
+                        shellsError={shellsError}
+                        onRefetchShells={onRefetchShells}
+                        canOpenFeature={canOpenFeature}
+                        features={(Object.keys(FEATURE_META) as FeatureId[]).map((id) => ({
+                            id,
+                            isOpen: openFeatures.includes(id),
+                            isActive: activeView === id,
+                        }))}
+                        onNewShell={onNewTerminal}
+                        onOpenFeature={onOpenFeature}
+                        onClose={(source) => {
+                            setIsDropdownOpen(false);
+                            if (source === 'keyboard') {
+                                dropdownButtonRef.current?.focus();
+                            }
+                        }}
+                    />
+                )}
             </div>
 
             {(onSplit || onToggleSessionTools) && (

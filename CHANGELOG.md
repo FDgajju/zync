@@ -9,6 +9,7 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Focus neighboring split pane**: **Ctrl+Alt+arrows** moves keyboard focus to the pane in that direction. Remappable in Settings → Shortcuts. ([72596b4])
 
 ### Changed
+- **Workspace + menu**: The tab-bar **+** opens a searchable picker for this host — New Shell, Other shells, then Files / Port Forwarding / Dashboard / Snippets. Other shells is a second page; typing still finds them. Escape returns focus to +. Split stays on the bar. Plugin panels are not listed.
 - **Split this pane**: Split always creates a new shell on the **current** tab instead of pulling other tabs into the layout. **New Shell** (`+`) always adds a real tab. Unsplit removes the focused pane and does not kill the PTY — leftover shells become tabs. Layout persists per tab; corrupt or oversized trees are ignored on restore. Closing an owner tab also closes its extra pane PTYs. ([655a71c])
 - **Split chrome**: Focused pane shows a quiet accent on its inner seams only (1px hairline dividers; double-click a seam to even both sides). ([8169fbd])
 
