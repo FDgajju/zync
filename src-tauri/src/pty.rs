@@ -18,9 +18,6 @@ use tokio::time::{Duration, Instant};
 const OUTPUT_BATCH_MS: u64 = 8;
 /// Flush buffered PTY output immediately once it reaches this many bytes.
 const OUTPUT_FLUSH_THRESHOLD: usize = 4096;
-/// After channel EOF, wait this long for Close / ExitStatus (pane end) or
-/// wait-None / write-fail (host drop) before treating EOF as a pane exit.
-const CHANNEL_EOF_GRACE: Duration = Duration::from_millis(400);
 
 enum LocalReaderEvent {
     Data(Vec<u8>),
@@ -294,6 +291,55 @@ fn emit_terminal_exit(
         },
     ) {
         eprintln!("[PTY] Failed to emit exit for {}: {}", term_id, e);
+    }
+}
+
+/// How a russh `Channel::wait()` result should affect the remote PTY task.
+/// EOF is not an end by itself (OpenSSH sends it before Close; a Wi-Fi drop
+/// can send it before wait-None). Missing follow-up is `None` (channel gone).
+#[derive(Debug, PartialEq, Eq)]
+enum RemoteWaitAction {
+    BufferOutput,
+    PaneExit { exit_code: Option<u32> },
+    TransportDrop,
+    KeepWaiting,
+}
+
+fn remote_wait_action(msg: Option<&ChannelMsg>) -> RemoteWaitAction {
+    match msg {
+        Some(ChannelMsg::Data { .. } | ChannelMsg::ExtendedData { .. }) => {
+            RemoteWaitAction::BufferOutput
+        }
+        Some(ChannelMsg::ExitStatus { exit_status }) => RemoteWaitAction::PaneExit {
+            exit_code: Some(*exit_status),
+        },
+        Some(ChannelMsg::ExitSignal { .. } | ChannelMsg::Close) => {
+            RemoteWaitAction::PaneExit { exit_code: None }
+        }
+        Some(ChannelMsg::Eof) => RemoteWaitAction::KeepWaiting,
+        None => RemoteWaitAction::TransportDrop,
+        Some(_) => RemoteWaitAction::KeepWaiting,
+    }
+}
+
+fn buffer_remote_wait_output(
+    msg: &ChannelMsg,
+    pending_output: &mut Vec<u8>,
+    flush_deadline: &mut Option<Instant>,
+    output_channel: &IpcChannel,
+    generation: u32,
+) {
+    match msg {
+        ChannelMsg::Data { data } | ChannelMsg::ExtendedData { data, .. } => {
+            pending_output.extend_from_slice(data.as_ref());
+            if pending_output.len() >= OUTPUT_FLUSH_THRESHOLD {
+                flush_pending_output(output_channel, generation, pending_output);
+                *flush_deadline = None;
+            } else if flush_deadline.is_none() {
+                *flush_deadline = Some(Instant::now() + Duration::from_millis(OUTPUT_BATCH_MS));
+            }
+        }
+        _ => {}
     }
 }
 
@@ -853,68 +899,38 @@ impl PtyManager {
             let app_handle = app_handle_clone;
             let mut pending_output = Vec::new();
             let mut flush_deadline: Option<Instant> = None;
-            let mut eof_deadline: Option<Instant> = None;
             let drop_transport;
             let exit_code;
 
             loop {
                 tokio::select! {
                     msg = channel.wait() => {
-                        match msg {
-                            Some(ChannelMsg::Data { ref data }) => {
-                                pending_output.extend_from_slice(data.as_ref());
-
-                                if pending_output.len() >= OUTPUT_FLUSH_THRESHOLD {
-                                    flush_pending_output(&output_channel_clone, generation, &mut pending_output);
-                                    flush_deadline = None;
-                                } else if flush_deadline.is_none() {
-                                    flush_deadline = Some(Instant::now() + Duration::from_millis(OUTPUT_BATCH_MS));
+                        match remote_wait_action(msg.as_ref()) {
+                            RemoteWaitAction::BufferOutput => {
+                                if let Some(ref msg) = msg {
+                                    buffer_remote_wait_output(
+                                        msg,
+                                        &mut pending_output,
+                                        &mut flush_deadline,
+                                        &output_channel_clone,
+                                        generation,
+                                    );
                                 }
                             }
-                            Some(ChannelMsg::ExtendedData { ref data, .. }) => {
-                                pending_output.extend_from_slice(data.as_ref());
-                                if pending_output.len() >= OUTPUT_FLUSH_THRESHOLD {
-                                    flush_pending_output(&output_channel_clone, generation, &mut pending_output);
-                                    flush_deadline = None;
-                                } else if flush_deadline.is_none() {
-                                    flush_deadline = Some(Instant::now() + Duration::from_millis(OUTPUT_BATCH_MS));
-                                }
-                            }
-                            Some(ChannelMsg::ExitStatus { exit_status }) => {
+                            RemoteWaitAction::PaneExit { exit_code: code } => {
                                 flush_pending_output(&output_channel_clone, generation, &mut pending_output);
                                 drop_transport = false;
-                                exit_code = Some(Some(exit_status));
+                                exit_code = Some(code);
                                 break;
                             }
-                            Some(ChannelMsg::ExitSignal { .. }) => {
-                                flush_pending_output(&output_channel_clone, generation, &mut pending_output);
-                                drop_transport = false;
-                                exit_code = Some(None);
-                                break;
-                            }
-                            Some(ChannelMsg::Eof) => {
-                                flush_pending_output(&output_channel_clone, generation, &mut pending_output);
-                                // EOF is ambiguous: `exit` / Ctrl+D often sends it before Close,
-                                // and a Wi-Fi drop can send it on one pane before wait-None on
-                                // the others. Do not decide until the next signal (or grace).
-                                if eof_deadline.is_none() {
-                                    eof_deadline = Some(Instant::now() + CHANNEL_EOF_GRACE);
-                                }
-                            }
-                            Some(ChannelMsg::Close) => {
-                                flush_pending_output(&output_channel_clone, generation, &mut pending_output);
-                                // This channel ended. Other shells on the same host stay up.
-                                drop_transport = false;
-                                exit_code = Some(None);
-                                break;
-                            }
-                            None => {
+                            RemoteWaitAction::TransportDrop => {
                                 flush_pending_output(&output_channel_clone, generation, &mut pending_output);
                                 exit_code = Some(None);
                                 drop_transport = true;
                                 break;
                             }
-                            _ => {}
+                            // EOF: keep waiting for Close / ExitStatus (pane) or None (host drop).
+                            RemoteWaitAction::KeepWaiting => {}
                         }
                     }
 
@@ -925,16 +941,6 @@ impl PtyManager {
                     }, if flush_deadline.is_some() => {
                         flush_pending_output(&output_channel_clone, generation, &mut pending_output);
                         flush_deadline = None;
-                    }
-
-                    _ = async {
-                        if let Some(deadline) = eof_deadline {
-                            tokio::time::sleep_until(deadline).await;
-                        }
-                    }, if eof_deadline.is_some() => {
-                        drop_transport = false;
-                        exit_code = Some(None);
-                        break;
                     }
 
                     Some(input) = rx.recv() => {
@@ -1116,7 +1122,48 @@ impl PtyManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_navigate_cd_command, posix_shell_cd_path, NavigateShellStyle};
+    use super::{
+        build_navigate_cd_command, posix_shell_cd_path, remote_wait_action, NavigateShellStyle,
+        RemoteWaitAction,
+    };
+    use russh::ChannelMsg;
+
+    #[test]
+    fn remote_wait_eof_is_not_pane_exit_or_host_drop() {
+        assert_eq!(
+            remote_wait_action(Some(&ChannelMsg::Eof)),
+            RemoteWaitAction::KeepWaiting
+        );
+    }
+
+    #[test]
+    fn remote_wait_close_and_exit_status_are_pane_local() {
+        assert_eq!(
+            remote_wait_action(Some(&ChannelMsg::Close)),
+            RemoteWaitAction::PaneExit { exit_code: None }
+        );
+        assert_eq!(
+            remote_wait_action(Some(&ChannelMsg::ExitStatus { exit_status: 0 })),
+            RemoteWaitAction::PaneExit { exit_code: Some(0) }
+        );
+    }
+
+    #[test]
+    fn remote_wait_none_is_transport_drop() {
+        assert_eq!(remote_wait_action(None), RemoteWaitAction::TransportDrop);
+    }
+
+    #[test]
+    fn remote_wait_missing_follow_up_after_eof_is_wait_none() {
+        // russh 0.46: after CHANNEL_EOF, wait() still yields Close / ExitStatus,
+        // or None when the channel receiver is dropped (host gone). EOF itself
+        // must not end the pane; None is the missing-follow-up fallback.
+        assert_eq!(
+            remote_wait_action(Some(&ChannelMsg::Eof)),
+            RemoteWaitAction::KeepWaiting
+        );
+        assert_eq!(remote_wait_action(None), RemoteWaitAction::TransportDrop);
+    }
 
     #[test]
     fn build_navigate_cd_command_uses_cmd_syntax_for_windows_cmd() {
