@@ -22,7 +22,6 @@ import {
     singlePane,
     splitPane,
     visibleTermIds,
-    type PaneLayout,
     type PaneLayoutGroups,
     type PaneNavDirection,
     type SplitDirection,

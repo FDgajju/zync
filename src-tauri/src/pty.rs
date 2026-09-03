@@ -18,6 +18,9 @@ use tokio::time::{Duration, Instant};
 const OUTPUT_BATCH_MS: u64 = 8;
 /// Flush buffered PTY output immediately once it reaches this many bytes.
 const OUTPUT_FLUSH_THRESHOLD: usize = 4096;
+/// After channel EOF, wait this long for Close / ExitStatus (pane end) or
+/// wait-None / write-fail (host drop) before treating EOF as a pane exit.
+const CHANNEL_EOF_GRACE: Duration = Duration::from_millis(400);
 
 enum LocalReaderEvent {
     Data(Vec<u8>),
@@ -292,16 +295,6 @@ fn emit_terminal_exit(
     ) {
         eprintln!("[PTY] Failed to emit exit for {}: {}", term_id, e);
     }
-}
-
-fn connection_has_other_sessions(
-    sessions: &HashMap<String, PtySession>,
-    connection_id: &str,
-    except_term_id: &str,
-) -> bool {
-    sessions.iter().any(|(id, session)| {
-        id != except_term_id && session.connection_id == connection_id
-    })
 }
 
 fn emit_connection_transport_lost(app_handle: &AppHandle, connection_id: &str) {
@@ -860,6 +853,7 @@ impl PtyManager {
             let app_handle = app_handle_clone;
             let mut pending_output = Vec::new();
             let mut flush_deadline: Option<Instant> = None;
+            let mut eof_deadline: Option<Instant> = None;
             let drop_transport;
             let exit_code;
 
@@ -900,9 +894,12 @@ impl PtyManager {
                             }
                             Some(ChannelMsg::Eof) => {
                                 flush_pending_output(&output_channel_clone, generation, &mut pending_output);
-                                exit_code = Some(None);
-                                drop_transport = true;
-                                break;
+                                // EOF is ambiguous: `exit` / Ctrl+D often sends it before Close,
+                                // and a Wi-Fi drop can send it on one pane before wait-None on
+                                // the others. Do not decide until the next signal (or grace).
+                                if eof_deadline.is_none() {
+                                    eof_deadline = Some(Instant::now() + CHANNEL_EOF_GRACE);
+                                }
                             }
                             Some(ChannelMsg::Close) => {
                                 flush_pending_output(&output_channel_clone, generation, &mut pending_output);
@@ -928,6 +925,16 @@ impl PtyManager {
                     }, if flush_deadline.is_some() => {
                         flush_pending_output(&output_channel_clone, generation, &mut pending_output);
                         flush_deadline = None;
+                    }
+
+                    _ = async {
+                        if let Some(deadline) = eof_deadline {
+                            tokio::time::sleep_until(deadline).await;
+                        }
+                    }, if eof_deadline.is_some() => {
+                        drop_transport = false;
+                        exit_code = Some(None);
+                        break;
                     }
 
                     Some(input) = rx.recv() => {
@@ -958,21 +965,13 @@ impl PtyManager {
             if let Some(mut session) = sessions.remove(&term_id_for_exit) {
                 PtyManager::finalize_session_after_natural_exit(&mut session.handle);
             }
-            let others = connection_has_other_sessions(
-                &sessions,
-                &connection_id_for_transport,
-                &term_id_for_exit,
-            );
             drop(sessions);
             if drop_transport {
+                // Host is gone: suspend every pane. Never emit terminal-exit
+                // (that would look like the user typed `exit` in this pane).
                 emit_connection_transport_lost(&app_handle, &connection_id_for_transport);
-            }
-            // Eof with siblings still mapped is a host drop: suspend them, do not
-            // treat this channel as a user `exit` that unsplits the layout.
-            if let Some(code) = exit_code {
-                if !(drop_transport && others) {
-                    emit_terminal_exit(&app_handle, &term_id_clone, generation, code);
-                }
+            } else if let Some(code) = exit_code {
+                emit_terminal_exit(&app_handle, &term_id_clone, generation, code);
             }
         });
 
