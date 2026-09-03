@@ -46,7 +46,11 @@ Manage hosts from a persistent sidebar, keep shells alive while you switch panel
 Everyday infra work should feel fast, clear, and under your control.
 
 <p align="center">
-  <img src="assets/readme-hero.png" alt="Zync workspace: connections sidebar, welcome screen, vault, and port forwarding" width="900" />
+  <!-- <img src="assets/readme-hero.png" alt="Zync workspace: connections sidebar, welcome screen, vault, and port forwarding" width="900" /> -->
+  <!-- <img width="1920" height="1080" alt="Screenshot 2026-09-03 141007" src="https://github.com/user-attachments/assets/fd7731ff-3517-4b69-923c-e7ab79fe9e12" /> -->
+  <img width="1920" height="1080" alt="Screenshot 2026-09-03 145401" src="https://github.com/user-attachments/assets/0c2f8ec7-0f56-482f-9adc-d6695452b332" />
+
+
 </p>
 
 ## Local terminal
