@@ -9,21 +9,21 @@ All notable changes to Zync are documented in this file. The format is based on 
 - **Focus neighboring split pane**: **Ctrl+Alt+arrows** moves keyboard focus to the pane in that direction. Remappable in Settings → Shortcuts. ([72596b4])
 
 ### Changed
-- **Title-bar + menu**: The window **+** is Create or go — New Host / Folder / Tunnel stay on top; search lists Port Forwarding, Public URLs, Local, and hosts. Host addresses follow Settings → Privacy (show host addresses in lists). Escape returns focus to +.
-- **Workspace + menu**: The tab-bar **+** opens a searchable picker for this host — New Shell, Other shells, then Files / Port Forwarding / Dashboard / Snippets. Other shells is a second page; typing still finds them. Escape returns focus to +. Split stays on the bar. Plugin panels are not listed.
+- **Title-bar + menu**: The window **+** is Create or go — New Host / Folder / Tunnel stay on top; search lists Port Forwarding, Public URLs, Local, and hosts. Host addresses follow Settings → Privacy (show host addresses in lists). Escape returns focus to +. ([ebf1846])
+- **Workspace + menu**: The tab-bar **+** opens a searchable picker for this host — New Shell, Other shells, then Files / Port Forwarding / Dashboard / Snippets. Other shells is a second page; typing still finds them. Escape returns focus to +. Split stays on the bar. Plugin panels are not listed. ([79322a5])
 - **Split this pane**: Split always creates a new shell on the **current** tab instead of pulling other tabs into the layout. **New Shell** (`+`) always adds a real tab. Unsplit removes the focused pane and does not kill the PTY — leftover shells become tabs. Layout persists per tab; corrupt or oversized trees are ignored on restore. Closing an owner tab also closes its extra pane PTYs. ([655a71c])
 - **Split chrome**: Focused pane shows a quiet accent on its inner seams only (1px hairline dividers; double-click a seam to even both sides). ([8169fbd])
 
 ### Fixed
-- **Session tab cap with splits**: Hidden split panes whose owner is kept are persisted; combined visible + hidden tabs never exceed 20 per host. If extras cannot fit, the owner tab is kept and extras are dropped. ([655a71c])
+- **Session tab cap with splits**: Hidden split panes whose owner is kept are persisted; combined visible + hidden tabs never exceed 20 per host. If extras cannot fit, the owner tab is kept and extras are dropped. ([655a71c], [e967b44])
 - **Unsplit leftover tabs**: The sibling kept when a split group is removed is shown on the tab bar (`tabVisible`), not left as a hidden pane. ([655a71c])
-- **One reconnect card while split**: A disconnected host no longer repeats Resume session in every pane. The split comes back after connect.
+- **One reconnect card while split**: A disconnected host no longer repeats Resume session in every pane. The split comes back after connect. ([bd768f2])
 - **Shell exit in a split pane**: `exit` / Ctrl+D closes that pane only. The rest of the split tab stays; closing the tab with × still closes every pane in the group. SSH channel EOF no longer drops the whole host while other panes are still live. Channel Close / ExitSignal also end that pane so logout is not left stuck on screen. ([0a0e016], [0112f52], [e4b307a])
-- **Pane drag prompt reprint**: Dragging a split divider no longer SIGWINCHes the PTY on every move, which reprinted `user@host` prompts. The shell is resized once when the drag ends.
+- **Pane drag prompt reprint**: Dragging a split divider no longer SIGWINCHes the PTY on every move, which reprinted `user@host` prompts. The shell is resized once when the drag ends. ([486e4be])
 - **Split cursor after restore**: Highlight and blinking cursor stay on the same pane after reconnect; only the focused pane takes DOM focus. ([e6e2aae], [72596b4])
-- **SSH drop while split**: A dead transport with several live panes suspends the group instead of closing extras as if each had typed `exit`.
-- **Unsplit owner in a nested split**: Removing the owner leaf rekeys the leftover group so that shell stays a real tab.
-- **Split chords in fields**: Ctrl+Shift+arrows are not consumed in inputs, off the terminal view, or when the pane cap is already reached.
+- **SSH drop while split**: A dead transport with several live panes suspends the group instead of closing extras as if each had typed `exit`. ([42086bc], [8007934], [75df10a])
+- **Unsplit owner in a nested split**: Removing the owner leaf rekeys the leftover group so that shell stays a real tab. ([e5d0d68])
+- **Split chords in fields**: Ctrl+Shift+arrows are not consumed in inputs, off the terminal view, or when the pane cap is already reached. ([133714f])
 
 ## [2.28.0] - 2026-09-02
 
