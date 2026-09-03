@@ -4,13 +4,15 @@ All notable changes to Zync are documented in this file. The format is based on 
 
 ## [Unreleased]
 
+## [2.29.0] - 2026-09-04
+
 ### Added
 - **Nested split shells**: Up to four live xterms in one tab, side by side or stacked. Split controls sit next to session tools (side-by-side and stacked icons). **Ctrl+Shift+Left / Right** splits side by side; **Ctrl+Shift+Up / Down** splits stacked (not Ctrl+B). Extra panes stay off the tab bar; the owner tab shows a split mark. Unsplit is on that tab’s context menu. ([5181d5e], [7c7ebc5], [655a71c])
 - **Focus neighboring split pane**: **Ctrl+Alt+arrows** moves keyboard focus to the pane in that direction. Remappable in Settings → Shortcuts. ([72596b4])
 
 ### Changed
-- **Title-bar + menu**: The window **+** is Create or go — New Host / Folder / Tunnel stay on top; search lists Port Forwarding, Public URLs, Local, and hosts. Host addresses follow Settings → Privacy (show host addresses in lists). Escape returns focus to +. ([ebf1846])
-- **Workspace + menu**: The tab-bar **+** opens a searchable picker for this host — New Shell, Other shells, then Files / Port Forwarding / Dashboard / Snippets. Other shells is a second page; typing still finds them. Escape returns focus to +. Split stays on the bar. Plugin panels are not listed. ([79322a5])
+- **Title-bar + menu**: The window **+** is Create or go — New Host / Folder / Tunnel stay on top; search lists Port Forwarding, Public URLs, Local, and hosts. Host addresses follow Settings → Privacy (show host addresses in lists). Escape returns focus to +. ([ebf1846], [65833ff])
+- **Workspace + menu**: The tab-bar **+** opens a searchable picker for this host — New Shell, Other shells, then Files / Port Forwarding / Dashboard / Snippets. Other shells is a second page; typing still finds them. Escape returns focus to +. Split stays on the bar. Plugin panels are not listed. ([79322a5], [65833ff])
 - **Split this pane**: Split always creates a new shell on the **current** tab instead of pulling other tabs into the layout. **New Shell** (`+`) always adds a real tab. Unsplit removes the focused pane and does not kill the PTY — leftover shells become tabs. Layout persists per tab; corrupt or oversized trees are ignored on restore. Closing an owner tab also closes its extra pane PTYs. ([655a71c])
 - **Split chrome**: Focused pane shows a quiet accent on its inner seams only (1px hairline dividers; double-click a seam to even both sides). ([8169fbd])
 
@@ -1352,8 +1354,30 @@ Partial draft: desktop builds, AppImage Wayland strip, and APT `2.25.4` publishe
 [d3f4060]: https://github.com/zync-sh/zync/commit/d3f4060
 [840afc2]: https://github.com/zync-sh/zync/commit/840afc2
 [193f568]: https://github.com/zync-sh/zync/commit/193f568
-[Unreleased]: https://github.com/zync-sh/zync/compare/v2.28.0...HEAD
+[Unreleased]: https://github.com/zync-sh/zync/compare/v2.29.0...HEAD
+[2.29.0]: https://github.com/zync-sh/zync/compare/v2.28.0...v2.29.0
 [2.28.0]: https://github.com/zync-sh/zync/compare/v2.27.1...v2.28.0
+[5181d5e]: https://github.com/zync-sh/zync/commit/5181d5e
+[7c7ebc5]: https://github.com/zync-sh/zync/commit/7c7ebc5
+[655a71c]: https://github.com/zync-sh/zync/commit/655a71c
+[72596b4]: https://github.com/zync-sh/zync/commit/72596b4
+[ebf1846]: https://github.com/zync-sh/zync/commit/ebf1846
+[79322a5]: https://github.com/zync-sh/zync/commit/79322a5
+[65833ff]: https://github.com/zync-sh/zync/commit/65833ff
+[8169fbd]: https://github.com/zync-sh/zync/commit/8169fbd
+[e967b44]: https://github.com/zync-sh/zync/commit/e967b44
+[bd768f2]: https://github.com/zync-sh/zync/commit/bd768f2
+[0a0e016]: https://github.com/zync-sh/zync/commit/0a0e016
+[0112f52]: https://github.com/zync-sh/zync/commit/0112f52
+[e4b307a]: https://github.com/zync-sh/zync/commit/e4b307a
+[486e4be]: https://github.com/zync-sh/zync/commit/486e4be
+[e6e2aae]: https://github.com/zync-sh/zync/commit/e6e2aae
+[42086bc]: https://github.com/zync-sh/zync/commit/42086bc
+[8007934]: https://github.com/zync-sh/zync/commit/8007934
+[75df10a]: https://github.com/zync-sh/zync/commit/75df10a
+[e5d0d68]: https://github.com/zync-sh/zync/commit/e5d0d68
+[133714f]: https://github.com/zync-sh/zync/commit/133714f
+[ed1d516]: https://github.com/zync-sh/zync/commit/ed1d516
 [2.27.1]: https://github.com/zync-sh/zync/compare/v2.26.1...v2.27.1
 [0631f20]: https://github.com/zync-sh/zync/commit/0631f20
 [516edb0]: https://github.com/zync-sh/zync/commit/516edb0
