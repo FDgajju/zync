@@ -17,6 +17,8 @@ pub struct TerminalTabSnapshot {
     pub initial_path: Option<String>,
     pub is_synced: Option<bool>,
     pub shell_override: Option<String>,
+    /// `false` for extra shells in a split (omitted / `None` = visible tab).
+    pub tab_visible: Option<bool>,
 }
 
 /// Snapshot of a sidebar connection tab.
@@ -44,6 +46,9 @@ pub struct SessionData {
     pub terminals: HashMap<String, Vec<TerminalTabSnapshot>>,
     /// Active terminal ID per connection scope.
     pub active_terminal_ids: HashMap<String, String>,
+    /// Optional split groups per connection scope (`ownerTermId` → layout). Missing = one pane.
+    #[serde(default)]
+    pub pane_layouts: HashMap<String, serde_json::Value>,
 }
 
 // ─── Schema migration ────────────────────────────────────────────────────────

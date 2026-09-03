@@ -56,6 +56,10 @@ export function formatShortcutLabel(shortcut: string, isMac?: boolean): string {
             if (lower === 'alt' || lower === 'option') return mac ? '⌥' : 'Alt';
             if (lower === 'shift') return mac ? '⇧' : 'Shift';
             if (lower === 'plus') return '+';
+            if (lower === 'arrowright') return 'Right';
+            if (lower === 'arrowleft') return 'Left';
+            if (lower === 'arrowup') return 'Up';
+            if (lower === 'arrowdown') return 'Down';
             if (p.length === 1) return p.toUpperCase();
             return p;
         })

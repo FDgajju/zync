@@ -3,6 +3,29 @@ import type { AppStore } from './useAppStore';
 import { terminalService } from '../lib/terminal';
 import type { TerminalTabSnapshot } from './sessionPersistence';
 import { scheduleSaveSession } from './sessionSlice';
+import {
+    canSplit,
+    dropTerm,
+    findNode,
+    firstLeaf,
+    focusPane as focusPaneInLayout,
+    isPaneLeaf,
+    isSplitLayout,
+    layoutActiveTermId,
+    findLayoutOwner,
+    focusedTermIdForRestore,
+    detachTermFromGroups,
+    layoutForTerm,
+    neighborPaneId,
+    parsePaneLayoutGroups,
+    setSplitSizes,
+    singlePane,
+    splitPane,
+    visibleTermIds,
+    type PaneLayoutGroups,
+    type PaneNavDirection,
+    type SplitDirection,
+} from '../lib/paneLayout';
 
 export interface TerminalTab {
     id: string;
@@ -15,6 +38,8 @@ export interface TerminalTab {
     /** Shell override passed to the backend PTY spawner for this specific tab.
      *  Undefined means "use the global default shell setting". */
     shellOverride?: string;
+    /** False = split-only pane; hidden from the shell tab bar. Default true. */
+    tabVisible?: boolean;
 }
 
 export interface TerminalSlice {
@@ -24,6 +49,8 @@ export interface TerminalSlice {
     activeTerminalIds: Record<string, string | null>;
     /** Keyed by connectionId, stores the ID of the terminal that is currently synced with the File Manager */
     syncedTerminalId: Record<string, string | null>;
+    /** Split trees per connection, keyed by the tab that owns the split. */
+    paneLayouts: Record<string, PaneLayoutGroups | undefined>;
 
     // Actions
     /**
@@ -48,6 +75,10 @@ export interface TerminalSlice {
      * @param termId The ID of the terminal to close.
      */
     closeTerminal: (connectionId: string, termId: string) => void;
+    /** Close a visible shell tab and every extra pane it owns. */
+    closeTerminalGroup: (connectionId: string, termId: string) => void;
+    /** Natural shell exit (`exit` / Ctrl+D): drop this pane only, keep the rest of the split tab. */
+    closePaneOnShellExit: (connectionId: string, termId: string) => void;
 
     /**
      * Sets a specific terminal as the active one for a connection.
@@ -86,7 +117,16 @@ export interface TerminalSlice {
         connectionId: string,
         snapshots: TerminalTabSnapshot[],
         activeTerminalId: string | null,
+        paneLayout?: unknown,
     ) => void;
+
+    splitPanes: (connectionId: string, direction?: SplitDirection) => void;
+    unsplitPanes: (connectionId: string) => void;
+    togglePanes: (connectionId: string) => void;
+    resizePanes: (connectionId: string, splitId: string, sizes: [number, number], persist?: boolean) => void;
+    focusPane: (connectionId: string, paneId: string) => void;
+    /** Move keyboard focus to the neighboring pane. False if there is no split. */
+    focusPaneInDirection: (connectionId: string, direction: PaneNavDirection) => boolean;
 
     /**
      * Clears the pendingRestore flag on all terminal tabs for a connection.
@@ -98,10 +138,15 @@ export interface TerminalSlice {
 // @ts-ignore
 const ipc = window.ipcRenderer;
 
+function isTabVisible(tab: TerminalTab): boolean {
+    return tab.tabVisible !== false;
+}
+
 export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> = (set, get) => ({
     terminals: {},
     activeTerminalIds: {},
     syncedTerminalId: {},
+    paneLayouts: {},
 
     /** @inheritdoc */
     createTerminal: (connectionId, opts) => {
@@ -110,13 +155,15 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
         const newId = `term-${crypto.randomUUID()}`;
         set(state => {
             const currentTabs = state.terminals[connectionId] || [];
-            const defaultTitle = `Shell ${currentTabs.length + 1}`;
+            const visibleCount = currentTabs.filter(t => t.tabVisible !== false).length;
+            const defaultTitle = `Shell ${visibleCount + 1}`;
             const newTab: TerminalTab = {
                 id: newId,
                 title: opts?.title ?? (isSynced ? `Synced Terminal` : defaultTitle),
                 initialPath,
                 isSynced,
                 shellOverride: opts?.shellOverride,
+                tabVisible: true,
             };
 
             const nextSyncedIds = { ...state.syncedTerminalId };
@@ -134,7 +181,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                     ...state.activeTerminalIds,
                     [connectionId]: newId
                 },
-                syncedTerminalId: nextSyncedIds
+                syncedTerminalId: nextSyncedIds,
             };
         });
         scheduleSaveSession(() => get().saveSession());
@@ -145,14 +192,15 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
     ensureTerminal: (connectionId, initialPath) => {
         const state = get();
         const currentTabs = state.terminals[connectionId] || [];
-        if (currentTabs.length === 0) {
+        const barTabs = currentTabs.filter(isTabVisible);
+        if (barTabs.length === 0) {
             return get().createTerminal(connectionId, { initialPath });
         }
         const activeId = state.activeTerminalIds[connectionId];
         if (activeId && currentTabs.some((tab) => tab.id === activeId)) {
             return activeId;
         }
-        const fallbackId = currentTabs[0].id;
+        const fallbackId = barTabs[0].id;
         set(prev => ({
             activeTerminalIds: {
                 ...prev.activeTerminalIds,
@@ -164,34 +212,72 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
     },
 
     /** @inheritdoc */
-    closeTerminal: (connectionId, termId) => {
-        // Kill backend process first
-        ipc.send('terminal:kill', { termId });
-
-        // Destroy the xterm instance from cache (frees memory, clears history)
-        terminalService.destroy(termId);
+    closeTerminalGroup: (connectionId, termId) => {
+        const owner = findLayoutOwner(get().paneLayouts[connectionId], termId) ?? termId;
+        const owned = get().paneLayouts[connectionId]?.[owner];
+        const extraIds = owned
+            ? visibleTermIds(owned).filter((id) => id !== owner)
+            : [];
+        const groupId = owned ? owner : termId;
+        for (const id of [groupId, ...extraIds]) {
+            ipc.send('terminal:kill', { termId: id });
+            terminalService.destroy(id);
+        }
 
         set(state => {
             const currentTabs = state.terminals[connectionId] || [];
-            const newTabs = currentTabs.filter(t => t.id !== termId);
+            const groups = state.paneLayouts[connectionId];
+            const removeIds = new Set([groupId, ...extraIds]);
+
+            const newTabs = currentTabs.filter(t => !removeIds.has(t.id));
 
             // Determine new active tab if we closed the active one
             let newActiveId = state.activeTerminalIds[connectionId];
-            if (newActiveId === termId) {
-                newActiveId = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
+            if (newActiveId && removeIds.has(newActiveId)) {
+                const barTabs = newTabs.filter(isTabVisible);
+                newActiveId = barTabs.length > 0 ? barTabs[barTabs.length - 1].id : (newTabs[0]?.id ?? null);
             }
 
             // Cleanup synced terminal reference if closed
             const nextSyncedIds = { ...state.syncedTerminalId };
-            if (nextSyncedIds[connectionId] === termId) {
+            if (nextSyncedIds[connectionId] && removeIds.has(nextSyncedIds[connectionId]!)) {
                 nextSyncedIds[connectionId] = null;
             }
 
-            // 🗑️ Free AI conversation history for the closed tab (memory-safe)
-            const { [termId]: _, ...nextConversations } = state.aiConversations;
+            let nextConversations = state.aiConversations;
+            let nextDisplay = state.aiDisplayHistory;
+            for (const id of removeIds) {
+                const { [id]: _c, ...restC } = nextConversations;
+                const { [id]: _d, ...restD } = nextDisplay;
+                nextConversations = restC;
+                nextDisplay = restD;
+            }
 
-            // 🗑️ Free AI display history for the closed tab
-            const { [termId]: __, ...nextDisplay } = state.aiDisplayHistory;
+            let nextGroups = { ...(groups ?? {}) };
+            delete nextGroups[groupId];
+            for (const [layoutOwner, layout] of Object.entries(nextGroups)) {
+                const contained = visibleTermIds(layout).includes(groupId);
+                const dropped = dropTerm(layout, groupId);
+                if (dropped && isSplitLayout(dropped)) {
+                    nextGroups[layoutOwner] = dropped;
+                    if (contained) {
+                        const remaining = layoutActiveTermId(dropped);
+                        if (remaining) newActiveId = remaining;
+                    }
+                } else {
+                    if (contained) {
+                        const remaining = dropped ? layoutActiveTermId(dropped) : null;
+                        if (remaining) newActiveId = remaining;
+                    }
+                    delete nextGroups[layoutOwner];
+                }
+            }
+            const nextLayouts = { ...state.paneLayouts };
+            if (Object.keys(nextGroups).length > 0) {
+                nextLayouts[connectionId] = nextGroups;
+            } else {
+                delete nextLayouts[connectionId];
+            }
 
             return {
                 terminals: {
@@ -203,6 +289,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                     [connectionId]: newActiveId
                 },
                 syncedTerminalId: nextSyncedIds,
+                paneLayouts: nextLayouts,
                 aiConversations: nextConversations,
                 aiDisplayHistory: nextDisplay,
             };
@@ -211,13 +298,97 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
     },
 
     /** @inheritdoc */
-    setActiveTerminal: (connectionId, termId) => {
-        set(state => ({
-            activeTerminalIds: {
-                ...state.activeTerminalIds,
-                [connectionId]: termId
+    closeTerminal: (connectionId, termId) => {
+        const owner = findLayoutOwner(get().paneLayouts[connectionId], termId);
+        const layout = owner ? get().paneLayouts[connectionId]?.[owner] : undefined;
+        if (!owner || !layout || !isSplitLayout(layout)) {
+            get().closeTerminalGroup(connectionId, termId);
+            return;
+        }
+
+        ipc.send('terminal:kill', { termId });
+        terminalService.destroy(termId);
+
+        set(state => {
+            const tabs = state.terminals[connectionId] || [];
+            const ownerTab = tabs.find(t => t.id === owner);
+            const { next, nextOwner } = detachTermFromGroups(
+                state.paneLayouts[connectionId],
+                termId,
+            );
+            const diedWasOwner = owner === termId;
+            let newTabs = tabs.filter(t => t.id !== termId);
+            if (nextOwner && nextOwner !== termId) {
+                newTabs = newTabs.map(t => {
+                    if (t.id !== nextOwner) return t;
+                    return {
+                        ...t,
+                        tabVisible: true,
+                        ...(diedWasOwner && ownerTab?.title ? { title: ownerTab.title } : {}),
+                    };
+                });
             }
-        }));
+
+            let newActiveId = state.activeTerminalIds[connectionId];
+            if (newActiveId === termId) {
+                if (nextOwner && next?.[nextOwner]) {
+                    newActiveId = layoutActiveTermId(next[nextOwner]) ?? nextOwner;
+                } else {
+                    const barTabs = newTabs.filter(isTabVisible);
+                    newActiveId = nextOwner
+                        ?? (barTabs.length > 0 ? barTabs[barTabs.length - 1].id : newTabs[0]?.id ?? null);
+                }
+            }
+
+            const nextSyncedIds = { ...state.syncedTerminalId };
+            if (nextSyncedIds[connectionId] === termId) {
+                nextSyncedIds[connectionId] = null;
+            }
+            const { [termId]: _c, ...nextConversations } = state.aiConversations;
+            const { [termId]: _d, ...nextDisplay } = state.aiDisplayHistory;
+
+            const nextLayouts = { ...state.paneLayouts };
+            if (next) {
+                nextLayouts[connectionId] = next;
+            } else {
+                delete nextLayouts[connectionId];
+            }
+
+            return {
+                terminals: { ...state.terminals, [connectionId]: newTabs },
+                activeTerminalIds: { ...state.activeTerminalIds, [connectionId]: newActiveId },
+                syncedTerminalId: nextSyncedIds,
+                paneLayouts: nextLayouts,
+                aiConversations: nextConversations,
+                aiDisplayHistory: nextDisplay,
+            };
+        });
+        get().saveSession();
+    },
+
+    closePaneOnShellExit: (connectionId, termId) => {
+        get().closeTerminal(connectionId, termId);
+    },
+
+    /** @inheritdoc */
+    setActiveTerminal: (connectionId, termId) => {
+        set(state => {
+            const groups = state.paneLayouts[connectionId];
+            const tab = (state.terminals[connectionId] || []).find(t => t.id === termId);
+            let nextActive = termId;
+            if (tab && isTabVisible(tab)) {
+                const layout = groups?.[termId];
+                if (layout && isSplitLayout(layout)) {
+                    nextActive = layoutActiveTermId(layout) ?? termId;
+                }
+            }
+            return {
+                activeTerminalIds: {
+                    ...state.activeTerminalIds,
+                    [connectionId]: nextActive
+                },
+            };
+        });
         scheduleSaveSession(() => get().saveSession());
     },
 
@@ -254,6 +425,9 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             const newSyncedIds = { ...state.syncedTerminalId };
             delete newSyncedIds[connectionId];
 
+            const nextLayouts = { ...state.paneLayouts };
+            delete nextLayouts[connectionId];
+
             // 🗑️ Prune AI history for all cleared terminals
             const termIdsToRemove = new Set(tabs.map(t => t.id));
             const nextConversations = Object.fromEntries(
@@ -267,6 +441,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                 terminals: newTerminals,
                 activeTerminalIds: newActiveIds,
                 syncedTerminalId: newSyncedIds,
+                paneLayouts: nextLayouts,
                 aiConversations: nextConversations,
                 aiDisplayHistory: nextDisplay
             };
@@ -327,7 +502,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
     },
 
     /** @inheritdoc */
-    restoreTerminalTabs: (connectionId, snapshots, activeTerminalId) => {
+    restoreTerminalTabs: (connectionId, snapshots, activeTerminalId, paneLayout) => {
         const isSSH = connectionId !== 'local';
         const tabs: TerminalTab[] = snapshots.map(s => ({
             id: s.id,
@@ -336,24 +511,52 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             lastKnownCwd: s.cwd,
             isSynced: s.isSynced ?? false,
             shellOverride: s.shellOverride,
+            tabVisible: s.tabVisible,
             pendingRestore: isSSH || undefined,
         }));
 
         const syncedTab = tabs.find(t => t.isSynced);
-        set(state => ({
-            terminals: {
-                ...state.terminals,
-                [connectionId]: tabs,
-            },
-            activeTerminalIds: {
-                ...state.activeTerminalIds,
-                [connectionId]: activeTerminalId ?? (tabs[0]?.id ?? null),
-            },
-            syncedTerminalId: {
-                ...state.syncedTerminalId,
-                [connectionId]: syncedTab?.id ?? null,
-            },
+        const known = new Set(tabs.map(t => t.id));
+        const restoredGroups = parsePaneLayoutGroups(paneLayout, known);
+        const hidden = new Set<string>();
+        for (const [owner, layout] of Object.entries(restoredGroups)) {
+            for (const id of visibleTermIds(layout)) {
+                if (id !== owner) hidden.add(id);
+            }
+        }
+        const tabsWithVisibility = tabs.map(t => ({
+            ...t,
+            tabVisible: !hidden.has(t.id),
         }));
+        const knownRequested = tabs.some(t => t.id === activeTerminalId) ? activeTerminalId : null;
+        const restoredActive = focusedTermIdForRestore(
+            restoredGroups,
+            knownRequested,
+            tabs[0]?.id ?? null,
+        );
+        set(state => {
+            const nextLayouts = { ...state.paneLayouts };
+            if (Object.keys(restoredGroups).length > 0) {
+                nextLayouts[connectionId] = restoredGroups;
+            } else {
+                delete nextLayouts[connectionId];
+            }
+            return {
+                terminals: {
+                    ...state.terminals,
+                    [connectionId]: tabsWithVisibility,
+                },
+                activeTerminalIds: {
+                    ...state.activeTerminalIds,
+                    [connectionId]: restoredActive,
+                },
+                syncedTerminalId: {
+                    ...state.syncedTerminalId,
+                    [connectionId]: syncedTab?.id ?? null,
+                },
+                paneLayouts: nextLayouts,
+            };
+        });
     },
 
     /** @inheritdoc */
@@ -370,5 +573,147 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
                 },
             };
         });
+    },
+
+    splitPanes: (connectionId, direction = 'horizontal') => {
+        set(state => {
+            const tabs = state.terminals[connectionId] || [];
+            const activeId = state.activeTerminalIds[connectionId] ?? tabs.find(isTabVisible)?.id ?? null;
+            if (!activeId) return state;
+
+            const groups = state.paneLayouts[connectionId];
+            const owner = findLayoutOwner(groups, activeId) ?? activeId;
+            const layout = groups?.[owner] ?? singlePane(owner);
+            if (!canSplit(layout)) return state;
+
+            const sourceTab = tabs.find(t => t.id === activeId) ?? tabs.find(t => t.id === owner);
+            const otherId = `term-${crypto.randomUUID()}`;
+            const nextTabs = [
+                ...tabs,
+                {
+                    id: otherId,
+                    title: `${tabs.find(t => t.id === owner)?.title ?? 'Shell'} · pane`,
+                    tabVisible: false,
+                    shellOverride: sourceTab?.shellOverride,
+                    initialPath: sourceTab?.lastKnownCwd ?? sourceTab?.initialPath,
+                    lastKnownCwd: sourceTab?.lastKnownCwd,
+                },
+            ];
+
+            const target = findNode(layout.root, layout.activePaneId) ?? firstLeaf(layout.root);
+            const result = splitPane(layout, target.id, direction, { kind: 'term', termId: otherId });
+            if (!result.ok) return state;
+            const focused = focusPaneInLayout(result.layout, result.newPaneId);
+
+            const nextLayouts = { ...state.paneLayouts };
+            nextLayouts[connectionId] = { ...(groups ?? {}), [owner]: focused };
+
+            return {
+                terminals: { ...state.terminals, [connectionId]: nextTabs },
+                paneLayouts: nextLayouts,
+                activeTerminalIds: { ...state.activeTerminalIds, [connectionId]: otherId },
+            };
+        });
+        scheduleSaveSession(() => get().saveSession());
+    },
+
+    unsplitPanes: (connectionId) => {
+        set(state => {
+            const activeId = state.activeTerminalIds[connectionId];
+            if (!activeId) return state;
+            const groups = state.paneLayouts[connectionId];
+            const owner = findLayoutOwner(groups, activeId);
+            const layout = owner ? groups?.[owner] : undefined;
+            if (!owner || !layout || !isSplitLayout(layout)) return state;
+
+            const focused = findNode(layout.root, layout.activePaneId);
+            if (!focused || !isPaneLeaf(focused) || focused.content.kind !== 'term') return state;
+            const focusedTerm = focused.content.termId;
+            const { next, nextOwner } = detachTermFromGroups(groups, focusedTerm);
+
+            const nextTabs = (state.terminals[connectionId] || []).map(t => {
+                if (t.id === focusedTerm || (nextOwner && t.id === nextOwner)) {
+                    return { ...t, tabVisible: true };
+                }
+                return t;
+            });
+
+            const nextLayouts = { ...state.paneLayouts };
+            if (next) {
+                nextLayouts[connectionId] = next;
+            } else {
+                delete nextLayouts[connectionId];
+            }
+            return {
+                terminals: { ...state.terminals, [connectionId]: nextTabs },
+                paneLayouts: nextLayouts,
+                activeTerminalIds: { ...state.activeTerminalIds, [connectionId]: focusedTerm },
+            };
+        });
+        scheduleSaveSession(() => get().saveSession());
+    },
+
+    togglePanes: (connectionId) => {
+        const activeId = get().activeTerminalIds[connectionId];
+        const layout = activeId ? layoutForTerm(get().paneLayouts[connectionId], activeId) : undefined;
+        if (canSplit(layout ?? null)) {
+            get().splitPanes(connectionId);
+        } else if (layout && isSplitLayout(layout)) {
+            get().unsplitPanes(connectionId);
+        }
+    },
+
+    resizePanes: (connectionId, splitId, sizes, persist = false) => {
+        set(state => {
+            const activeId = state.activeTerminalIds[connectionId];
+            if (!activeId) return state;
+            const groups = state.paneLayouts[connectionId];
+            const owner = findLayoutOwner(groups, activeId);
+            const layout = owner ? groups?.[owner] : undefined;
+            if (!owner || !layout) return state;
+            const nextGroups = { ...(groups ?? {}), [owner]: setSplitSizes(layout, splitId, sizes) };
+            return {
+                paneLayouts: { ...state.paneLayouts, [connectionId]: nextGroups },
+            };
+        });
+        if (persist) {
+            scheduleSaveSession(() => get().saveSession());
+        }
+    },
+
+    focusPane: (connectionId, paneId) => {
+        set(state => {
+            const activeId = state.activeTerminalIds[connectionId];
+            if (!activeId) return state;
+            const groups = state.paneLayouts[connectionId];
+            const owner = findLayoutOwner(groups, activeId);
+            const layout = owner ? groups?.[owner] : undefined;
+            if (!owner || !layout) return state;
+            const next = focusPaneInLayout(layout, paneId);
+            const termId = layoutActiveTermId(next);
+            return {
+                paneLayouts: {
+                    ...state.paneLayouts,
+                    [connectionId]: { ...(groups ?? {}), [owner]: next },
+                },
+                activeTerminalIds: termId
+                    ? { ...state.activeTerminalIds, [connectionId]: termId }
+                    : state.activeTerminalIds,
+            };
+        });
+        scheduleSaveSession(() => get().saveSession());
+    },
+
+    focusPaneInDirection: (connectionId, direction) => {
+        const activeId = get().activeTerminalIds[connectionId];
+        if (!activeId) return false;
+        const groups = get().paneLayouts[connectionId];
+        const owner = findLayoutOwner(groups, activeId);
+        const layout = owner ? groups?.[owner] : undefined;
+        if (!owner || !layout || !isSplitLayout(layout)) return false;
+        const nextId = neighborPaneId(layout, direction);
+        if (!nextId) return true;
+        get().focusPane(connectionId, nextId);
+        return true;
     },
 });

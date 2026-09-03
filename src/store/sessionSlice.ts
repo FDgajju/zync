@@ -79,6 +79,7 @@ export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = 
                     scopeId,
                     snapshots.slice(0, MAX_TABS_PER_SCOPE),
                     data.activeTerminalIds?.[scopeId] ?? null,
+                    data.paneLayouts?.[scopeId],
                 );
             }
 

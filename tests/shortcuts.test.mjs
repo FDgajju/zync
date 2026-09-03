@@ -58,3 +58,61 @@ runTest('formatShortcutLabel maps Mod to Ctrl on Windows and Command on macOS', 
   assert.equal(formatShortcutLabel('Mod+T', true), '⌘T');
   assert.equal(formatShortcutLabel('Ctrl+T', true), '⌃T');
 });
+
+runTest('matchShortcut accepts Ctrl+Shift+Arrow chords for split panes', () => {
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowRight', ctrlKey: true, shiftKey: true }),
+      'Ctrl+Shift+ArrowRight',
+    ),
+    true,
+  );
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowDown', ctrlKey: true, shiftKey: true }),
+      'Ctrl+Shift+ArrowDown',
+    ),
+    true,
+  );
+  assert.equal(
+    matchShortcut(keyEvent({ key: 'ArrowRight', ctrlKey: true }), 'Ctrl+Shift+ArrowRight'),
+    false,
+  );
+});
+
+runTest('formatShortcutLabel shortens arrow key names', () => {
+  assert.equal(formatShortcutLabel('Ctrl+Shift+ArrowRight', false), 'Ctrl+Shift+Right');
+  assert.equal(formatShortcutLabel('Ctrl+Shift+ArrowDown', true), '⌃⇧Down');
+});
+
+runTest('matchShortcut accepts Ctrl+Alt+Arrow chords for pane focus', () => {
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowRight', ctrlKey: true, altKey: true }),
+      'Ctrl+Alt+ArrowRight',
+    ),
+    true,
+  );
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowLeft', ctrlKey: true, altKey: true }),
+      'Ctrl+Alt+ArrowLeft',
+    ),
+    true,
+  );
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowRight', ctrlKey: true, shiftKey: true }),
+      'Ctrl+Alt+ArrowRight',
+    ),
+    false,
+  );
+  assert.equal(
+    matchShortcut(
+      keyEvent({ key: 'ArrowRight', ctrlKey: true, altKey: true, shiftKey: true }),
+      'Ctrl+Alt+ArrowRight',
+    ),
+    false,
+  );
+  assert.equal(formatShortcutLabel('Ctrl+Alt+ArrowRight', false), 'Ctrl+Alt+Right');
+});

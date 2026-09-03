@@ -62,6 +62,7 @@ export {
 } from './rendererSetup.js';
 
 export { destroyTerminalInstance, getTerminalRecentLines } from './instanceApi.js';
+export { resolveShellExitConnectionId } from './shellExit.js';
 export { terminalService } from './terminalService.js';
 export {
   buildXtermOptions,
@@ -110,6 +111,9 @@ export {
   isTerminalFitReady,
   safeFitTerminal,
   createResizeScheduler,
+  beginPaneDividerDrag,
+  endPaneDividerDrag,
+  isPaneDividerDragging,
 } from './terminalFit.js';
 export { restoreTerminalDisplay } from './terminalPanelRestore.js';
 export type { ResizeScheduler, ResizeScheduleOptions } from './terminalFit.js';

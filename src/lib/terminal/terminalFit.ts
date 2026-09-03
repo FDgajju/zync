@@ -47,8 +47,24 @@ export function safeFitTerminal(
 
 export interface ResizeScheduleOptions {
   forceSync?: boolean;
+  /** If false, fit the UI only — do not send SIGWINCH to the PTY. */
+  syncBackend?: boolean;
   /** If true, run immediately without debounce (e.g. post-setup or explicit user action). */
   immediate?: boolean;
+}
+
+let paneDividerDragDepth = 0;
+
+export function beginPaneDividerDrag(): void {
+  paneDividerDragDepth += 1;
+}
+
+export function endPaneDividerDrag(): void {
+  paneDividerDragDepth = Math.max(0, paneDividerDragDepth - 1);
+}
+
+export function isPaneDividerDragging(): boolean {
+  return paneDividerDragDepth > 0;
 }
 
 export interface ResizeScheduler {
@@ -75,18 +91,19 @@ export function createResizeScheduler(
     schedule(options) {
       const immediate = options?.immediate ?? false;
       const force = options?.forceSync ?? false;
+      const syncBackend = options?.syncBackend ?? true;
 
       if (immediate) {
         if (timer) {
           clearTimeout(timer);
           timer = null;
         }
-        run({ forceSync: force });
+        run({ forceSync: force, syncBackend });
         return;
       }
 
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => run({ forceSync: force }), delay);
+      timer = setTimeout(() => run({ forceSync: force, syncBackend }), delay);
     },
     cancel() {
       if (timer) {

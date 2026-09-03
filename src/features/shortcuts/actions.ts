@@ -1,5 +1,7 @@
 import { isEditorOverlayOpen } from '../../components/editor/overlayState';
+import { canSplit, layoutForTerm, paneNavDirectionFromKey } from '../../lib/paneLayout';
 import { useAppStore, type Tab } from '../../store/useAppStore';
+import { keyboardFocus } from './focus';
 
 let sidebarCollapseTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -47,6 +49,32 @@ export function runShortcutCommand(id: string, event: KeyboardEvent): boolean {
                 emit('ssh-ui:close-terminal-tab', { connectionId: store.activeConnectionId });
             }
             return true;
+        case 'splitPanes': {
+            if (!store.activeConnectionId) return false;
+            if (keyboardFocus(event.target) === 'field') return false;
+            const tab = store.activeTabId
+                ? store.tabs.find((item: Tab) => item.id === store.activeTabId)
+                : undefined;
+            if (tab?.view && tab.view !== 'terminal') return false;
+            const activeId = store.activeTerminalIds[store.activeConnectionId];
+            const layout = activeId
+                ? layoutForTerm(store.paneLayouts[store.activeConnectionId], activeId)
+                : undefined;
+            if (!canSplit(layout ?? null)) return false;
+            const stacked = event.key === 'ArrowUp' || event.key === 'ArrowDown';
+            store.splitPanes(store.activeConnectionId, stacked ? 'vertical' : 'horizontal');
+            return true;
+        }
+        case 'focusSplitPane': {
+            if (!store.activeConnectionId) return false;
+            const direction = paneNavDirectionFromKey(event.key);
+            if (!direction) return false;
+            const tab = store.activeTabId
+                ? store.tabs.find((item: Tab) => item.id === store.activeTabId)
+                : undefined;
+            if (tab?.view && tab.view !== 'terminal') return false;
+            return store.focusPaneInDirection(store.activeConnectionId, direction);
+        }
         case 'toggleSettings':
             if (store.isSettingsOpen) store.closeSettings();
             else store.openSettings();

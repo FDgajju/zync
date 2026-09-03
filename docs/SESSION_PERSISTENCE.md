@@ -43,7 +43,7 @@ State is serialised to `session.json` in the app data directory after every mean
   - Calls `saveSession()` after every tab mutation: `openTab`, `openPortForwardingTab`, `openReleaseNotesTab`, `openSnippetsTab`, `closeTab`, `activateTab`, `reorderTabs`
 
 - `src/store/terminalSlice.ts`
-  - `restoreTerminalTabs()` — rebuilds terminal tabs from snapshots; sets `pendingRestore: true` on SSH tabs; restores `syncedTerminalId`
+  - `restoreTerminalTabs()` — rebuilds terminal tabs from snapshots; sets `pendingRestore: true` on SSH tabs; restores `syncedTerminalId`; split groups set the active terminal to the layout's focused leaf
   - `clearPendingRestore()` — called after a successful SSH reconnect to mark tabs as live
 
 - `src/components/terminal/Terminal.tsx`
@@ -77,8 +77,11 @@ SessionData
 ├── tabs: Vec<TabSnapshot>
 │   ├── id, tabType, title, connectionId, view
 ├── terminals: HashMap<scopeId, Vec<TerminalTabSnapshot>>
-│   ├── id, title, cwd, initialPath, isSynced
-└── activeTerminalIds: HashMap<scopeId, String>
+│   ├── id, title, cwd, initialPath, isSynced, shellOverride
+│   └── tabVisible  // false = extra pane in a split; omitted means visible
+├── activeTerminalIds: HashMap<scopeId, String>
+└── paneLayouts: HashMap<scopeId, PaneLayoutGroups>  // optional; missing = one pane
+    └── ownerTermId → PaneLayout
 ```
 
 Rust structs use `#[serde(rename_all = "camelCase", default)]` so all fields are optional on deserialise — missing fields from older session files default gracefully.

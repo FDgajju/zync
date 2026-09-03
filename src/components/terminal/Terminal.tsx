@@ -21,6 +21,8 @@ interface TerminalComponentProps {
   isWorkspaceActive?: boolean;
   isTerminalView?: boolean;
   isActiveTab?: boolean;
+  /** Keyboard owner among visible split panes. Defaults to isActiveTab. */
+  isFocused?: boolean;
 }
 
 function terminalPropsEqual(prev: TerminalComponentProps, next: TerminalComponentProps): boolean {
@@ -29,7 +31,8 @@ function terminalPropsEqual(prev: TerminalComponentProps, next: TerminalComponen
     && prev.isVisible === next.isVisible
     && prev.isWorkspaceActive === next.isWorkspaceActive
     && prev.isTerminalView === next.isTerminalView
-    && prev.isActiveTab === next.isActiveTab;
+    && prev.isActiveTab === next.isActiveTab
+    && prev.isFocused === next.isFocused;
 }
 
 export const TerminalComponent = memo(function TerminalComponent({
@@ -39,6 +42,7 @@ export const TerminalComponent = memo(function TerminalComponent({
   isWorkspaceActive = true,
   isTerminalView = true,
   isActiveTab = true,
+  isFocused,
 }: TerminalComponentProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
@@ -162,6 +166,7 @@ export const TerminalComponent = memo(function TerminalComponent({
     isWorkspaceActive,
     isTerminalView,
     isActiveTab,
+    isFocused,
     remoteReady,
     terminalSettings: settings.terminal,
     resolveInitialTheme,
@@ -170,10 +175,16 @@ export const TerminalComponent = memo(function TerminalComponent({
   });
 
   useTerminalGlobalShortcuts({
-    isVisible,
+    isVisible: isVisible && (isFocused ?? isActiveTab),
     termRef,
     onOpenSearch: openSearch,
   });
+
+  useEffect(() => {
+    if (isFocused !== true || isSearchOpen) return;
+    if (!isVisible || !isWorkspaceActive || !isTerminalView) return;
+    termRef.current?.focus();
+  }, [isFocused, isSearchOpen, sessionId, isVisible, isWorkspaceActive, isTerminalView]);
 
   if (!isLocal && !activeConnectionId) {
     return <div className="p-8 text-gray-400">Please connect to a server first.</div>;

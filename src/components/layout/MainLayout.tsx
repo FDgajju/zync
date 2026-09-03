@@ -36,6 +36,7 @@ import {
     resolveIdleHostPtySuspendDelayMs,
     scheduleIdlePtySuspend,
     shouldIdleSuspendConnection,
+    resolveShellExitConnectionId,
     terminalService,
 } from '../../lib/terminal';
 import { resolveLocalWindowsShellId } from '../../lib/terminal/spawnContext';
@@ -256,7 +257,7 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
 
     // Terminal Store Selectors - Optimized
     const createTerminal = useAppStore(state => state.createTerminal);
-    const closeTerminal = useAppStore(state => state.closeTerminal);
+    const closeTerminalGroup = useAppStore(state => state.closeTerminalGroup);
     const setActiveTerminal = useAppStore(state => state.setActiveTerminal);
 
     // Feature Pinning
@@ -500,9 +501,9 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
 
     const handleTerminalClose = useCallback((termId: string) => {
         if (tab.connectionId) {
-            closeTerminal(tab.connectionId, termId);
+            closeTerminalGroup(tab.connectionId, termId);
         }
-    }, [tab.connectionId, closeTerminal]);
+    }, [tab.connectionId, closeTerminalGroup]);
 
     const handleNewTerminal = useCallback((shell?: ShellEntry) => {
         if (!tab.connectionId) return;
@@ -726,7 +727,11 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         terminalService.setCloseTabHandler((connectionId, termId) => {
-            useAppStore.getState().closeTerminal(connectionId, termId);
+            const store = useAppStore.getState();
+            const resolved = resolveShellExitConnectionId(termId, connectionId || undefined, store.terminals);
+            if (resolved) {
+                store.closePaneOnShellExit(resolved, termId);
+            }
         });
         return () => terminalService.setCloseTabHandler(null);
     }, []);

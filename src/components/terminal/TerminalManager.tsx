@@ -7,6 +7,9 @@ import { Terminal as TerminalIcon, Plus, X, Zap } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { once, type UnlistenFn } from '@tauri-apps/api/event';
 import { queueTerminalInput } from '../../lib/terminal';
+import { LOCAL_TERMINAL_CONNECTION_ID } from '../../lib/terminal/connectionIds';
+import { findLayoutOwner, isSplitLayout, layoutForTerm } from '../../lib/paneLayout';
+import { PaneLayoutView } from './PaneLayoutView';
 
 // TerminalTab interface is now in store/terminalSlice
 // export interface TerminalTab ... removed
@@ -33,13 +36,33 @@ export function TerminalManager({
     const activeConnectionId = connectionId || globalActiveId;
 
     // Zustand Store Hooks - Optimized
-    const tabs = useAppStore(useShallow(state => activeConnectionId ? (state.terminals[activeConnectionId] || []) : []));
+    const tabs = useAppStore(useShallow(state =>
+        activeConnectionId
+            ? (state.terminals[activeConnectionId] || []).filter(tab => tab.tabVisible !== false)
+            : [],
+    ));
     const activeTabId = useAppStore(state => activeConnectionId ? (state.activeTerminalIds[activeConnectionId] || null) : null);
+    const paneGroups = useAppStore((state) =>
+        activeConnectionId ? state.paneLayouts[activeConnectionId] : undefined
+    );
+    const visibleActiveTabId = activeTabId
+        ? (findLayoutOwner(paneGroups, activeTabId) ?? activeTabId)
+        : null;
+    const paneLayout = useAppStore((state) => {
+        if (!activeConnectionId) return undefined;
+        const activeId = state.activeTerminalIds[activeConnectionId];
+        if (!activeId) return undefined;
+        return layoutForTerm(state.paneLayouts[activeConnectionId], activeId);
+    });
+    const hostConnected = useAppStore((state) => {
+        if (!activeConnectionId || activeConnectionId === LOCAL_TERMINAL_CONNECTION_ID) return true;
+        return state.connections.find((c) => c.id === activeConnectionId)?.status === 'connected';
+    });
 
     // Actions (stable)
     const createTerminal = useAppStore(state => state.createTerminal);
     const ensureTerminal = useAppStore(state => state.ensureTerminal);
-    const closeTerminal = useAppStore(state => state.closeTerminal);
+    const closeTerminalGroup = useAppStore(state => state.closeTerminalGroup);
     const setActiveTerminal = useAppStore(state => state.setActiveTerminal);
     const terminalTransparencyEnabled = useAppStore(
         state => state.settings.enableVibrancy && (state.settings.windowOpacity ?? 1) < 1
@@ -135,7 +158,12 @@ export function TerminalManager({
             const { connectionId: targetConnId } = e.detail;
             const currentActiveTabId = activeTabIdRef.current;
             if (targetConnId === activeConnectionId && currentActiveTabId) {
-                closeTerminal(activeConnectionId!, currentActiveTabId);
+                const store = useAppStore.getState();
+                const owner = findLayoutOwner(
+                    store.paneLayouts[activeConnectionId!],
+                    currentActiveTabId,
+                ) ?? currentActiveTabId;
+                store.closeTerminalGroup(activeConnectionId!, owner);
             }
         };
 
@@ -180,7 +208,7 @@ export function TerminalManager({
     const handleCloseTab = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (activeConnectionId) {
-            closeTerminal(activeConnectionId, id);
+            closeTerminalGroup(activeConnectionId, id);
         }
     };
 
@@ -209,7 +237,7 @@ export function TerminalManager({
 
                                 className={cn(
                                     "flex items-center gap-1.5 px-2 py-0.5 h-6 text-[11px] font-medium rounded-sm transition-all cursor-pointer min-w-[80px] max-w-[160px] group select-none shrink-0 border",
-                                    activeTabId === tab.id
+                                    visibleActiveTabId === tab.id
                                         ? "bg-app-surface border-app-border/50 text-app-text shadow-sm"
                                         : "bg-transparent border-transparent text-app-muted hover:bg-app-surface/50 hover:text-app-text"
                                 )}
@@ -217,7 +245,7 @@ export function TerminalManager({
                                 {tab.isSynced ? (
                                     <Zap size={11} className="text-yellow-500 fill-yellow-500/20" />
                                 ) : (
-                                    <TerminalIcon size={11} className={cn(activeTabId === tab.id ? "text-app-accent" : "text-app-muted group-hover:text-app-text opacity-70 group-hover:opacity-100")} />
+                                    <TerminalIcon size={11} className={cn(visibleActiveTabId === tab.id ? "text-app-accent" : "text-app-muted group-hover:text-app-text opacity-70 group-hover:opacity-100")} />
                                 )}
                                 <span className="truncate flex-1">{tab.title}</span>
                                 <button
@@ -250,6 +278,15 @@ export function TerminalManager({
                         <TerminalIcon size={48} className="mb-4 opacity-20" />
                         <p>No active terminals</p>
                         <button onClick={handleNewTab} className="mt-4 text-app-accent hover:underline">Open New Terminal</button>
+                    </div>
+                ) : activeTabId && terminalView && hostConnected && paneLayout && isSplitLayout(paneLayout) ? (
+                    <div className="absolute inset-0 z-10">
+                        <PaneLayoutView
+                            connectionId={activeConnectionId}
+                            layout={paneLayout}
+                            workspaceActive={workspaceActive}
+                            panelVisible={panelVisible}
+                        />
                     </div>
                 ) : activeTabId && terminalView ? (
                     <div className="absolute inset-0 z-10">

@@ -4,6 +4,7 @@ import { useAvailableShells } from '../../hooks/useAvailableShells';
 import { LOCAL_TERMINAL_CONNECTION_ID } from '../../features/connections/application/tabService';
 import { CombinedTabBar } from './CombinedTabBar';
 import type { ShellEntry } from '../../lib/shells/types';
+import { canSplit, isSplitLayout, layoutForTerm } from '../../lib/paneLayout';
 
 export interface WorkspaceTabBarProps {
     connectionId: string;
@@ -45,6 +46,18 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
     const activeTerminalId = useAppStore(
         state => state.activeTerminalIds[connectionId] ?? null,
     );
+    const isSplit = useAppStore((state) => {
+        const activeId = state.activeTerminalIds[connectionId];
+        if (!activeId) return false;
+        return isSplitLayout(layoutForTerm(state.paneLayouts[connectionId], activeId));
+    });
+    const canSplitPanes = useAppStore((state) => {
+        const activeId = state.activeTerminalIds[connectionId];
+        if (!activeId) return true;
+        return canSplit(layoutForTerm(state.paneLayouts[connectionId], activeId) ?? null);
+    });
+    const splitPanes = useAppStore(state => state.splitPanes);
+    const unsplitPanes = useAppStore(state => state.unsplitPanes);
     const hostIsWindows = connectionId === LOCAL_TERMINAL_CONNECTION_ID
         && window.electronUtils?.platform === 'win32';
     const {
@@ -75,6 +88,10 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
             onTogglePin={onTogglePin}
             sessionToolsOpen={sessionToolsOpen}
             onToggleSessionTools={onToggleSessionTools}
+            isSplit={isSplit}
+            canSplit={canSplitPanes}
+            onSplit={(direction) => splitPanes(connectionId, direction)}
+            onUnsplit={() => unsplitPanes(connectionId)}
         />
     );
 });

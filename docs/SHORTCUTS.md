@@ -1,6 +1,6 @@
 # Keyboard shortcuts — routing & catalog
 
-**Last updated:** 2026-08-31  
+**Last updated:** 2026-09-03  
 **Status:** landed — catalog + dispatcher + PTY table. Issue [#104](https://github.com/zync-sh/zync/issues/104) is the first PTY-table row.
 
 This is the canonical design for **where a key goes** in Zync: terminal PTY vs Zync command vs native field. Terminal emulator internals stay in [TERMINAL.md](./TERMINAL.md). User-facing Settings rows stay generated from the catalog (today: `ShortcutsTab.tsx` + `settings.keybindings`).
@@ -95,11 +95,17 @@ Small, closed set:
 | Mod+B / P / I | Zync (`always`) | sidebar, palette, AI — still work in the terminal |
 | Mod+Shift+C / V | Zync | terminal copy / paste |
 | Mod+Shift+W / T / P | Zync | close terminal tab, new host terminal, command palette (commands) |
+| Ctrl+Shift+Left / Right | Zync (`always`) | split the focused pane side by side |
+| Ctrl+Shift+Up / Down | Zync (`always`) | split the focused pane stacked |
+| Ctrl+Alt+Arrows | Zync (`always`) | move focus to the neighboring pane (consumed only when a split exists) |
+| — | — | Unsplit is on the owner tab’s context menu |
 | Ctrl+Tab, Mod+1–9 | Zync | tab switch |
 | Mod+, | Zync | settings |
 | Mod+= / - | terminal font (xterm) or app zoom (`when: app`) | |
 
 Close-tab / new local terminal / buffer find stay **app only** under shell-first. In a terminal use Mod+Shift+W to close the terminal tab.
+
+If Ctrl+Alt+arrows never reach the app, an OS or GPU utility may own that chord — rebind **Focus pane in direction** in Settings.
 
 Adding a command is adding a row with a `when`. That **is** the “skip if terminal focused” rule. No extra `if (xtermFocused) return` in a capture listener.
 
