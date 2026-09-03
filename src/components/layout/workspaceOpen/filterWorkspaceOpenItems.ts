@@ -44,6 +44,10 @@ export function visibleWorkspaceOpenItems(
     );
 }
 
+export function workspaceOpenEscapeAction(view: WorkspaceOpenView): 'back' | 'close' {
+    return view === 'shells' ? 'back' : 'close';
+}
+
 export function groupWorkspaceOpenItems(
     items: readonly WorkspaceOpenItem[],
 ): Array<{ group: WorkspaceOpenGroup; items: WorkspaceOpenItem[] }> {

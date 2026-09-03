@@ -92,12 +92,14 @@ export function AppAddMenu({
         onClose();
     };
 
+    const onMenuKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClose('keyboard');
+    };
+
     const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            onClose('keyboard');
-            return;
-        }
         if (event.key === 'ArrowDown') {
             event.preventDefault();
             if (visible.length === 0) return;
@@ -125,6 +127,7 @@ export function AppAddMenu({
             className="p-0 flex flex-col shadow-xl"
             role="dialog"
             aria-label="Create or go"
+            onKeyDownCapture={onMenuKeyDownCapture}
         >
             <div className="flex items-center gap-2 px-2.5 py-2 border-b border-app-border/60">
                 <Search size={13} className="text-app-muted shrink-0" />

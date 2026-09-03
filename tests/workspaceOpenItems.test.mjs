@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildWorkspaceOpenItems } from '../.tmp-agent-tests/src/components/layout/workspaceOpen/buildWorkspaceOpenItems.js';
-import { filterWorkspaceOpenItems, groupWorkspaceOpenItems, visibleWorkspaceOpenItems } from '../.tmp-agent-tests/src/components/layout/workspaceOpen/filterWorkspaceOpenItems.js';
+import { filterWorkspaceOpenItems, groupWorkspaceOpenItems, visibleWorkspaceOpenItems, workspaceOpenEscapeAction } from '../.tmp-agent-tests/src/components/layout/workspaceOpen/filterWorkspaceOpenItems.js';
 
 function runTest(name, fn) {
   try {
@@ -63,6 +63,7 @@ runTest('search on root still finds shells', () => {
     features: [],
   });
   const files = filterWorkspaceOpenItems(items, 'file');
+  assert.equal(files.some((item) => item.id === 'feature:files'), true);
   assert.equal(files.every((item) => item.label.toLowerCase().includes('file') || item.keywords.some((k) => k.includes('file'))), true);
   const found = visibleWorkspaceOpenItems(items, 'power', 'root');
   assert.equal(found.some((item) => item.kind === 'shell'), true);
@@ -79,6 +80,11 @@ runTest('shells view lists only shells', () => {
   const listed = visibleWorkspaceOpenItems(items, '', 'shells');
   assert.equal(listed.length, 1);
   assert.equal(listed[0].kind, 'shell');
+});
+
+runTest('Escape goes back from Other shells and closes on root', () => {
+  assert.equal(workspaceOpenEscapeAction('shells'), 'back');
+  assert.equal(workspaceOpenEscapeAction('root'), 'close');
 });
 
 runTest('groups drop empty sections', () => {

@@ -8,6 +8,7 @@ export {
     groupWorkspaceOpenItems,
     normalizeWorkspaceOpenQuery,
     visibleWorkspaceOpenItems,
+    workspaceOpenEscapeAction,
     workspaceOpenItemMatches,
 } from './filterWorkspaceOpenItems';
 export { WorkspaceOpenMenu } from './WorkspaceOpenMenu';

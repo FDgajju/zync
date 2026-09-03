@@ -7,7 +7,7 @@ import { TopbarDropdown } from '../../ui/TopbarDropdown';
 import { FEATURE_META, formatFeatureShortcut, type FeatureId } from '../featureMeta';
 import type { ShellEntry } from '../../../lib/shells/types';
 import { buildWorkspaceOpenItems, WORKSPACE_OPEN_GROUP_LABEL } from './buildWorkspaceOpenItems';
-import { groupWorkspaceOpenItems, visibleWorkspaceOpenItems } from './filterWorkspaceOpenItems';
+import { groupWorkspaceOpenItems, visibleWorkspaceOpenItems, workspaceOpenEscapeAction } from './filterWorkspaceOpenItems';
 import type {
     WorkspaceOpenCloseSource,
     WorkspaceOpenFeatureState,
@@ -113,16 +113,18 @@ export function WorkspaceOpenMenu({
         setView('root');
     };
 
-    const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            if (view === 'shells') {
-                goBack();
-                return;
-            }
-            onClose('keyboard');
+    const onMenuKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (workspaceOpenEscapeAction(view) === 'back') {
+            goBack();
             return;
         }
+        onClose('keyboard');
+    };
+
+    const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
         if (event.key === 'ArrowDown') {
             event.preventDefault();
             if (visible.length === 0) return;
@@ -151,6 +153,7 @@ export function WorkspaceOpenMenu({
             className="p-0 flex flex-col shadow-xl"
             role="dialog"
             aria-label="Open a workspace tab"
+            onKeyDownCapture={onMenuKeyDownCapture}
         >
             <div className="flex items-center gap-2 px-2.5 py-2 border-b border-app-border/60">
                 {view === 'shells' ? (
