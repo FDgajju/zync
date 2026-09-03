@@ -65,6 +65,7 @@ const tests = [
   'tests/sessionPersistence.test.mjs',
   'tests/paneLayout.test.mjs',
   'tests/workspaceOpenItems.test.mjs',
+  'tests/appAddItems.test.mjs',
   'tests/shellExit.test.mjs',
   'tests/shortcuts.test.mjs',
   'tests/terminalRendererPolicy.test.mjs',

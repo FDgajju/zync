@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Braces, ChevronLeft, ChevronRight, FolderOpen, LayoutDashboard, Loader2, Plus, RotateCw, Search, Terminal as TerminalIcon, Waypoints } from 'lucide-react';
 import { cn } from '../../../lib/utils';
@@ -61,6 +61,9 @@ export function WorkspaceOpenMenu({
         [items, query, view],
     );
     const sections = useMemo(() => groupWorkspaceOpenItems(visible), [visible]);
+    const listId = useId();
+    const activeItem = visible.length > 0 ? visible[Math.min(activeIndex, visible.length - 1)] : undefined;
+    const activeDescendantId = activeItem ? `${listId}-${view}-${activeItem.id}` : undefined;
 
     useEffect(() => {
         searchRef.current?.focus();
@@ -72,6 +75,11 @@ export function WorkspaceOpenMenu({
             return Math.min(index, visible.length - 1);
         });
     }, [visible.length]);
+
+    useEffect(() => {
+        if (!activeDescendantId) return;
+        document.getElementById(activeDescendantId)?.scrollIntoView({ block: 'nearest' });
+    }, [activeDescendantId]);
 
     const runItem = (item: WorkspaceOpenItem) => {
         if (item.disabled) return;
@@ -167,6 +175,11 @@ export function WorkspaceOpenMenu({
                     onKeyDown={onSearchKeyDown}
                     placeholder={view === 'shells' ? 'Search shells…' : 'Open a tab…'}
                     className="flex-1 min-w-0 bg-transparent text-xs text-app-text placeholder:text-app-muted/50 outline-none"
+                    role="combobox"
+                    aria-expanded
+                    aria-controls={listId}
+                    aria-activedescendant={activeDescendantId}
+                    aria-autocomplete="list"
                     aria-label={view === 'shells' ? 'Filter shells' : 'Filter tabs'}
                 />
             </div>
@@ -175,6 +188,9 @@ export function WorkspaceOpenMenu({
                 <AnimatePresence mode="wait" initial={false}>
                     <motion.div
                         key={view}
+                        id={listId}
+                        role="listbox"
+                        aria-label={view === 'shells' ? 'Shells' : 'Workspace tabs'}
                         className="max-h-72 overflow-y-auto py-1"
                         initial={reduceMotion ? false : { opacity: 0, x: slideDir * 14 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -214,6 +230,7 @@ export function WorkspaceOpenMenu({
                                     return (
                                         <WorkspaceOpenRow
                                             key={item.id}
+                                            id={`${listId}-${view}-${item.id}`}
                                             item={item}
                                             active={active}
                                             onHover={() => setActiveIndex(index)}
@@ -248,11 +265,13 @@ export function WorkspaceOpenMenu({
 }
 
 function WorkspaceOpenRow({
+    id,
     item,
     active,
     onHover,
     onSelect,
 }: {
+    id: string;
     item: WorkspaceOpenItem;
     active: boolean;
     onHover: () => void;
@@ -261,6 +280,9 @@ function WorkspaceOpenRow({
     return (
         <button
             type="button"
+            id={id}
+            role="option"
+            aria-selected={active}
             disabled={item.disabled}
             onMouseEnter={onHover}
             onClick={onSelect}
