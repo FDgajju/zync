@@ -1,4 +1,4 @@
-import { X, Settings as SettingsIcon, Network, Gift, Plus, Laptop, FolderPlus, Home, Shield, UserRound, ChevronDown, LogOut, RefreshCw, Monitor, Link2 } from 'lucide-react';
+import { X, Settings as SettingsIcon, Network, Gift, Plus, Home, Shield, UserRound, ChevronDown, LogOut, RefreshCw, Monitor, Link2 } from 'lucide-react';
 import { GoogleMarkIcon } from '../icons/providerIcons';
 import { OSIcon } from '../icons/OSIcon';
 import { ZyncMark } from '../brand/ZyncMark';
@@ -12,6 +12,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../ui/Button';
 import { Tooltip } from '../ui/Tooltip';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { AppAddMenu } from './appAddMenu';
+import { useShowHostAddressesInLists } from '../../features/connections/presentation/useConnectionDisplayLabels';
 import { TopbarDropdown } from '../ui/TopbarDropdown';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import { isEditorOverlayOpen } from '../editor/overlayState';
@@ -169,6 +171,8 @@ export function TabBar() {
     const openVaultTab = useAppStore(state => state.openVaultTab);
     const openSyncBackupTab = useAppStore(state => state.openSyncBackupTab);
     const openPublicUrlsTab = useAppStore(state => state.openPublicUrlsTab);
+    const openPortForwardingTab = useAppStore(state => state.openPortForwardingTab);
+    const openTab = useAppStore(state => state.openTab);
     const shareAuth = useShareStore(state => state.auth);
     const shareBusy = useShareStore(state => state.busy);
     const shareHydrate = useShareStore(state => state.hydrate);
@@ -176,12 +180,14 @@ export function TabBar() {
     const setAddConnectionModalOpen = useAppStore(state => state.setAddConnectionModalOpen);
     const showToast = useAppStore(state => state.showToast);
     const { showInTitleLeft, showInTitleRight } = useNotificationBellPlacement();
+    const showHostAddressesInLists = useShowHostAddressesInLists();
 
     const [tabToClose, setTabToClose] = useState<string | null>(null);
 
     // Add menu state
     const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
     const addMenuRef = useRef<HTMLDivElement>(null);
+    const addButtonRef = useRef<HTMLButtonElement>(null);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const profileMenuRef = useRef<HTMLDivElement>(null);
     const [googleSync, setGoogleSync] = useState<SyncProviderStatus | null>(null);
@@ -353,10 +359,14 @@ export function TabBar() {
 
                     {/* Add New Button */}
                     <div className="relative shrink-0" ref={addMenuRef}>
-                        <Tooltip content="Add New..." position="bottom" disabled={isAddMenuOpen}>
+                        <Tooltip content="Create or go" position="bottom" disabled={isAddMenuOpen}>
                             <Button
+                                ref={addButtonRef}
                                 variant="ghost"
                                 size="icon"
+                                aria-haspopup="dialog"
+                                aria-expanded={isAddMenuOpen}
+                                aria-label="Create or go"
                                 onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
                                 className={cn(
                                     "h-7 w-7 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 focus-visible:ring-offset-0",
@@ -370,32 +380,40 @@ export function TabBar() {
                         </Tooltip>
 
                         {isAddMenuOpen && (
-                            <TopbarDropdown widthClass="w-48">
-                                <button
-                                    onClick={() => { setAddConnectionModalOpen(true); setIsAddMenuOpen(false); }}
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-app-text hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center gap-2 transition-colors"
-                                >
-                                    <Laptop size={13} className="text-app-muted" />
-                                    <span>New Host</span>
-                                </button>
-                                <button
-                                    onClick={() => { window.dispatchEvent(new Event('ssh-ui:open-folder-modal')); setIsAddMenuOpen(false); }}
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-app-text hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center gap-2 transition-colors"
-                                >
-                                    <FolderPlus size={13} className="text-app-muted" />
-                                    <span>New Folder</span>
-                                </button>
-                                
-                                <div className="h-px bg-app-border/40 my-1 mx-2" />
-                                
-                                <button
-                                    onClick={() => { window.dispatchEvent(new Event('ssh-ui:open-new-tunnel')); setIsAddMenuOpen(false); }}
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-app-text hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center gap-2 transition-colors"
-                                >
-                                    <Network size={13} className="text-app-muted" />
-                                    <span>New Tunnel</span>
-                                </button>
-                            </TopbarDropdown>
+                            <AppAddMenu
+                                showHostAddressesInLists={showHostAddressesInLists}
+                                hosts={connections.map((connection) => ({
+                                    id: connection.id,
+                                    name: connection.name,
+                                    host: connection.host,
+                                    port: connection.port,
+                                    username: connection.username,
+                                    folder: connection.folder,
+                                    isFavorite: connection.isFavorite,
+                                    icon: connection.icon,
+                                }))}
+                                open={{
+                                    portForwardingOpen: tabs.some((tab) => tab.type === 'port-forwarding'),
+                                    publicUrlsOpen: tabs.some((tab) => tab.type === 'public-urls'),
+                                    localOpen: tabs.some((tab) => tab.connectionId === LOCAL_TERMINAL_CONNECTION_ID),
+                                    openHostIds: new Set(
+                                        tabs
+                                            .filter((tab) => tab.type === 'connection' && tab.connectionId && tab.connectionId !== LOCAL_TERMINAL_CONNECTION_ID)
+                                            .map((tab) => tab.connectionId as string),
+                                    ),
+                                }}
+                                onClose={(source) => {
+                                    setIsAddMenuOpen(false);
+                                    if (source === 'keyboard') addButtonRef.current?.focus();
+                                }}
+                                onNewHost={() => setAddConnectionModalOpen(true)}
+                                onNewFolder={() => window.dispatchEvent(new Event('ssh-ui:open-folder-modal'))}
+                                onNewTunnel={() => window.dispatchEvent(new Event('ssh-ui:open-new-tunnel'))}
+                                onOpenPortForwarding={() => openPortForwardingTab()}
+                                onOpenPublicUrls={() => openPublicUrlsTab()}
+                                onOpenLocal={() => openTab('local')}
+                                onOpenHost={(hostId) => openTab(hostId)}
+                            />
                         )}
                     </div>
                 </div>
