@@ -39,6 +39,16 @@ function paneIdForFiles(connectionId: string): string | null {
     return findLeafByFeature(layout.root, 'files')?.id ?? null;
 }
 
+function filesSplitSnapshot(connectionId: string, syncedTermId?: string) {
+    const layout = layoutForConnection(connectionId);
+    return {
+        filesPaneId: layout ? findLeafByFeature(layout.root, 'files')?.id ?? null : null,
+        alreadyInSplit: Boolean(
+            syncedTermId && layout && findLeafByTerm(layout.root, syncedTermId),
+        ),
+    };
+}
+
 function tabStillOpen(tabId: string | null): boolean {
     if (!tabId) return false;
     return useAppStore.getState().tabs.some((tab) => tab.id === tabId);
@@ -148,6 +158,14 @@ async function resolveSpawnDirectory(
     return '';
 }
 
+function refuseSplitIfCapped(connectionId: string, alreadyInSplit: boolean, wantsSplit: boolean): boolean {
+    if (wantsSplit && !alreadyInSplit && !canSplitBesideFiles(connectionId)) {
+        toastPaneCap();
+        return true;
+    }
+    return false;
+}
+
 /** Open a shell at the Files location. `edge` docks it beside Files (or the focused pane). */
 export async function openTerminalHere(
     connectionId: string,
@@ -155,8 +173,6 @@ export async function openTerminalHere(
     options?: { synced?: boolean; edge?: DockEdge; file?: OpenHereFile | null },
 ): Promise<void> {
     const tabId = useAppStore.getState().activeTabId;
-    const filesPaneId = paneIdForFiles(connectionId);
-    const layout = layoutForConnection(connectionId);
     const targetPath = await resolveSpawnDirectory(connectionId, path, options?.file);
     if (!tabStillOpen(tabId)) return;
 
@@ -164,16 +180,11 @@ export async function openTerminalHere(
     const tabs = store.terminals[connectionId] || [];
     const synced = options?.synced === true;
     const spawnPath = targetPath || undefined;
+    const wantsSplit = Boolean(options?.edge);
 
     const existingSyncedId = synced ? tabs.find((tab) => tab.isSynced)?.id : undefined;
-    const alreadyInSplit = Boolean(
-        existingSyncedId && layout && findLeafByTerm(layout.root, existingSyncedId),
-    );
-
-    if (options?.edge && !alreadyInSplit && !canSplitBesideFiles(connectionId)) {
-        toastPaneCap();
-        return;
-    }
+    let snapshot = filesSplitSnapshot(connectionId, existingSyncedId);
+    if (refuseSplitIfCapped(connectionId, snapshot.alreadyInSplit, wantsSplit)) return;
 
     let termId: string;
     if (synced && existingSyncedId) {
@@ -188,6 +199,8 @@ export async function openTerminalHere(
                 return;
             }
             if (!tabStillOpen(tabId)) return;
+            snapshot = filesSplitSnapshot(connectionId, existingSyncedId);
+            if (refuseSplitIfCapped(connectionId, snapshot.alreadyInSplit, wantsSplit)) return;
         }
     } else {
         termId = store.createTerminal(connectionId, {
@@ -204,7 +217,7 @@ export async function openTerminalHere(
     }
 
     showTerminalView(tabId);
-    reportDock(store.splitTermBesideFiles(connectionId, termId, options.edge, filesPaneId));
+    reportDock(store.splitTermBesideFiles(connectionId, termId, options.edge, snapshot.filesPaneId));
 }
 
 export function canDockHere(connectionId: string, alreadyPresent = false): boolean {
