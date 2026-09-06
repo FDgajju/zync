@@ -2,7 +2,7 @@ import { parsePaneLayout } from './persist';
 import { dropTerm, sanitizePaneLayout } from './ops';
 import {
     activeTermId,
-    firstLeaf,
+    firstTermLeaf,
     isPaneSplit,
     isSafePaneLayout,
     isSplitLayout,
@@ -12,6 +12,24 @@ import type { PaneLayout } from './types';
 
 /** owner tab id → split tree. One host can have several split tabs. */
 export type PaneLayoutGroups = Record<string, PaneLayout>;
+
+export function sameSplitGroup(
+    groups: PaneLayoutGroups | null | undefined,
+    termA: string,
+    termB: string,
+): boolean {
+    if (!termA || !termB) return false;
+    return (findLayoutOwner(groups, termA) ?? termA) === (findLayoutOwner(groups, termB) ?? termB);
+}
+
+/** Dragging a shell already in this group is a no-op — no layout write. */
+export function sameGroupTermDock(
+    groups: PaneLayoutGroups | null | undefined,
+    owner: string,
+    termId: string,
+): 'self' | null {
+    return sameSplitGroup(groups, owner, termId) ? 'self' : null;
+}
 
 export function findLayoutOwner(
     groups: PaneLayoutGroups | null | undefined,
@@ -104,8 +122,8 @@ export function parsePaneLayoutGroups(raw: unknown, knownTermIds: ReadonlySet<st
     if (isLegacyLayout(raw)) {
         const layout = parsePaneLayout(raw, knownTermIds);
         if (!layout || !isSplitLayout(layout)) return {};
-        const leaf = firstLeaf(layout.root);
-        const owner = leaf.content.kind === 'term' ? leaf.content.termId : '';
+        const leaf = firstTermLeaf(layout.root);
+        const owner = leaf && leaf.content.kind === 'term' ? leaf.content.termId : '';
         if (!owner || !knownTermIds.has(owner)) return {};
         return { [owner]: layout };
     }

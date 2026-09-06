@@ -81,7 +81,7 @@ SessionData
 │   └── tabVisible  // false = extra pane in a split; omitted means visible
 ├── activeTerminalIds: HashMap<scopeId, String>
 └── paneLayouts: HashMap<scopeId, PaneLayoutGroups>  // optional; missing = one pane
-    └── ownerTermId → PaneLayout
+    └── ownerTermId → PaneLayout  // leaves: { kind: 'term', termId } or { kind: 'feature', featureId: 'files' }
 ```
 
 Rust structs use `#[serde(rename_all = "camelCase", default)]` so all fields are optional on deserialise — missing fields from older session files default gracefully.

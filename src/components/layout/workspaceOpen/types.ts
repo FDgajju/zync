@@ -1,9 +1,10 @@
+import type { SplitFeatureId } from '../../../lib/paneLayout';
 import type { ShellEntry } from '../../../lib/shells/types';
 import type { FeatureId } from '../featureMeta';
 
 export type WorkspaceOpenGroup = 'create' | 'shells' | 'open';
 
-export type WorkspaceOpenKind = 'new-shell' | 'other-shells' | 'shell' | 'feature';
+export type WorkspaceOpenKind = 'new-shell' | 'other-shells' | 'shell' | 'feature' | 'split-feature';
 
 export type WorkspaceOpenView = 'root' | 'shells';
 
@@ -26,4 +27,10 @@ export type WorkspaceOpenFeatureState = {
     id: FeatureId;
     isOpen: boolean;
     isActive: boolean;
+};
+
+export type WorkspaceOpenSplitFeatureState = {
+    id: SplitFeatureId;
+    isOpen: boolean;
+    canOpen: boolean;
 };

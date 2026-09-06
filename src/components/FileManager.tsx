@@ -38,6 +38,28 @@ import { usePlugins } from '../context/PluginContext';
 import { buildEditorProviderOptions, CODEMIRROR_EDITOR_ID } from './editor/providers';
 import { clearEditorOverlayOpen, markEditorOverlayOpen } from './editor/overlayState';
 import { TerminalDisconnectedView } from './terminal/TerminalDisconnectedView';
+import { isFeaturePaneFocused, layoutForTerm } from '../lib/paneLayout';
+import type { AppStore } from '../store/useAppStore';
+import { canSplitBesideFiles, openHerePlacementItems, openTerminalHere, pickFilesOpenPath } from './layout/tabDock';
+
+export type FileManagerSurface = 'overlay' | 'pane';
+
+function isFileManagerActive(
+  state: AppStore,
+  connectionId: string | undefined,
+  surface: FileManagerSurface,
+): boolean {
+  const tab = state.tabs.find((t) => t.id === state.activeTabId);
+  if (!tab) return false;
+  if (connectionId != null && tab.connectionId !== connectionId) return false;
+  if (surface === 'overlay') return tab.view === 'files';
+  if (tab.view !== 'terminal') return false;
+  const scope = connectionId ?? tab.connectionId;
+  if (!scope) return false;
+  const activeTerm = state.activeTerminalIds[scope];
+  if (!activeTerm) return false;
+  return isFeaturePaneFocused(layoutForTerm(state.paneLayouts[scope], activeTerm), 'files');
+}
 
 export interface Conflict {
   source: string;
@@ -47,12 +69,50 @@ export interface Conflict {
   sourceConnectionId: string;
 }
 
+function terminalHereMenuItems(
+  connectionId: string,
+  file: { type: string; name: string; path?: string } | undefined,
+  onDone: () => void,
+): ContextMenuItem[] {
+  const splitDisabled = !canSplitBesideFiles(connectionId);
+  const run = (opts?: { synced?: boolean; edge?: 'left' | 'right' | 'top' | 'bottom' }) => {
+    const listed = useAppStore.getState().currentPath[connectionId] || '';
+    void openTerminalHere(connectionId, listed, { ...opts, file }).then(onDone);
+  };
+  return [
+    {
+      label: 'Open Terminal Here',
+      icon: <Terminal size={14} />,
+      children: openHerePlacementItems(
+        () => run(),
+        (edge) => run({ edge }),
+        splitDisabled,
+      ),
+    },
+    {
+      label: 'Follow with Terminal',
+      icon: <Zap size={14} className="text-yellow-500" />,
+      children: openHerePlacementItems(
+        () => run({ synced: true }),
+        (edge) => run({ synced: true, edge }),
+        splitDisabled,
+      ),
+    },
+  ];
+}
+
 function isFileManagerPanelShown(container: HTMLDivElement | null): boolean {
   if (!container) return false;
   return container.offsetParent !== null;
 }
 
-export const FileManager = memo(function FileManager({ connectionId }: { connectionId?: string }) {
+export const FileManager = memo(function FileManager({
+  connectionId,
+  surface = 'overlay',
+}: {
+  connectionId?: string;
+  surface?: FileManagerSurface;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const globalActiveId = useAppStore(state => state.activeConnectionId);
   const activeTabId = useAppStore(state => state.activeTabId);
@@ -80,14 +140,7 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
     const tabs = state.terminals[activeConnectionId];
     return !!tabs?.some((t) => t.pendingRestore);
   });
-  // Files panel stays mounted under `hidden`; only treat as active when this
-  // workspace is showing Files (same intent as isFileManagerPanelShown).
-  const isFilesSurfaceActive = useAppStore((state) => {
-    const tab = state.tabs.find((t) => t.id === state.activeTabId);
-    if (!tab || tab.view !== 'files') return false;
-    if (connectionId != null && tab.connectionId !== connectionId) return false;
-    return true;
-  });
+  const isFilesSurfaceActive = useAppStore((state) => isFileManagerActive(state, connectionId, surface));
 
   // Zustand Store Hooks
   const filesMap = useAppStore(state => state.files);
@@ -190,13 +243,12 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
 
   // Sync terminal to FM navigation if a synced terminal is active
   useEffect(() => {
+    if (!isFilesSurfaceActive) return;
     if (syncedTerminalId && currentPath && isFileManagerPanelShown(containerRef.current)) {
-      // Use the safe navigation IPC instead of manual string injection
       window.ipcRenderer.invoke('terminal:navigate', { termId: syncedTerminalId, path: currentPath });
-      // Update store tracking
       useAppStore.getState().setTerminalCwd(activeConnectionId || 'local', syncedTerminalId, currentPath);
     }
-  }, [currentPath, syncedTerminalId, activeConnectionId]);
+  }, [currentPath, syncedTerminalId, activeConnectionId, isFilesSurfaceActive]);
 
   // Combine store loading and local processing
   const isLoading = loading || isProcessing;
@@ -623,23 +675,32 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
   const initHomeDirectory = useCallback(async () => {
     if (!activeConnectionId || !isConnected) return;
 
+    const store = useAppStore.getState();
+    const activeId = store.activeTerminalIds[activeConnectionId];
+    const tabs = store.terminals[activeConnectionId] || [];
+    const term = tabs.find((tab) => tab.id === activeId) ?? tabs.find((tab) => tab.tabVisible !== false);
+    const connection = store.connections.find((item) => item.id === activeConnectionId);
+    const picked = pickFilesOpenPath({
+      lastKnownCwd: term?.lastKnownCwd,
+      initialPath: term?.initialPath,
+      homePath: connection?.homePath,
+    });
+
     if (!currentPath) {
       try {
-        const path = await window.ipcRenderer.invoke('fs_cwd', {
+        const cwd = picked || await window.ipcRenderer.invoke('fs_cwd', {
           connectionId: activeConnectionId,
         });
+        const path = typeof cwd === 'string' ? cwd.trim() : '';
+        if (!path) return;
         loadFiles(activeConnectionId, path);
 
-        // Ensure a terminal exists for this connection and seed it with the home path.
-        // If TerminalManager already created one without a path, ensureTerminal is a no-op
-        // (terminal already exists). If none exists yet, it creates one with the path baked in.
-        // Either way, we then tag any still-untracked terminals (covers the race case).
         const termId = ensureTerminal(activeConnectionId, path);
-        const store = useAppStore.getState();
-        const t = store.terminals[activeConnectionId]?.find(tab => tab.id === termId);
+        const next = useAppStore.getState();
+        const t = next.terminals[activeConnectionId]?.find(tab => tab.id === termId);
         if (t && !t.initialPath && !t.lastKnownCwd && !t.isSynced) {
-          store.setTerminalInitialPath(activeConnectionId, t.id, path);
-          store.setTerminalCwd(activeConnectionId, t.id, path);
+          next.setTerminalInitialPath(activeConnectionId, t.id, path);
+          next.setTerminalCwd(activeConnectionId, t.id, path);
         }
       } catch (error: any) {
         if (error.message?.includes('Connection not found')) {
@@ -647,13 +708,10 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
           return;
         }
         console.error('Failed to get home dir:', error);
-        loadFiles(activeConnectionId, '/');
+        if (picked) loadFiles(activeConnectionId, picked);
       }
-    } else {
-      // Already have a path, maybe refresh?
-      if (files.length === 0) {
-        loadFiles(activeConnectionId, currentPath);
-      }
+    } else if (files.length === 0) {
+      loadFiles(activeConnectionId, currentPath);
     }
   }, [activeConnectionId, isConnected, currentPath, files.length, loadFiles, ensureTerminal]);
 
@@ -663,7 +721,16 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
       await connect(activeConnectionId);
       const reconnected = useAppStore.getState().connections.find((c) => c.id === activeConnectionId) as (Connection & { error?: string }) | undefined;
       if (reconnected?.status === 'connected') {
-        await loadFiles(activeConnectionId, currentPath || '/');
+        let nextPath = currentPath;
+        if (!nextPath) {
+          try {
+            const cwd = await window.ipcRenderer.invoke('fs_cwd', { connectionId: activeConnectionId });
+            if (typeof cwd === 'string' && cwd.trim()) nextPath = cwd.trim();
+          } catch {
+            // Keep empty; listing `/` as a silent fallback hides the real home.
+          }
+        }
+        if (nextPath) await loadFiles(activeConnectionId, nextPath);
         return;
       }
       showToast('error', reconnected?.error || 'Failed to reconnect');
@@ -1170,6 +1237,7 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
           icon: <FileArchive size={14} />,
           action: handleDownloadAsZip,
         },
+        { separator: true },
         {
           label: 'Copy',
           icon: <Copy size={14} />,
@@ -1202,79 +1270,15 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
             setContextMenu(null);
           },
         },
-        {
-          label: 'Open Terminal Here',
-          icon: <Terminal size={14} />,
-          action: () => {
-            if (!contextMenu?.file || !activeConnectionId) return;
-            const item = contextMenu.file;
-            const targetPath = item.type === 'd'
-              ? (currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`)
-              : currentPath;
-
-            const connId = activeConnectionId || 'local';
-            const terminals = useAppStore.getState().terminals[connId] || [];
-
-            // Case 1: A terminal is already at this exact path — just switch focus. Zero IPC.
-            const match = terminals.find(t => (t.lastKnownCwd === targetPath || t.initialPath === targetPath) && !t.isSynced);
-            if (match) {
-              useAppStore.getState().setActiveTerminal(connId, match.id);
-            } else {
-              // Case 2: No match — spawn a new terminal that starts natively at the target path.
-              // The shell opens there directly; no 'cd' command is ever typed.
-              const termId = useAppStore.getState().createTerminal(activeConnectionId, { initialPath: targetPath });
-              useAppStore.getState().setActiveTerminal(activeConnectionId, termId);
-              useAppStore.getState().setTerminalCwd(connId, termId, targetPath);
-            }
-
-            if (activeTabId) {
-              useAppStore.getState().setTabView(activeTabId, 'terminal');
-            }
-            setContextMenu(null);
-          }
-        },
-        {
-          label: 'Open Synced Terminal Here',
-          icon: <Zap size={14} className="text-yellow-500" />,
-          action: () => {
-            if (!contextMenu?.file || !activeConnectionId) return;
-            const item = contextMenu.file;
-            const targetPath = item.type === 'd'
-              ? (currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`)
-              : currentPath;
-
-            const terminals = useAppStore.getState().terminals[activeConnectionId || 'local'] || [];
-            const existingSynced = terminals.find(t => t.isSynced);
-
-            const handleSyncedTerminal = async () => {
-              let termId: string;
-              if (existingSynced) {
-                termId = existingSynced.id;
-                // CodeRabbit: Await reused synced terminal IPC before updating store to prevent desync on failure
-                try {
-                  await window.ipcRenderer.invoke('terminal:navigate', { termId, path: targetPath });
-                  useAppStore.getState().setTerminalCwd(activeConnectionId || 'local', termId, targetPath);
-                } catch (err: any) {
-                  showToast('error', `Failed to navigate synced terminal: ${err.message || String(err)}`);
-                  return; // Halt on failure
-                }
-              } else {
-                termId = useAppStore.getState().createTerminal(activeConnectionId, { initialPath: targetPath, isSynced: true });
-                useAppStore.getState().setTerminalCwd(activeConnectionId || 'local', termId, targetPath);
-              }
-
-              if (activeTabId) {
-                useAppStore.getState().setTabView(activeTabId, 'terminal');
-              }
-              useAppStore.getState().setActiveTerminal(activeConnectionId, termId);
-              setContextMenu(null);
-            };
-            void handleSyncedTerminal().catch((err: unknown) => {
-              const message = err instanceof Error ? err.message : String(err);
-              showToast('error', `Failed to handle terminal action: ${message}`);
-            });
-          }
-        },
+        { separator: true },
+        ...(activeConnectionId
+          ? terminalHereMenuItems(
+              activeConnectionId,
+              contextMenu.file,
+              () => setContextMenu(null),
+            )
+          : []),
+        { separator: true },
         {
           label: 'Rename',
           icon: <FolderInput size={14} />,
@@ -1316,71 +1320,11 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
           icon: <Upload size={14} />,
           action: handleUpload,
         },
-        {
-          label: 'Open Terminal Here',
-          icon: <Terminal size={14} />,
-          action: () => {
-            if (!activeConnectionId) return;
-            const targetPath = currentPath;
-            const connId = activeConnectionId || 'local';
-            const terminals = useAppStore.getState().terminals[connId] || [];
-
-            // Case 1: A terminal is already at this exact path — switch focus only. Zero IPC.
-            const match = terminals.find(t => (t.lastKnownCwd === targetPath || t.initialPath === targetPath) && !t.isSynced);
-            if (match) {
-              useAppStore.getState().setActiveTerminal(connId, match.id);
-            } else {
-              // Case 2: No match — spawn a new terminal that starts natively at the target path.
-              // The shell opens there directly; no 'cd' command is ever typed.
-              const termId = useAppStore.getState().createTerminal(activeConnectionId, { initialPath: targetPath });
-              useAppStore.getState().setActiveTerminal(activeConnectionId, termId);
-              useAppStore.getState().setTerminalCwd(connId, termId, targetPath);
-            }
-
-            if (activeTabId) {
-              useAppStore.getState().setTabView(activeTabId, 'terminal');
-            }
-            setContextMenu(null);
-          }
-        },
-        {
-          label: 'Open Synced Terminal Here',
-          icon: <Zap size={14} className="text-yellow-500" />,
-          action: () => {
-            if (!activeConnectionId) return;
-            const connId = activeConnectionId || 'local';
-            const terminals = useAppStore.getState().terminals[connId] || [];
-            const existingSynced = terminals.find(t => t.isSynced);
-
-            const handleSyncedTerminal = async () => {
-              let termId: string;
-              if (existingSynced) {
-                termId = existingSynced.id;
-                // Navigate existing synced terminal to current path safely
-                try {
-                  await window.ipcRenderer.invoke('terminal:navigate', { termId, path: currentPath });
-                  useAppStore.getState().setTerminalCwd(connId, termId, currentPath);
-                } catch (err: any) {
-                  showToast('error', `Failed to navigate synced terminal: ${err.message || String(err)}`);
-                  return; // Halt on failure
-                }
-              } else {
-                termId = useAppStore.getState().createTerminal(activeConnectionId, { initialPath: currentPath, isSynced: true });
-                useAppStore.getState().setTerminalCwd(connId, termId, currentPath);
-              }
-
-              if (activeTabId) {
-                useAppStore.getState().setTabView(activeTabId, 'terminal');
-              }
-              useAppStore.getState().setActiveTerminal(activeConnectionId, termId);
-              setContextMenu(null);
-            };
-            void handleSyncedTerminal().catch((err: unknown) => {
-              const message = err instanceof Error ? err.message : String(err);
-              showToast('error', `Failed to handle terminal action: ${message}`);
-            });
-          }
-        },
+        { separator: true },
+        ...(activeConnectionId
+          ? terminalHereMenuItems(activeConnectionId, undefined, () => setContextMenu(null))
+          : []),
+        { separator: true },
         {
           label: 'New...',
           icon: <Plus size={14} />,
@@ -1414,7 +1358,7 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't interfere with background tabs, modals, inputs, or when strict focus is needed
-      if (!isFileManagerPanelShown(containerRef.current) || isNewFolderModalOpen || isNewFileModalOpen || isRenameModalOpen || editingFile || isCopyModalOpen || isPropertiesOpen) return;
+      if (!isFilesSurfaceActive || !isFileManagerPanelShown(containerRef.current) || isNewFolderModalOpen || isNewFileModalOpen || isRenameModalOpen || editingFile || isCopyModalOpen || isPropertiesOpen) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         // Special case: Allow arrow keys and Enter to pass through if we are in the search input
         // so that users can navigate results while typing.
@@ -1653,19 +1597,25 @@ export const FileManager = memo(function FileManager({ connectionId }: { connect
   }, [
     activeConnectionId, searchTerm, isSearchOpen, files, settings, isNewFolderModalOpen, isNewFileModalOpen, isRenameModalOpen,
     editingFile, selectedFiles, focusedFile, handleNavigate, handleCopy, handlePaste,
-    handleDelete, navigateBack, navigateForward, isCopyModalOpen, isPropertiesOpen, viewMode, isConnected
+    handleDelete, navigateBack, navigateForward, isCopyModalOpen, isPropertiesOpen, viewMode, isConnected, isFilesSurfaceActive,
   ]);
 
   // Focus when the files panel is shown (dispatched from TabContent — avoids isVisible prop churn).
   useEffect(() => {
     const handlePanelShow = () => {
+      if (!isFilesSurfaceActive) return;
       if (isFileManagerPanelShown(containerRef.current)) {
         containerRef.current?.focus();
       }
     };
     window.addEventListener('zync:files-panel-show', handlePanelShow);
     return () => window.removeEventListener('zync:files-panel-show', handlePanelShow);
-  }, []);
+  }, [isFilesSurfaceActive]);
+
+  useEffect(() => {
+    if (surface !== 'pane' || !isFilesSurfaceActive) return;
+    containerRef.current?.focus();
+  }, [surface, isFilesSurfaceActive]);
 
   useEffect(() => {
     if (!editingFile) return;

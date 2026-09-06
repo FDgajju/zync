@@ -16,6 +16,23 @@ pub struct FileEntry {
     pub permissions: String,
 }
 
+fn env_nonempty(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|value| !value.is_empty())
+}
+
+fn local_home_dir() -> String {
+    #[cfg(windows)]
+    {
+        env_nonempty("USERPROFILE")
+            .or_else(|| env_nonempty("HOME"))
+            .unwrap_or_else(|| "C:\\".to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        env_nonempty("HOME").unwrap_or_else(|| "/".to_string())
+    }
+}
+
 pub struct FileSystem;
 
 impl FileSystem {
@@ -37,7 +54,7 @@ impl FileSystem {
 
     pub fn list_local(&self, path: &str) -> Result<Vec<FileEntry>> {
         let path = if path.is_empty() {
-            std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
+            local_home_dir()
         } else {
             path.to_string()
         };
@@ -173,7 +190,7 @@ impl FileSystem {
 
     pub fn get_home_dir(&self, connection_id: &str) -> Result<String> {
         if connection_id == "local" {
-            Ok(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))
+            Ok(local_home_dir())
         } else {
             Err(anyhow!("Remote connection not yet implemented"))
         }

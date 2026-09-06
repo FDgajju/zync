@@ -1,22 +1,43 @@
 import assert from 'node:assert/strict';
 import {
+  activeTermId,
   canSplit,
+  dockEdgeFromPoint,
+  dockIntoLayout,
+  dockPreviewRect,
+  dropFeature,
+  dropSplitIntro,
   dropTerm,
   focusPane,
   neighborPaneId,
+  oppositeDockEdge,
+  paneBoxAtPoint,
   paneNavDirectionFromKey,
+  isFeaturePaneFocused,
+  isSplitFeatureId,
   isSplitLayout,
+  layoutHasFeature,
   leafCount,
+  openFeatureInLayout,
   parsePaneLayout,
   parsePaneLayoutGroups,
   focusedTermIdForRestore,
   detachTermFromGroups,
+  sameGroupTermDock,
+  sameSplitGroup,
   sanitizePaneLayout,
   selectTerm,
   setSplitSizes,
   singlePane,
   snapshotPaneLayouts,
+  splitFromDockEdge,
   splitPane,
+  incomingIndexForInsert,
+  introStartSizes,
+  markSplitIntro,
+  takeSplitIntro,
+  wheelAxisDelta,
+  wheelDeltaToRatio,
   unsplitPane,
   visibleTermIds,
   MAX_PANE_NESTING,
@@ -412,4 +433,358 @@ runTest('detachTermFromGroups drops one pane and keeps the rest of the tab', () 
   assert.equal(lastExtra.next, undefined);
   assert.deepEqual(lastExtra.remainingIds, ['term-a']);
   assert.equal(lastExtra.nextOwner, 'term-a');
+});
+
+runTest('openFeatureInLayout splits Files beside a shell and focuses the new leaf', () => {
+  const opened = openFeatureInLayout(singlePane('term-a', 'pane-a'), 'files');
+  assert.equal(opened.ok, true);
+  if (!opened.ok) return;
+  assert.equal(opened.created, true);
+  assert.equal(leafCount(opened.layout.root), 2);
+  assert.deepEqual(visibleTermIds(opened.layout), ['term-a']);
+  assert.equal(layoutHasFeature(opened.layout, 'files'), true);
+  assert.equal(isFeaturePaneFocused(opened.layout, 'files'), true);
+  assert.equal(activeTermId(opened.layout), 'term-a');
+});
+
+runTest('openFeatureInLayout focuses an existing Files leaf instead of duplicating it', () => {
+  const first = openFeatureInLayout(singlePane('term-a', 'pane-a'), 'files');
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const termLeaf = first.layout.root.type === 'split' ? first.layout.root.children[0] : null;
+  assert.ok(termLeaf);
+  const focusedShell = focusPane(first.layout, termLeaf.id);
+  const again = openFeatureInLayout(focusedShell, 'files');
+  assert.equal(again.ok, true);
+  if (!again.ok) return;
+  assert.equal(again.created, false);
+  assert.equal(leafCount(again.layout.root), 2);
+  assert.equal(again.paneId, first.paneId);
+  assert.equal(isFeaturePaneFocused(again.layout, 'files'), true);
+});
+
+runTest('openFeatureInLayout refuses to replace a shell when the pane cap is full', () => {
+  let layout = singlePane('term-a', 'pane-a');
+  for (let i = 1; i < MAX_VISIBLE_PANES; i += 1) {
+    const result = splitPane(layout, layout.activePaneId, 'horizontal', {
+      kind: 'term',
+      termId: `term-${String.fromCharCode(97 + i)}`,
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    layout = result.layout;
+  }
+  const refused = openFeatureInLayout(layout, 'files');
+  assert.equal(refused.ok, false);
+  if (!refused.ok) assert.equal(refused.reason, 'cap');
+  assert.equal(layoutHasFeature(layout, 'files'), false);
+});
+
+runTest('dropFeature unsplits Files and keeps the shell; last-term drop with Files remaining is null', () => {
+  const opened = openFeatureInLayout(singlePane('term-a', 'pane-a'), 'files');
+  assert.equal(opened.ok, true);
+  if (!opened.ok) return;
+  const withoutFiles = dropFeature(opened.layout, 'files');
+  assert.ok(withoutFiles);
+  assert.equal(isSplitLayout(withoutFiles), false);
+  assert.deepEqual(visibleTermIds(withoutFiles), ['term-a']);
+  assert.equal(layoutHasFeature(withoutFiles, 'files'), false);
+
+  const lastShellGone = dropTerm(opened.layout, 'term-a');
+  assert.equal(lastShellGone, null);
+});
+
+runTest('selectTerm never replaces a Files leaf', () => {
+  const opened = openFeatureInLayout(singlePane('term-a', 'pane-a'), 'files');
+  assert.equal(opened.ok, true);
+  if (!opened.ok) return;
+  const replaced = selectTerm(opened.layout, 'term-z');
+  assert.equal(layoutHasFeature(replaced, 'files'), true);
+  assert.deepEqual(visibleTermIds(replaced).sort(), ['term-z']);
+  assert.equal(leafCount(replaced.root), 2);
+});
+
+runTest('sanitize and parse keep Files beside known shells and drop feature-only trees', () => {
+  const opened = openFeatureInLayout(singlePane('term-a', 'pane-a'), 'files');
+  assert.equal(opened.ok, true);
+  if (!opened.ok) return;
+  const kept = sanitizePaneLayout(opened.layout, new Set(['term-a']));
+  assert.ok(kept);
+  assert.equal(layoutHasFeature(kept, 'files'), true);
+
+  const featureOnly = dropTerm(opened.layout, 'term-a');
+  assert.equal(featureOnly, null);
+  const pruned = sanitizePaneLayout(opened.layout, new Set());
+  assert.equal(pruned, null);
+
+  const parsed = parsePaneLayout(opened.layout, new Set(['term-a']));
+  assert.ok(parsed);
+  assert.equal(layoutHasFeature(parsed, 'files'), true);
+  assert.deepEqual(visibleTermIds(parsed), ['term-a']);
+});
+
+runTest('parse collapses an unknown feature leaf instead of dropping the whole split', () => {
+  const raw = {
+    version: 1,
+    activePaneId: 'pane-a',
+    root: {
+      type: 'split',
+      id: 's-1',
+      direction: 'horizontal',
+      sizes: [0.5, 0.5],
+      children: [
+        { type: 'pane', id: 'pane-a', content: { kind: 'term', termId: 'term-a' } },
+        { type: 'pane', id: 'pane-files', content: { kind: 'feature', featureId: 'not-a-feature' } },
+      ],
+    },
+  };
+  const parsed = parsePaneLayout(raw, new Set(['term-a']));
+  assert.ok(parsed);
+  assert.equal(isSplitLayout(parsed), false);
+  assert.deepEqual(visibleTermIds(parsed), ['term-a']);
+});
+
+runTest('isSplitFeatureId accepts all four host features', () => {
+  assert.equal(isSplitFeatureId('files'), true);
+  assert.equal(isSplitFeatureId('port-forwarding'), true);
+  assert.equal(isSplitFeatureId('dashboard'), true);
+  assert.equal(isSplitFeatureId('snippets'), true);
+  assert.equal(isSplitFeatureId('plugin:x'), false);
+});
+
+runTest('dockEdgeFromPoint picks the nearest edge inside the surface and ignores outside', () => {
+  assert.equal(dockEdgeFromPoint(10, 50, 100, 100), 'left');
+  assert.equal(dockEdgeFromPoint(90, 50, 100, 100), 'right');
+  assert.equal(dockEdgeFromPoint(50, 10, 100, 100), 'top');
+  assert.equal(dockEdgeFromPoint(50, 90, 100, 100), 'bottom');
+  assert.equal(dockEdgeFromPoint(20, 50, 100, 100), 'left');
+  assert.equal(dockEdgeFromPoint(-1, 50, 100, 100), null);
+  assert.equal(dockEdgeFromPoint(50, 150, 100, 100), null);
+});
+
+runTest('oppositeDockEdge flips left/right and top/bottom', () => {
+  assert.equal(oppositeDockEdge('right'), 'left');
+  assert.equal(oppositeDockEdge('left'), 'right');
+  assert.equal(oppositeDockEdge('bottom'), 'top');
+  assert.equal(oppositeDockEdge('top'), 'bottom');
+});
+
+runTest('files overlay split places Files beside a new shell without using another group', () => {
+  const term = singlePane('term-new', 'pane-new');
+  const placed = dockIntoLayout(term, { kind: 'feature', featureId: 'files' }, oppositeDockEdge('right'));
+  assert.equal(placed.ok, true);
+  if (!placed.ok) return;
+  assert.equal(placed.layout.root.type, 'split');
+  if (placed.layout.root.type !== 'split') return;
+  const left = placed.layout.root.children[0];
+  const right = placed.layout.root.children[1];
+  assert.equal(left.type, 'pane');
+  assert.equal(right.type, 'pane');
+  if (left.type !== 'pane' || right.type !== 'pane') return;
+  assert.equal(left.content.kind, 'feature');
+  assert.equal(right.content.kind, 'term');
+  assert.equal(right.content.kind === 'term' && right.content.termId, 'term-new');
+});
+
+runTest('splitFromDockEdge maps left/top to insert-before', () => {
+  assert.deepEqual(splitFromDockEdge('left'), { direction: 'horizontal', insert: 'before' });
+  assert.deepEqual(splitFromDockEdge('right'), { direction: 'horizontal', insert: 'after' });
+  assert.deepEqual(splitFromDockEdge('top'), { direction: 'vertical', insert: 'before' });
+  assert.deepEqual(splitFromDockEdge('bottom'), { direction: 'vertical', insert: 'after' });
+});
+
+runTest('dockIntoLayout on the left puts the new leaf first', () => {
+  const docked = dockIntoLayout(singlePane('term-a', 'pane-a'), { kind: 'feature', featureId: 'dashboard' }, 'left');
+  assert.equal(docked.ok, true);
+  if (!docked.ok) return;
+  assert.equal(docked.layout.root.type, 'split');
+  if (docked.layout.root.type !== 'split') return;
+  assert.equal(docked.layout.root.direction, 'horizontal');
+  const first = docked.layout.root.children[0];
+  assert.equal(first.type, 'pane');
+  if (first.type !== 'pane' || first.content.kind !== 'feature') return;
+  assert.equal(first.content.featureId, 'dashboard');
+  assert.equal(layoutHasFeature(docked.layout, 'dashboard'), true);
+});
+
+runTest('dockIntoLayout focuses an existing feature instead of duplicating it', () => {
+  const first = dockIntoLayout(singlePane('term-a', 'pane-a'), { kind: 'feature', featureId: 'snippets' }, 'right');
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const again = dockIntoLayout(first.layout, { kind: 'feature', featureId: 'snippets' }, 'left');
+  assert.equal(again.ok, true);
+  if (!again.ok) return;
+  assert.equal(again.created, false);
+  assert.equal(leafCount(again.layout.root), 2);
+});
+
+runTest('sameSplitGroup treats a single tab as its own group', () => {
+  assert.equal(sameSplitGroup({}, 'term-a', 'term-a'), true);
+  assert.equal(sameSplitGroup({}, 'term-a', 'term-b'), false);
+  const split = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(split.ok, true);
+  if (!split.ok) return;
+  const groups = { 'term-a': split.layout };
+  assert.equal(sameSplitGroup(groups, 'term-a', 'term-b'), true);
+  assert.equal(sameSplitGroup(groups, 'term-a', 'term-z'), false);
+});
+
+runTest('same-group term dock is self with no layout write (overlay and split)', () => {
+  assert.equal(sameGroupTermDock(undefined, 'term-a', 'term-a'), 'self');
+  assert.equal(sameGroupTermDock({}, 'term-a', 'term-a'), 'self');
+  assert.equal(sameGroupTermDock({}, 'term-a', 'term-b'), null);
+  const split = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(split.ok, true);
+  if (!split.ok) return;
+  takeSplitIntro(split.layout.root.type === 'split' ? split.layout.root.id : '');
+  const groups = { 'term-a': split.layout };
+  const snapshot = JSON.stringify(groups);
+  assert.equal(sameGroupTermDock(groups, 'term-a', 'term-a'), 'self');
+  assert.equal(sameGroupTermDock(groups, 'term-a', 'term-b'), 'self');
+  assert.equal(sameGroupTermDock(groups, 'term-a', 'term-z'), null);
+  assert.equal(JSON.stringify(groups), snapshot);
+});
+
+runTest('paneBoxAtPoint hits the smallest pane containing the point', () => {
+  const left = { id: 'a', x: 0, y: 0, w: 50, h: 100 };
+  const right = { id: 'b', x: 50, y: 0, w: 50, h: 100 };
+  assert.equal(paneBoxAtPoint(10, 50, [left, right])?.id, 'a');
+  assert.equal(paneBoxAtPoint(70, 20, [left, right])?.id, 'b');
+  assert.equal(paneBoxAtPoint(-1, 50, [left, right]), null);
+});
+
+runTest('dockPreviewRect stays inside the hovered pane, not the full surface', () => {
+  const right = { id: 'b', x: 50, y: 0, w: 50, h: 100 };
+  const preview = dockPreviewRect(right, 'bottom', 0);
+  assert.equal(preview.x, 50);
+  assert.equal(preview.w, 50);
+  assert.ok(preview.y >= 50);
+  assert.ok(preview.y + preview.h <= 100);
+});
+
+runTest('dockIntoLayout splits the hovered pane, not the whole workspace', () => {
+  const first = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  assert.equal(first.layout.root.type, 'split');
+  if (first.layout.root.type !== 'split') return;
+  const right = first.layout.root.children[1];
+  const docked = dockIntoLayout(
+    first.layout,
+    { kind: 'feature', featureId: 'files' },
+    'bottom',
+    undefined,
+    right.id,
+  );
+  assert.equal(docked.ok, true);
+  if (!docked.ok) return;
+  assert.equal(docked.layout.root.type, 'split');
+  if (docked.layout.root.type !== 'split') return;
+  assert.equal(docked.layout.root.direction, 'horizontal');
+  const nextRight = docked.layout.root.children[1];
+  assert.equal(nextRight.type, 'split');
+  if (nextRight.type !== 'split') return;
+  assert.equal(nextRight.direction, 'vertical');
+  const filesLeaf = nextRight.children[1];
+  assert.equal(filesLeaf.type, 'pane');
+  if (filesLeaf.type !== 'pane') return;
+  assert.equal(filesLeaf.content.kind, 'feature');
+});
+
+runTest('parse keeps Dashboard beside a known shell', () => {
+  const docked = dockIntoLayout(singlePane('term-a', 'pane-a'), { kind: 'feature', featureId: 'dashboard' }, 'right');
+  assert.equal(docked.ok, true);
+  if (!docked.ok) return;
+  const parsed = parsePaneLayout(docked.layout, new Set(['term-a']));
+  assert.ok(parsed);
+  assert.equal(layoutHasFeature(parsed, 'dashboard'), true);
+});
+
+runTest('wheelDeltaToRatio maps notches and caps a single flick', () => {
+  assert.equal(wheelDeltaToRatio(0), 0);
+  assert.equal(wheelDeltaToRatio(Number.NaN), 0);
+  assert.ok(wheelDeltaToRatio(120) > 0);
+  assert.ok(wheelDeltaToRatio(120) <= 0.08);
+  assert.equal(wheelDeltaToRatio(-120), -wheelDeltaToRatio(120));
+  assert.ok(Math.abs(wheelDeltaToRatio(1, 1)) > Math.abs(wheelDeltaToRatio(1, 0)));
+  assert.equal(wheelDeltaToRatio(10_000), 0.08);
+});
+
+runTest('wheelAxisDelta uses Y when stacked and the dominant axis side by side', () => {
+  assert.equal(wheelAxisDelta(40, 10, false), 40);
+  assert.equal(wheelAxisDelta(10, 40, false), 40);
+  assert.equal(wheelAxisDelta(40, 10, true), 10);
+});
+
+runTest('introStartSizes parks the incoming leaf at zero', () => {
+  assert.deepEqual(introStartSizes(0), [0, 1]);
+  assert.deepEqual(introStartSizes(1), [1, 0]);
+  assert.equal(incomingIndexForInsert('before'), 0);
+  assert.equal(incomingIndexForInsert('after'), 1);
+});
+
+runTest('splitPane marks a one-shot intro on the new split', () => {
+  const result = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.layout.root.type, 'split');
+  if (result.layout.root.type !== 'split') return;
+  assert.deepEqual(takeSplitIntro(result.layout.root.id), { incomingIndex: 1 });
+  assert.equal(takeSplitIntro(result.layout.root.id), null);
+});
+
+runTest('splitPane insert-before marks incoming index 0', () => {
+  const result = splitPane(
+    singlePane('term-a', 'pane-a'),
+    'pane-a',
+    'vertical',
+    { kind: 'term', termId: 'term-b' },
+    undefined,
+    'before',
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.layout.root.type, 'split');
+  if (result.layout.root.type !== 'split') return;
+  assert.deepEqual(takeSplitIntro(result.layout.root.id), { incomingIndex: 0 });
+});
+
+runTest('markSplitIntro overwrites the incoming side for overlay continuity', () => {
+  markSplitIntro('split-overlay', 0);
+  markSplitIntro('split-overlay', 1);
+  assert.deepEqual(takeSplitIntro('split-overlay'), { incomingIndex: 1 });
+  assert.equal(takeSplitIntro('split-overlay'), null);
+});
+
+runTest('dropSplitIntro discards a pending intro so it cannot replay', () => {
+  markSplitIntro('split-gone', 1);
+  dropSplitIntro('split-gone');
+  assert.equal(takeSplitIntro('split-gone'), null);
+});
+
+runTest('dockIntoLayout of a term already in the group only focuses', () => {
+  const first = splitPane(singlePane('term-a', 'pane-a'), 'pane-a', 'horizontal', { kind: 'term', termId: 'term-b' });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  takeSplitIntro(first.layout.root.type === 'split' ? first.layout.root.id : '');
+  const again = dockIntoLayout(first.layout, { kind: 'term', termId: 'term-a' }, 'left');
+  assert.equal(again.ok, true);
+  if (!again.ok) return;
+  assert.equal(again.created, false);
+  assert.equal(leafCount(again.layout.root), 2);
+});
+
+runTest('dockIntoLayout that only focuses does not mark a second intro', () => {
+  const first = dockIntoLayout(singlePane('term-a', 'pane-a'), { kind: 'feature', featureId: 'snippets' }, 'right');
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  assert.equal(first.layout.root.type, 'split');
+  if (first.layout.root.type !== 'split') return;
+  const splitId = first.layout.root.id;
+  takeSplitIntro(splitId);
+  const again = dockIntoLayout(first.layout, { kind: 'feature', featureId: 'snippets' }, 'left');
+  assert.equal(again.ok, true);
+  if (!again.ok) return;
+  assert.equal(again.created, false);
+  assert.equal(takeSplitIntro(splitId), null);
 });

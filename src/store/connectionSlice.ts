@@ -601,11 +601,11 @@ export const createConnectionSlice: StateCreator<AppStore, [], [], ConnectionSli
             markConnectionBackendLive(id);
 
             // Fetch home path after connection
-            let homePath = '/';
+            let homePath = '';
             let homePathResolved = false;
             try {
-                homePath = await getRemoteCwdIpc(id);
-                homePathResolved = true;
+                homePath = (await getRemoteCwdIpc(id)).trim();
+                homePathResolved = Boolean(homePath);
             } catch (e) {
                 console.error('[CONNECT] Failed to fetch home path:', e);
             }

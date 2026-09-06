@@ -18,5 +18,6 @@ export type {
     WorkspaceOpenGroup,
     WorkspaceOpenItem,
     WorkspaceOpenKind,
+    WorkspaceOpenSplitFeatureState,
     WorkspaceOpenView,
 } from './types';

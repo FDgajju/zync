@@ -53,18 +53,42 @@ export interface ResizeScheduleOptions {
   immediate?: boolean;
 }
 
-let paneDividerDragDepth = 0;
+/** Divider drag and split intro share this so PTY SIGWINCH waits until the size settles. */
+let paneTransientDepth = 0;
+
+function beginPaneTransient(): void {
+  paneTransientDepth += 1;
+}
+
+function endPaneTransient(): void {
+  paneTransientDepth = Math.max(0, paneTransientDepth - 1);
+}
 
 export function beginPaneDividerDrag(): void {
-  paneDividerDragDepth += 1;
+  beginPaneTransient();
 }
 
 export function endPaneDividerDrag(): void {
-  paneDividerDragDepth = Math.max(0, paneDividerDragDepth - 1);
+  endPaneTransient();
 }
 
+export function beginPaneSplitIntro(): void {
+  beginPaneTransient();
+}
+
+/** @returns true when no divider drag or split intro is still holding PTY resize. */
+export function endPaneSplitIntro(): boolean {
+  endPaneTransient();
+  return paneTransientDepth === 0;
+}
+
+export function isPaneSizeTransient(): boolean {
+  return paneTransientDepth > 0;
+}
+
+/** True while a divider drag *or* split intro is in flight (PTY SIGWINCH held). */
 export function isPaneDividerDragging(): boolean {
-  return paneDividerDragDepth > 0;
+  return isPaneSizeTransient();
 }
 
 export interface ResizeScheduler {
