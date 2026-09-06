@@ -5,19 +5,19 @@ All notable changes to Zync are documented in this file. The format is based on 
 ## [Unreleased]
 
 ### Added
-- **Smooth splits**: New panes grow in (about 280ms) instead of jumping to 50/50 — keyboard split, split icons, drag-to-dock, and Open in split / Open here. A quiet accent veil marks the incoming pane. Drag-to-split preview eases between edges. Divider drag stays immediate (no laggy flex transition). `prefers-reduced-motion` skips the intro. PTY resize waits until the intro ends, same as a divider drag.
-- **Scroll to resize a split**: Hover the seam and use the mouse wheel or trackpad to move it. Drag and arrow keys still work. PTY resize waits until scrolling settles, same as a divider drag. Ctrl/Cmd+wheel is left for zoom.
-- **Files in split**: Open Files beside a shell in the same tab (folder button next to the split icons, or workspace **+ → Files in split**). Split icons and Ctrl+Shift+arrows still create a shell. Workspace **+ → Files** stays the full-view overlay. Closing the Files pane unsplits that leaf; the tab × still closes the whole group. Files counts toward the 4-pane cap and never replaces the last shell.
-- **Drag tab to split**: Drag a host feature tab (Files, Port Forwarding, Dashboard, Snippets) or another shell tab onto the workspace. The highlighted half is the pane under the pointer, not the whole workspace. Click without a drag still opens the tab. After a dock, that tab leaves the tab bar (the pane header keeps it). Dragging the current shell tab onto itself is a no-op. Split icons still create a new shell. Plugin tabs and global workspace tabs are not dockable.
-- **Open in split from menus**: Right-click a feature tab, another shell tab, or a row in workspace **+** for **Open in split to the Right** / **Bottom**. A normal click still opens a tab.
-- **Open here in split**: Terminal **Open File Manager Here** is one row with **In a new tab** / **Left** / **Right** / **Bottom**. Files **Open Terminal Here** and **Follow with Terminal** use the same submenu. Split docks beside the current pane (not a stray new tab).
+- **Smooth splits**: New panes grow in (about 280ms) instead of jumping to 50/50 — keyboard split, split icons, drag-to-dock, and Open in split / Open here. A quiet accent veil marks the incoming pane. Drag-to-split preview eases between edges. Divider drag stays immediate (no laggy flex transition). `prefers-reduced-motion` skips the intro. PTY resize waits until the intro ends, same as a divider drag. ([2d3b7c8])
+- **Scroll to resize a split**: Hover the seam and use the mouse wheel or trackpad to move it. Drag and arrow keys still work. PTY resize waits until scrolling settles, same as a divider drag. Ctrl/Cmd+wheel is left for zoom. ([2d3b7c8])
+- **Files in split**: Open Files beside a shell in the same tab (folder button next to the split icons, or workspace **+ → Files in split**). Split icons and Ctrl+Shift+arrows still create a shell. Workspace **+ → Files** stays the full-view overlay. Closing the Files pane unsplits that leaf; the tab × still closes the whole group. Files counts toward the 4-pane cap and never replaces the last shell. ([2d3b7c8])
+- **Drag tab to split**: Drag a host feature tab (Files, Port Forwarding, Dashboard, Snippets) or another shell tab onto the workspace. The highlighted half is the pane under the pointer, not the whole workspace. Click without a drag still opens the tab. After a dock, that tab leaves the tab bar (the pane header keeps it). Dragging the current shell tab onto itself is a no-op. Split icons still create a new shell. Plugin tabs and global workspace tabs are not dockable. ([2d3b7c8])
+- **Open in split from menus**: Right-click a feature tab, another shell tab, or a row in workspace **+** for **Open in split to the Right** / **Bottom**. A normal click still opens a tab. ([2d3b7c8])
+- **Open here in split**: Terminal **Open File Manager Here** is one row with **In a new tab** / **Left** / **Right** / **Bottom**. Files **Open Terminal Here** and **Follow with Terminal** use the same submenu. Split docks beside the current pane (not a stray new tab). ([2d3b7c8])
 
 ### Fixed
-- **Files opening at `/`**: File Manager no longer treats `/` as home. Open File Manager Here uses the shell cwd (or a real `fs_cwd`), not the pre-connect placeholder. First open and reconnect do the same. On Windows, local home uses `%USERPROFILE%` instead of unset `HOME`.
-- **Drag shell tab onto itself**: Dropping the current shell tab on its own split is a no-op again and restores Files / Dashboard / Snippets if the drag started from that overlay.
-- **Open here after a tab switch**: Open File Manager Here / Open Terminal Here keep the tab that opened the menu, instead of applying to whichever tab is active after the await.
-- **Files overlay vs Files pane**: The keep-alive overlay FileManager no longer steals focus or drives Follow-terminal while a Files pane is showing (and the reverse).
-- **Tab-drag click**: A cancelled or captured-failed tab drag no longer swallows the next tab click.
+- **Files opening at `/`**: File Manager no longer treats `/` as home. Open File Manager Here uses the shell cwd (or a real `fs_cwd`), not the pre-connect placeholder. First open and reconnect do the same. On Windows, local home uses `%USERPROFILE%` instead of unset `HOME`. ([2d3b7c8])
+- **Drag shell tab onto itself**: Dropping the current shell tab on its own split is a no-op again and restores Files / Dashboard / Snippets if the drag started from that overlay. ([2d3b7c8])
+- **Open here after a tab switch**: Open File Manager Here / Open Terminal Here keep the tab that opened the menu, instead of applying to whichever tab is active after the await. ([2d3b7c8])
+- **Files overlay vs Files pane**: The keep-alive overlay FileManager no longer steals focus or drives Follow-terminal while a Files pane is showing (and the reverse). ([2d3b7c8])
+- **Tab-drag click**: A cancelled or captured-failed tab drag no longer swallows the next tab click. ([2d3b7c8])
 
 ## [2.29.0] - 2026-09-04
 
