@@ -40,6 +40,7 @@ import {
     type PaneNavDirection,
     type SplitDirection,
     type SplitFeatureId,
+    type SplitInsert,
 } from '../lib/paneLayout';
 
 export interface TerminalTab {
@@ -135,7 +136,7 @@ export interface TerminalSlice {
         paneLayout?: unknown,
     ) => void;
 
-    splitPanes: (connectionId: string, direction?: SplitDirection) => void;
+    splitPanes: (connectionId: string, direction?: SplitDirection, insert?: SplitInsert) => void;
     unsplitPanes: (connectionId: string) => void;
     togglePanes: (connectionId: string) => void;
     resizePanes: (connectionId: string, splitId: string, sizes: [number, number], persist?: boolean) => void;
@@ -632,7 +633,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
         });
     },
 
-    splitPanes: (connectionId, direction = 'horizontal') => {
+    splitPanes: (connectionId, direction = 'horizontal', insert = 'after') => {
         set(state => {
             const tabs = state.terminals[connectionId] || [];
             const activeId = state.activeTerminalIds[connectionId] ?? tabs.find(isTabVisible)?.id ?? null;
@@ -658,7 +659,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             ];
 
             const target = findNode(layout.root, layout.activePaneId) ?? firstLeaf(layout.root);
-            const result = splitPane(layout, target.id, direction, termPaneContent(otherId));
+            const result = splitPane(layout, target.id, direction, termPaneContent(otherId), undefined, insert);
             if (!result.ok) return state;
             const focused = focusPaneInLayout(result.layout, result.newPaneId);
 
@@ -886,9 +887,12 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
         const detached = detachTermFromGroups(groups, termId);
         const nextGroups: PaneLayoutGroups = { ...(detached.next ?? {}) };
         nextGroups[termId] = placed.layout;
-        const nextTabs = tabs.map((tab) => (
-            tab.id === termId ? { ...tab, tabVisible: true } : tab
-        ));
+        const nextTabs = tabs.map((tab) => {
+            if (tab.id === termId || (detached.nextOwner && tab.id === detached.nextOwner)) {
+                return { ...tab, tabVisible: true };
+            }
+            return tab;
+        });
         set({
             terminals: { ...state.terminals, [connectionId]: nextTabs },
             paneLayouts: { ...state.paneLayouts, [connectionId]: nextGroups },

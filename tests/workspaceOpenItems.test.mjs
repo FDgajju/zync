@@ -108,6 +108,11 @@ runTest('includes Files in split next to full-view Files', () => {
   assert.ok(split);
   assert.equal(split.disabled, false);
   assert.equal(split.label, 'Files in split');
+  assert.equal(split.keywords.includes('files in split'), true);
+  const dashboardSplit = items.find((item) => item.kind === 'split-feature' && item.featureId === 'dashboard');
+  assert.ok(dashboardSplit);
+  assert.equal(dashboardSplit.keywords.includes('dashboard in split'), true);
+  assert.equal(dashboardSplit.keywords.includes('files in split'), false);
   assert.equal(items.some((item) => item.kind === 'split-feature' && item.featureId === 'dashboard'), true);
   assert.equal(items.some((item) => item.kind === 'split-feature' && item.featureId === 'port-forwarding'), true);
   assert.equal(items.some((item) => item.kind === 'split-feature' && item.featureId === 'snippets'), true);

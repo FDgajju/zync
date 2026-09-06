@@ -103,7 +103,7 @@ export function buildWorkspaceOpenItems(input: {
             group: 'open',
             kind: 'split-feature',
             label: `${meta.label} in split`,
-            keywords: uniqueKeywords(meta.label, featureId, 'split', 'pane', 'files in split'),
+            keywords: uniqueKeywords(meta.label, featureId, 'split', 'pane', `${meta.label} in split`),
             featureId,
             disabled: !isOpen && !canOpen,
             hint: isOpen ? 'In split' : canOpen ? undefined : '4 pane limit',

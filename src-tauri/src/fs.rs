@@ -16,16 +16,20 @@ pub struct FileEntry {
     pub permissions: String,
 }
 
+fn env_nonempty(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|value| !value.is_empty())
+}
+
 fn local_home_dir() -> String {
     #[cfg(windows)]
     {
-        std::env::var("USERPROFILE")
-            .or_else(|_| std::env::var("HOME"))
-            .unwrap_or_else(|_| "C:\\".to_string())
+        env_nonempty("USERPROFILE")
+            .or_else(|| env_nonempty("HOME"))
+            .unwrap_or_else(|| "C:\\".to_string())
     }
     #[cfg(not(windows))]
     {
-        std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
+        env_nonempty("HOME").unwrap_or_else(|| "/".to_string())
     }
 }
 

@@ -170,7 +170,7 @@ export async function openTerminalHere(
         existingSyncedId && layout && findLeafByTerm(layout.root, existingSyncedId),
     );
 
-    if (options?.edge && filesPaneId && !alreadyInSplit && !canSplit(layout ?? null)) {
+    if (options?.edge && !alreadyInSplit && !canSplitBesideFiles(connectionId)) {
         toastPaneCap();
         return;
     }

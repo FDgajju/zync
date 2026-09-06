@@ -5,7 +5,7 @@ import { LOCAL_TERMINAL_CONNECTION_ID } from '../../features/connections/applica
 import { CombinedTabBar } from './CombinedTabBar';
 import type { DockTabPointerHandlers } from './tabDock';
 import type { ShellEntry } from '../../lib/shells/types';
-import { canSplit, isSplitLayout, layoutForTerm, type DockEdge, type SplitFeatureId } from '../../lib/paneLayout';
+import { canSplit, isSplitLayout, layoutForTerm, splitFromDockEdge, type DockEdge, type SplitFeatureId } from '../../lib/paneLayout';
 
 export interface WorkspaceTabBarProps {
     connectionId: string;
@@ -96,7 +96,8 @@ export const WorkspaceTabBar = memo(function WorkspaceTabBar({
             return;
         }
         if (!shell) {
-            splitPanes(connectionId, edge === 'bottom' ? 'vertical' : 'horizontal');
+            const { direction, insert } = splitFromDockEdge(edge);
+            splitPanes(connectionId, direction, insert);
             return;
         }
         const canvasTermId = activeTerminalId;

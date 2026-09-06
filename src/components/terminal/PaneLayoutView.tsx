@@ -87,8 +87,11 @@ function SplitFrame({
     const [intro, setIntro] = useState<SplitIntro | null>(null);
     const [grow, setGrow] = useState<[number, number]>(sizes);
     const sizesRef = useRef(sizes);
-    sizesRef.current = sizes;
     const cancelIntroRef = useRef<(() => void) | null>(null);
+
+    useLayoutEffect(() => {
+        sizesRef.current = sizes;
+    });
 
     useLayoutEffect(() => {
         const taken = takeSplitIntro(splitId);

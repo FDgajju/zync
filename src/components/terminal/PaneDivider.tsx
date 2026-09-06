@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { cn } from '../../lib/utils';
 import { MIN_PANE_RATIO, type SplitDirection, wheelAxisDelta, wheelDeltaToRatio } from '../../lib/paneLayout';
 import { beginPaneDividerDrag, endPaneDividerDrag } from '../../lib/terminal';
@@ -23,11 +23,14 @@ export function PaneDivider({
     const wheelHeld = useRef(false);
     const wheelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const firstRatioRef = useRef(firstRatio);
-    firstRatioRef.current = firstRatio;
     const onDragRef = useRef(onDrag);
-    onDragRef.current = onDrag;
     const onDragEndRef = useRef(onDragEnd);
-    onDragEndRef.current = onDragEnd;
+
+    useLayoutEffect(() => {
+        firstRatioRef.current = firstRatio;
+        onDragRef.current = onDrag;
+        onDragEndRef.current = onDragEnd;
+    });
     const nodeRef = useRef<HTMLDivElement>(null);
     const [held, setHeld] = useState(false);
     const listeners = useRef<{
