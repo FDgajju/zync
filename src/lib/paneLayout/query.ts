@@ -1,4 +1,14 @@
-import { MAX_PANE_NESTING, MAX_VISIBLE_PANES, type PaneLayout, type PaneLeaf, type PaneNode, type PaneSplit } from './types';
+import {
+    MAX_PANE_NESTING,
+    MAX_VISIBLE_PANES,
+    type FeaturePaneContent,
+    type PaneLayout,
+    type PaneLeaf,
+    type PaneNode,
+    type PaneSplit,
+    type SplitFeatureId,
+    type TermPaneContent,
+} from './types';
 
 export function isPaneLeaf(node: PaneNode): node is PaneLeaf {
     return node.type === 'pane';
@@ -6,6 +16,14 @@ export function isPaneLeaf(node: PaneNode): node is PaneLeaf {
 
 export function isPaneSplit(node: PaneNode): node is PaneSplit {
     return node.type === 'split';
+}
+
+export function isTermContent(content: PaneLeaf['content']): content is TermPaneContent {
+    return content.kind === 'term';
+}
+
+export function isFeatureContent(content: PaneLeaf['content']): content is FeaturePaneContent {
+    return content.kind === 'feature';
 }
 
 export function collectLeaves(node: PaneNode, out: PaneLeaf[] = []): PaneLeaf[] {
@@ -23,6 +41,11 @@ export function leafCount(node: PaneNode | null | undefined): number {
     return collectLeaves(node).length;
 }
 
+export function termLeafCount(node: PaneNode | null | undefined): number {
+    if (!node) return 0;
+    return collectLeaves(node).filter((leaf) => isTermContent(leaf.content)).length;
+}
+
 export function treeDepth(node: PaneNode): number {
     if (isPaneLeaf(node)) return 1;
     return 1 + Math.max(treeDepth(node.children[0]), treeDepth(node.children[1]));
@@ -38,9 +61,11 @@ export function isSplitLayout(layout: PaneLayout | null | undefined): boolean {
 
 export function visibleTermIds(layout: PaneLayout | null | undefined): string[] {
     if (!layout) return [];
-    return collectLeaves(layout.root)
-        .filter((leaf) => leaf.content.kind === 'term')
-        .map((leaf) => leaf.content.termId);
+    const ids: string[] = [];
+    for (const leaf of collectLeaves(layout.root)) {
+        if (isTermContent(leaf.content)) ids.push(leaf.content.termId);
+    }
+    return ids;
 }
 
 export function findNode(node: PaneNode, id: string): PaneNode | null {
@@ -51,9 +76,23 @@ export function findNode(node: PaneNode, id: string): PaneNode | null {
 
 export function findLeafByTerm(node: PaneNode, termId: string): PaneLeaf | null {
     if (isPaneLeaf(node)) {
-        return node.content.kind === 'term' && node.content.termId === termId ? node : null;
+        return isTermContent(node.content) && node.content.termId === termId ? node : null;
     }
     return findLeafByTerm(node.children[0], termId) ?? findLeafByTerm(node.children[1], termId);
+}
+
+export function findLeafByFeature(node: PaneNode, featureId: SplitFeatureId): PaneLeaf | null {
+    if (isPaneLeaf(node)) {
+        return isFeatureContent(node.content) && node.content.featureId === featureId ? node : null;
+    }
+    return findLeafByFeature(node.children[0], featureId) ?? findLeafByFeature(node.children[1], featureId);
+}
+
+export function layoutHasFeature(
+    layout: PaneLayout | null | undefined,
+    featureId: SplitFeatureId,
+): boolean {
+    return Boolean(layout && findLeafByFeature(layout.root, featureId));
 }
 
 export function findParentSplit(node: PaneNode, childId: string): PaneSplit | null {
@@ -67,12 +106,33 @@ export function firstLeaf(node: PaneNode): PaneLeaf {
     return firstLeaf(node.children[0]);
 }
 
+export function firstTermLeaf(node: PaneNode): PaneLeaf | null {
+    for (const leaf of collectLeaves(node)) {
+        if (isTermContent(leaf.content)) return leaf;
+    }
+    return null;
+}
+
 export function activeTermId(layout: PaneLayout | null | undefined): string | null {
     if (!layout) return null;
     const focused = findNode(layout.root, layout.activePaneId);
-    if (focused && isPaneLeaf(focused) && focused.content.kind === 'term') {
+    if (focused && isPaneLeaf(focused) && isTermContent(focused.content)) {
         return focused.content.termId;
     }
-    const leaf = firstLeaf(layout.root);
-    return leaf.content.kind === 'term' ? leaf.content.termId : null;
+    const term = firstTermLeaf(layout.root);
+    return term && isTermContent(term.content) ? term.content.termId : null;
+}
+
+export function isFeaturePaneFocused(
+    layout: PaneLayout | null | undefined,
+    featureId: SplitFeatureId,
+): boolean {
+    if (!layout) return false;
+    const focused = findNode(layout.root, layout.activePaneId);
+    return Boolean(
+        focused
+        && isPaneLeaf(focused)
+        && isFeatureContent(focused.content)
+        && focused.content.featureId === featureId,
+    );
 }

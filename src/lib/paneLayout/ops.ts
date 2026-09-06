@@ -2,29 +2,42 @@ import { createPaneId } from './ids';
 import {
     activeTermId,
     collectLeaves,
+    findLeafByFeature,
     findLeafByTerm,
     findNode,
     findParentSplit,
     firstLeaf,
+    firstTermLeaf,
+    isFeatureContent,
     isPaneLeaf,
     isPaneSplit,
+    isTermContent,
     leafCount,
+    termLeafCount,
 } from './query';
+import { splitFromDockEdge } from './dock';
+import { incomingIndexForInsert, markSplitIntro } from './intro';
 import {
     MAX_VISIBLE_PANES,
     MIN_PANE_RATIO,
     PANE_LAYOUT_VERSION,
+    isSplitFeatureId,
+    termPaneContent,
+    type DockEdge,
     type PaneContent,
     type PaneLayout,
+    type PaneLeaf,
     type PaneNode,
     type SplitDirection,
     type SplitFailReason,
+    type SplitFeatureId,
+    type SplitInsert,
 } from './types';
 
 export function singlePane(termId: string, paneId = createPaneId()): PaneLayout {
     return {
         version: PANE_LAYOUT_VERSION,
-        root: { type: 'pane', id: paneId, content: { kind: 'term', termId } },
+        root: { type: 'pane', id: paneId, content: termPaneContent(termId) },
         activePaneId: paneId,
     };
 }
@@ -62,6 +75,7 @@ export function splitPane(
     direction: SplitDirection,
     content: PaneContent,
     cap = MAX_VISIBLE_PANES,
+    insert: SplitInsert = 'after',
 ): { ok: true; layout: PaneLayout; newPaneId: string } | { ok: false; reason: SplitFailReason } {
     if (leafCount(layout.root) >= cap) {
         return { ok: false, reason: 'cap' };
@@ -77,8 +91,9 @@ export function splitPane(
         id: splitId,
         direction,
         sizes: [0.5, 0.5],
-        children: [current, newLeaf],
+        children: insert === 'before' ? [newLeaf, current] : [current, newLeaf],
     }));
+    markSplitIntro(splitId, incomingIndexForInsert(insert));
 
     return { ok: true, layout: { ...layout, root }, newPaneId: newLeaf.id };
 }
@@ -110,12 +125,15 @@ export function selectTerm(layout: PaneLayout, termId: string): PaneLayout {
         return focusPane(layout, existing.id);
     }
     const focused = findNode(layout.root, layout.activePaneId);
-    const targetId = focused && isPaneLeaf(focused) ? focused.id : firstLeaf(layout.root).id;
-    const root = mapNode(layout.root, targetId, (current) => {
-        if (!isPaneLeaf(current)) return current;
-        return { ...current, content: { kind: 'term', termId } };
+    const termTarget = focused && isPaneLeaf(focused) && isTermContent(focused.content)
+        ? focused
+        : firstTermLeaf(layout.root);
+    if (!termTarget) return layout;
+    const root = mapNode(layout.root, termTarget.id, (current) => {
+        if (!isPaneLeaf(current) || !isTermContent(current.content)) return current;
+        return { ...current, content: termPaneContent(termId) };
     });
-    return { ...layout, root, activePaneId: targetId };
+    return { ...layout, root, activePaneId: termTarget.id };
 }
 
 export function setSplitSizes(layout: PaneLayout, splitId: string, sizes: [number, number]): PaneLayout {
@@ -127,30 +145,89 @@ export function setSplitSizes(layout: PaneLayout, splitId: string, sizes: [numbe
     return { ...layout, root };
 }
 
-export function dropTerm(layout: PaneLayout, termId: string): PaneLayout | null {
-    const leaves = collectLeaves(layout.root).filter(
-        (leaf) => leaf.content.kind === 'term' && leaf.content.termId === termId,
-    );
+function dropLeaves(layout: PaneLayout, match: (leaf: PaneLeaf) => boolean): PaneLayout | null {
+    const leaves = collectLeaves(layout.root).filter(match);
     if (leaves.length === 0) return layout;
-    let next: PaneLayout | null = layout;
+    let next: PaneLayout = layout;
     for (const leaf of leaves) {
-        if (!next) break;
         if (isPaneLeaf(next.root) && next.root.id === leaf.id) {
             return null;
         }
-        next = unsplitPane(next, leaf.id);
-        if (isPaneLeaf(next.root) && next.root.content.kind === 'term' && next.root.content.termId === termId) {
-            return null;
-        }
+        const after = unsplitPane(next, leaf.id);
+        if (after === next) return null;
+        next = after;
+        if (termLeafCount(next.root) === 0) return null;
     }
     return next;
+}
+
+export function dropTerm(layout: PaneLayout, termId: string): PaneLayout | null {
+    return dropLeaves(
+        layout,
+        (leaf) => isTermContent(leaf.content) && leaf.content.termId === termId,
+    );
+}
+
+export function dropFeature(layout: PaneLayout, featureId: SplitFeatureId): PaneLayout | null {
+    return dropLeaves(
+        layout,
+        (leaf) => isFeatureContent(leaf.content) && leaf.content.featureId === featureId,
+    );
+}
+
+export function dockIntoLayout(
+    layout: PaneLayout,
+    content: PaneContent,
+    edge: DockEdge,
+    cap = MAX_VISIBLE_PANES,
+    targetPaneId?: string,
+): { ok: true; layout: PaneLayout; paneId: string; created: boolean } | { ok: false; reason: SplitFailReason } {
+    if (content.kind === 'feature') {
+        const existing = findLeafByFeature(layout.root, content.featureId);
+        if (existing) {
+            return { ok: true, layout: focusPane(layout, existing.id), paneId: existing.id, created: false };
+        }
+    } else {
+        const existing = findLeafByTerm(layout.root, content.termId);
+        if (existing) {
+            return { ok: true, layout: focusPane(layout, existing.id), paneId: existing.id, created: false };
+        }
+    }
+
+    const hinted = targetPaneId ? findNode(layout.root, targetPaneId) : null;
+    const focused = findNode(layout.root, layout.activePaneId);
+    const target = hinted && isPaneLeaf(hinted) ? hinted : (focused && isPaneLeaf(focused) ? focused : firstLeaf(layout.root));
+    const { direction, insert } = splitFromDockEdge(edge);
+    const result = splitPane(layout, target.id, direction, content, cap, insert);
+    if (!result.ok) return result;
+    return {
+        ok: true,
+        layout: focusPane(result.layout, result.newPaneId),
+        paneId: result.newPaneId,
+        created: true,
+    };
+}
+
+export function openFeatureInLayout(
+    layout: PaneLayout,
+    featureId: SplitFeatureId,
+    direction: SplitDirection = 'horizontal',
+    cap = MAX_VISIBLE_PANES,
+): { ok: true; layout: PaneLayout; paneId: string; created: boolean } | { ok: false; reason: SplitFailReason } {
+    const edge: DockEdge = direction === 'vertical' ? 'bottom' : 'right';
+    return dockIntoLayout(layout, { kind: 'feature', featureId }, edge, cap);
 }
 
 export function sanitizePaneLayout(layout: PaneLayout, knownTermIds: ReadonlySet<string>): PaneLayout | null {
     const prune = (node: PaneNode): PaneNode | null => {
         if (isPaneLeaf(node)) {
-            if (node.content.kind !== 'term') return node;
-            return knownTermIds.has(node.content.termId) ? node : null;
+            if (isTermContent(node.content)) {
+                return knownTermIds.has(node.content.termId) ? node : null;
+            }
+            if (isFeatureContent(node.content) && isSplitFeatureId(node.content.featureId)) {
+                return node;
+            }
+            return null;
         }
         const left = prune(node.children[0]);
         const right = prune(node.children[1]);
@@ -161,7 +238,7 @@ export function sanitizePaneLayout(layout: PaneLayout, knownTermIds: ReadonlySet
     };
 
     const root = prune(layout.root);
-    if (!root) return null;
+    if (!root || termLeafCount(root) === 0) return null;
     const focused = findNode(root, layout.activePaneId);
     const active = focused && isPaneLeaf(focused) ? layout.activePaneId : firstLeaf(root).id;
     return { version: PANE_LAYOUT_VERSION, root, activePaneId: active };

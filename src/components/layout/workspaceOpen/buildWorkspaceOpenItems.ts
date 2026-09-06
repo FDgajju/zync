@@ -1,6 +1,7 @@
+import { SPLIT_FEATURE_IDS } from '../../../lib/paneLayout';
 import { FEATURE_META, type FeatureId } from '../featureMeta';
 import type { ShellEntry } from '../../../lib/shells/types';
-import type { WorkspaceOpenFeatureState, WorkspaceOpenItem } from './types';
+import type { WorkspaceOpenFeatureState, WorkspaceOpenItem, WorkspaceOpenSplitFeatureState } from './types';
 
 export const WORKSPACE_OPEN_GROUP_ORDER: WorkspaceOpenItem['group'][] = [
     'create',
@@ -37,6 +38,7 @@ export function buildWorkspaceOpenItems(input: {
     shells: readonly ShellEntry[];
     canOpenFeature: boolean;
     features?: readonly WorkspaceOpenFeatureState[];
+    splitFeatures?: readonly WorkspaceOpenSplitFeatureState[];
 }): WorkspaceOpenItem[] {
     const items: WorkspaceOpenItem[] = [
         {
@@ -86,6 +88,25 @@ export function buildWorkspaceOpenItems(input: {
             featureId,
             disabled: state?.isActive,
             hint: state?.isActive ? 'Active' : state?.isOpen ? 'Open' : undefined,
+        });
+    }
+
+    const splitById = new Map((input.splitFeatures ?? []).map((feature) => [feature.id, feature]));
+    for (const featureId of SPLIT_FEATURE_IDS) {
+        const meta = FEATURE_META[featureId];
+        if (!meta) continue;
+        const state = splitById.get(featureId);
+        const isOpen = state?.isOpen ?? false;
+        const canOpen = state?.canOpen ?? true;
+        items.push({
+            id: `split-feature:${featureId}`,
+            group: 'open',
+            kind: 'split-feature',
+            label: `${meta.label} in split`,
+            keywords: uniqueKeywords(meta.label, featureId, 'split', 'pane', 'files in split'),
+            featureId,
+            disabled: !isOpen && !canOpen,
+            hint: isOpen ? 'In split' : canOpen ? undefined : '4 pane limit',
         });
     }
 

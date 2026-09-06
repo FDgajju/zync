@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { cn } from '../../lib/utils';
-import { Plus, X, Plug, PanelRight, Terminal as TerminalIcon } from 'lucide-react';
+import { FolderOpen, Plus, X, Plug, PanelRight, Terminal as TerminalIcon } from 'lucide-react';
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import type { ShellEntry } from '../../lib/shells/types';
@@ -12,8 +12,20 @@ import { formatShortcutLabel } from '../../lib/shortcuts';
 import { SHORTCUT_CATALOG } from '../../features/shortcuts/catalog';
 import { defaultSettings } from '../../store/settingsSlice';
 import { Tooltip } from '../ui/Tooltip';
-import { findLayoutOwner, isSplitLayout, type SplitDirection } from '../../lib/paneLayout';
+import {
+    findLayoutOwner,
+    isSplitFeatureId,
+    isSplitLayout,
+    layoutForTerm,
+    layoutHasFeature,
+    sameSplitGroup,
+    SPLIT_FEATURE_IDS,
+    type DockEdge,
+    type SplitDirection,
+    type SplitFeatureId,
+} from '../../lib/paneLayout';
 import { WorkspaceOpenMenu } from './workspaceOpen';
+import { splitOpenMenuItems, useDockTabPointer, type DockTabPointerHandlers } from './tabDock';
 
 
 interface CombinedTabBarProps {
@@ -40,6 +52,10 @@ interface CombinedTabBarProps {
     canSplit?: boolean;
     onSplit?: (direction: SplitDirection) => void;
     onUnsplit?: () => void;
+    onOpenSplitFeature?: (featureId: SplitFeatureId, edge?: DockEdge) => void;
+    onDockTerm?: (termId: string, edge: DockEdge) => void;
+    onSplitNewShell?: (edge: DockEdge, shell?: ShellEntry) => void;
+    dockPointer?: DockTabPointerHandlers;
 }
 
 type ContextMenuTarget =
@@ -91,27 +107,38 @@ function normalizeTerminalTitle(title: string): string {
     return title;
 }
 
-function getContextMenuItems(
-    target: ContextMenuTarget,
-    pinnedFeatures: string[],
-    onTerminalClose: (termId: string) => void,
-    onFeatureClose: (feature: string) => void,
-    onTogglePin: (feature: string) => void,
-    onUnsplit?: () => void,
-    canUnsplitTab?: boolean,
-) {
+function getContextMenuItems(input: {
+    target: ContextMenuTarget;
+    pinnedFeatures: string[];
+    onTerminalClose: (termId: string) => void;
+    onFeatureClose: (feature: string) => void;
+    onTogglePin: (feature: string) => void;
+    onUnsplit?: () => void;
+    canUnsplitTab?: boolean;
+    onOpenSplitFeature?: (featureId: SplitFeatureId, edge?: DockEdge) => void;
+    onDockTerm?: (termId: string, edge: DockEdge) => void;
+    canOpenSplit: boolean;
+    isCurrentShellGroup: boolean;
+}): ContextMenuItem[] {
+    const { target } = input;
     if (target.type === 'terminal') {
         const items: ContextMenuItem[] = [];
-        if (canUnsplitTab && onUnsplit) {
+        if (input.onDockTerm && !input.isCurrentShellGroup) {
+            items.push(
+                ...splitOpenMenuItems((edge) => input.onDockTerm!(target.termId, edge), !input.canOpenSplit),
+                { separator: true },
+            );
+        }
+        if (input.canUnsplitTab && input.onUnsplit) {
             items.push({
                 label: 'Unsplit focused pane',
-                action: onUnsplit,
+                action: input.onUnsplit,
             });
         }
         items.push({
             label: 'Close Tab',
             variant: 'danger' as const,
-            action: () => onTerminalClose(target.termId),
+            action: () => input.onTerminalClose(target.termId),
         });
         return items;
     }
@@ -120,23 +147,32 @@ function getContextMenuItems(
             {
                 label: 'Close Tab',
                 variant: 'danger' as const,
-                action: () => onFeatureClose(target.featureId),
+                action: () => input.onFeatureClose(target.featureId),
             },
         ];
     }
 
-    return [
+    const items: ContextMenuItem[] = [];
+    if (input.onOpenSplitFeature && isSplitFeatureId(target.featureId)) {
+        const featureId = target.featureId;
+        items.push(
+            ...splitOpenMenuItems((edge) => input.onOpenSplitFeature!(featureId, edge), !input.canOpenSplit),
+            { separator: true },
+        );
+    }
+    items.push(
         {
-            label: pinnedFeatures.includes(target.featureId) ? 'Unpin Tab' : 'Pin Tab',
-            action: () => onTogglePin(target.featureId),
+            label: input.pinnedFeatures.includes(target.featureId) ? 'Unpin Tab' : 'Pin Tab',
+            action: () => input.onTogglePin(target.featureId),
         },
         {
             label: 'Close Tab',
             variant: 'danger' as const,
-            action: () => onFeatureClose(target.featureId),
-            disabled: pinnedFeatures.includes(target.featureId),
+            action: () => input.onFeatureClose(target.featureId),
+            disabled: input.pinnedFeatures.includes(target.featureId),
         },
-    ];
+    );
+    return items;
 }
 
 export const CombinedTabBar = memo(function CombinedTabBar({
@@ -163,7 +199,12 @@ export const CombinedTabBar = memo(function CombinedTabBar({
     canSplit = true,
     onSplit,
     onUnsplit,
+    onOpenSplitFeature,
+    onDockTerm,
+    onSplitNewShell,
+    dockPointer,
 }: CombinedTabBarProps) {
+    const { begin: beginDockPointer, consumeClickIfDragged } = useDockTabPointer(dockPointer);
     const terminals = useAppStore(useShallow(state =>
         (state.terminals[connectionId] || []).filter(term => term.tabVisible !== false),
     ));
@@ -175,6 +216,9 @@ export const CombinedTabBar = memo(function CombinedTabBar({
         ?.extraKeys?.find(chord => chord.endsWith('ArrowDown'))
         ?? 'Ctrl+Shift+ArrowDown';
     const canOpenFeature = Boolean(onOpenFeature);
+    const splitLayout = activeTerminalId ? layoutForTerm(paneGroups, activeTerminalId) : undefined;
+    const filesInSplit = layoutHasFeature(splitLayout, 'files');
+    const canOpenFilesSplit = filesInSplit || canSplit;
     const shellById = useMemo(
         () => new Map(availableShells.map(shell => [shell.id, shell] as const)),
         [availableShells],
@@ -231,11 +275,13 @@ export const CombinedTabBar = memo(function CombinedTabBar({
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+            const inContextMenu = event.target instanceof Element
+                && Boolean(event.target.closest('.context-menu-container, .context-menu-submenu-portal'));
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) && !inContextMenu) {
                 setIsDropdownOpen(false);
             }
             // Close context menu if click outside
-            if (contextMenu && !(event.target as Element).closest('.context-menu-container')) {
+            if (contextMenu && !inContextMenu) {
                 setContextMenu(null);
             }
         };
@@ -252,7 +298,11 @@ export const CombinedTabBar = memo(function CombinedTabBar({
     const visibleFeatures = Array.from(new Set([...pinnedFeatures, ...openFeatures]))
         .filter((featureId): featureId is FeatureId =>
             Object.prototype.hasOwnProperty.call(FEATURE_META, featureId)
-        );
+        )
+        .filter((featureId) => {
+            if (activeView === featureId) return true;
+            return !(isSplitFeatureId(featureId) && layoutHasFeature(splitLayout, featureId));
+        });
 
     return (
         <div ref={dragRegionRef} className="flex items-center w-full bg-app-panel border-b border-app-border px-1 h-9 shrink-0 gap-1 select-none app-drag-region" data-tauri-drag-region>
@@ -282,7 +332,11 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                             position="bottom"
                         >
                             <div
-                                onClick={() => onTabSelect('terminal', term.id)}
+                                onPointerDown={(event) => beginDockPointer(event, { kind: 'term', termId: term.id })}
+                                onClick={() => {
+                                    if (consumeClickIfDragged()) return;
+                                    onTabSelect('terminal', term.id);
+                                }}
                                 onContextMenu={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -290,7 +344,7 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                                 }}
                                 data-tauri-drag-region="false"
                                 className={cn(
-                                    "flex items-center gap-2 px-3 py-1.5 h-7 text-xs font-medium rounded-md transition-colors duration-100 cursor-pointer min-w-[100px] max-w-[200px] group border border-transparent drag-none shrink-0 active:scale-[0.98]",
+                                    "flex items-center gap-2 px-3 py-1.5 h-7 text-xs font-medium rounded-md transition-colors duration-100 cursor-grab min-w-[100px] max-w-[200px] group border border-transparent drag-none shrink-0 active:scale-[0.98] active:cursor-grabbing",
                                     isActive
                                         ? "bg-app-surface text-app-text shadow-sm border-app-border/50"
                                         : "text-app-muted hover:bg-app-surface/50 hover:text-app-text"
@@ -331,7 +385,14 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                     return (
                         <div
                             key={featureId}
-                            onClick={() => onTabSelect(featureId)}
+                            onPointerDown={(event) => {
+                                if (!isSplitFeatureId(featureId)) return;
+                                beginDockPointer(event, { kind: 'feature', featureId });
+                            }}
+                            onClick={() => {
+                                if (consumeClickIfDragged()) return;
+                                onTabSelect(featureId);
+                            }}
                             onContextMenu={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -339,7 +400,7 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                             }}
                             data-tauri-drag-region="false"
                             className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 h-7 text-xs font-medium rounded-md transition-colors duration-100 cursor-pointer min-w-[90px] group border border-transparent relative drag-none shrink-0 active:scale-[0.98]",
+                                "flex items-center gap-2 px-3 py-1.5 h-7 text-xs font-medium rounded-md transition-colors duration-100 cursor-grab min-w-[90px] group border border-transparent relative drag-none shrink-0 active:scale-[0.98] active:cursor-grabbing",
                                 isActive
                                     ? "bg-app-surface text-app-text shadow-sm border-app-border/50"
                                     : "text-app-muted hover:bg-app-surface/50 hover:text-app-text"
@@ -462,6 +523,13 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                         }))}
                         onNewShell={onNewTerminal}
                         onOpenFeature={onOpenFeature}
+                        splitFeatures={SPLIT_FEATURE_IDS.map((id) => {
+                            const isOpen = layoutHasFeature(splitLayout, id);
+                            return { id, isOpen, canOpen: isOpen || canSplit };
+                        })}
+                        onOpenSplitFeature={onOpenSplitFeature}
+                        onSplitNewShell={onSplitNewShell}
+                        canSplitPane={canSplit}
                         onClose={(source) => {
                             setIsDropdownOpen(false);
                             if (source === 'keyboard') {
@@ -520,6 +588,38 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                                     <SplitPaneIcon direction="vertical" />
                                 </button>
                             </Tooltip>
+                            {onOpenSplitFeature && (
+                                <>
+                                    <div className="w-px h-4 bg-app-border/50" />
+                                    <Tooltip
+                                        content={
+                                            filesInSplit
+                                                ? 'Files in split'
+                                                : canOpenFilesSplit
+                                                    ? 'Open Files in split'
+                                                    : 'Pane limit reached (4)'
+                                        }
+                                        position="bottom"
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenSplitFeature('files')}
+                                            disabled={!canOpenFilesSplit}
+                                            aria-label="Open Files in split"
+                                            aria-pressed={filesInSplit}
+                                            className={cn(
+                                                'h-6 w-7 flex items-center justify-center rounded transition-colors',
+                                                filesInSplit
+                                                    ? 'text-app-text'
+                                                    : 'text-app-muted hover:text-app-text hover:bg-app-surface',
+                                                !canOpenFilesSplit && 'opacity-40 cursor-default hover:bg-transparent',
+                                            )}
+                                        >
+                                            <FolderOpen size={14} />
+                                        </button>
+                                    </Tooltip>
+                                </>
+                            )}
                         </div>
                     )}
                     {onToggleSessionTools && (
@@ -552,17 +652,25 @@ export const CombinedTabBar = memo(function CombinedTabBar({
                     x={contextMenu.x}
                     y={contextMenu.y}
                     onClose={() => setContextMenu(null)}
-                    items={getContextMenuItems(
-                        contextMenu.target,
+                    items={getContextMenuItems({
+                        target: contextMenu.target,
                         pinnedFeatures,
                         onTerminalClose,
                         onFeatureClose,
                         onTogglePin,
                         onUnsplit,
-                        contextMenu.target.type === 'terminal'
+                        canUnsplitTab: contextMenu.target.type === 'terminal'
                             && isSplit
                             && findLayoutOwner(paneGroups, activeTerminalId ?? '') === contextMenu.target.termId,
-                    )}
+                        onOpenSplitFeature,
+                        onDockTerm,
+                        canOpenSplit: contextMenu.target.type === 'feature' && isSplitFeatureId(contextMenu.target.featureId)
+                            ? canSplit || layoutHasFeature(splitLayout, contextMenu.target.featureId)
+                            : canSplit,
+                        isCurrentShellGroup: contextMenu.target.type === 'terminal'
+                            && activeTerminalId != null
+                            && sameSplitGroup(paneGroups, activeTerminalId, contextMenu.target.termId),
+                    })}
                 />
             )}
         </div>

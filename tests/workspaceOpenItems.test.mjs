@@ -96,4 +96,50 @@ runTest('groups drop empty sections', () => {
   assert.deepEqual(groups.map((section) => section.group), ['create']);
 });
 
+runTest('includes Files in split next to full-view Files', () => {
+  const items = buildWorkspaceOpenItems({
+    shells: [],
+    canOpenFeature: true,
+    features: [{ id: 'files', isOpen: false, isActive: false }],
+    splitFeatures: [{ id: 'files', isOpen: false, canOpen: true }],
+  });
+  assert.equal(items.some((item) => item.kind === 'feature' && item.featureId === 'files'), true);
+  const split = items.find((item) => item.kind === 'split-feature' && item.featureId === 'files');
+  assert.ok(split);
+  assert.equal(split.disabled, false);
+  assert.equal(split.label, 'Files in split');
+  assert.equal(items.some((item) => item.kind === 'split-feature' && item.featureId === 'dashboard'), true);
+  assert.equal(items.some((item) => item.kind === 'split-feature' && item.featureId === 'port-forwarding'), true);
+  assert.equal(items.some((item) => item.kind === 'split-feature' && item.featureId === 'snippets'), true);
+});
+
+runTest('disables Files in split at the pane cap and marks it when already open', () => {
+  const capped = buildWorkspaceOpenItems({
+    shells: [],
+    canOpenFeature: true,
+    splitFeatures: [{ id: 'files', isOpen: false, canOpen: false }],
+  }).find((item) => item.kind === 'split-feature');
+  assert.ok(capped);
+  assert.equal(capped.disabled, true);
+  assert.equal(capped.hint, '4 pane limit');
+
+  const open = buildWorkspaceOpenItems({
+    shells: [],
+    canOpenFeature: true,
+    splitFeatures: [{ id: 'files', isOpen: true, canOpen: false }],
+  }).find((item) => item.kind === 'split-feature');
+  assert.ok(open);
+  assert.equal(open.disabled, false);
+  assert.equal(open.hint, 'In split');
+});
+
+runTest('omits Files in split when the workspace cannot open features', () => {
+  const items = buildWorkspaceOpenItems({
+    shells: [],
+    canOpenFeature: false,
+    splitFeatures: [{ id: 'files', isOpen: false, canOpen: true }],
+  });
+  assert.equal(items.every((item) => item.kind !== 'split-feature'), true);
+});
+
 console.log('Workspace open item tests passed.');

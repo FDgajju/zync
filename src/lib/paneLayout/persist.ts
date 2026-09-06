@@ -1,20 +1,41 @@
 import { normalizeSizes, sanitizePaneLayout } from './ops';
 import { isPaneSplit, isSafePaneLayout } from './query';
-import { MAX_PANE_NESTING, PANE_LAYOUT_VERSION, type PaneLayout, type PaneNode, type SplitDirection } from './types';
+import {
+    MAX_PANE_NESTING,
+    PANE_LAYOUT_VERSION,
+    featurePaneContent,
+    isSplitFeatureId,
+    termPaneContent,
+    type PaneContent,
+    type PaneLayout,
+    type PaneNode,
+    type SplitDirection,
+} from './types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseContent(raw: unknown): PaneContent | null {
+    if (!isRecord(raw) || typeof raw.kind !== 'string') return null;
+    if (raw.kind === 'term') {
+        if (typeof raw.termId !== 'string' || !raw.termId) return null;
+        return termPaneContent(raw.termId);
+    }
+    if (raw.kind === 'feature') {
+        if (!isSplitFeatureId(raw.featureId)) return null;
+        return featurePaneContent(raw.featureId);
+    }
+    return null;
 }
 
 function parseNode(raw: unknown, depth = 1): PaneNode | null {
     if (depth > MAX_PANE_NESTING) return null;
     if (!isRecord(raw) || typeof raw.id !== 'string' || !raw.id) return null;
     if (raw.type === 'pane') {
-        const content = raw.content;
-        if (!isRecord(content) || content.kind !== 'term' || typeof content.termId !== 'string' || !content.termId) {
-            return null;
-        }
-        return { type: 'pane', id: raw.id, content: { kind: 'term', termId: content.termId } };
+        const content = parseContent(raw.content);
+        if (!content) return null;
+        return { type: 'pane', id: raw.id, content };
     }
     if (raw.type === 'split') {
         const direction = raw.direction === 'horizontal' ? 'horizontal' : raw.direction === 'vertical' ? 'vertical' : null;
@@ -22,14 +43,16 @@ function parseNode(raw: unknown, depth = 1): PaneNode | null {
         if (!Array.isArray(raw.children) || raw.children.length !== 2) return null;
         const left = parseNode(raw.children[0], depth + 1);
         const right = parseNode(raw.children[1], depth + 1);
-        if (!left || !right) return null;
-        return {
-            type: 'split',
-            id: raw.id,
-            direction: direction as SplitDirection,
-            sizes: parseSizes(raw.sizes),
-            children: [left, right],
-        };
+        if (left && right) {
+            return {
+                type: 'split',
+                id: raw.id,
+                direction: direction as SplitDirection,
+                sizes: parseSizes(raw.sizes),
+                children: [left, right],
+            };
+        }
+        return left ?? right;
     }
     return null;
 }

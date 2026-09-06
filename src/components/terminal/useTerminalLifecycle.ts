@@ -12,7 +12,7 @@ import {
   needsTerminalRendererSetup,
   clearTerminalPendingInput,
   createResizeScheduler,
-  isPaneDividerDragging,
+  isPaneSizeTransient,
   flushPendingInput,
   getTerminalRendererState,
   isTerminalDomMeasurable,
@@ -479,6 +479,7 @@ export function useTerminalLifecycle({
     };
 
     const handlePaneResizeEnd = () => {
+      if (isPaneSizeTransient()) return;
       resizeSchedulerRef.current?.schedule({ forceSync: true, immediate: true });
     };
 
@@ -701,7 +702,7 @@ export function useTerminalLifecycle({
         if (isLayoutTransitioning.current) return;
 
         resizeSchedulerRef.current?.schedule({
-          syncBackend: !isPaneDividerDragging(),
+          syncBackend: !isPaneSizeTransient(),
         });
       } catch (e) {
         console.warn('Xterm fit resize failed', e);

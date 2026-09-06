@@ -8,10 +8,14 @@ import { FEATURE_META, formatFeatureShortcut, type FeatureId } from '../featureM
 import type { ShellEntry } from '../../../lib/shells/types';
 import { buildWorkspaceOpenItems, WORKSPACE_OPEN_GROUP_LABEL } from './buildWorkspaceOpenItems';
 import { groupWorkspaceOpenItems, visibleWorkspaceOpenItems, workspaceOpenEscapeAction } from './filterWorkspaceOpenItems';
+import { isSplitFeatureId, type DockEdge, type SplitFeatureId } from '../../../lib/paneLayout';
+import { ContextMenu } from '../../ui/ContextMenu';
+import { splitOpenMenuItems } from '../tabDock';
 import type {
     WorkspaceOpenCloseSource,
     WorkspaceOpenFeatureState,
     WorkspaceOpenItem,
+    WorkspaceOpenSplitFeatureState,
     WorkspaceOpenView,
 } from './types';
 
@@ -30,8 +34,12 @@ export function WorkspaceOpenMenu({
     onRefetchShells,
     canOpenFeature,
     features,
+    splitFeatures,
     onNewShell,
     onOpenFeature,
+    onOpenSplitFeature,
+    onSplitNewShell,
+    canSplitPane = true,
     onClose,
 }: {
     align: 'left' | 'right';
@@ -41,20 +49,25 @@ export function WorkspaceOpenMenu({
     onRefetchShells?: () => void;
     canOpenFeature: boolean;
     features: readonly WorkspaceOpenFeatureState[];
+    splitFeatures?: readonly WorkspaceOpenSplitFeatureState[];
     onNewShell: (shell?: ShellEntry) => void;
     onOpenFeature?: (featureId: string) => void;
+    onOpenSplitFeature?: (featureId: SplitFeatureId, edge?: DockEdge) => void;
+    onSplitNewShell?: (edge: DockEdge, shell?: ShellEntry) => void;
+    canSplitPane?: boolean;
     onClose: (source?: WorkspaceOpenCloseSource) => void;
 }) {
     const [query, setQuery] = useState('');
     const [view, setView] = useState<WorkspaceOpenView>('root');
     const [slideDir, setSlideDir] = useState(1);
     const [activeIndex, setActiveIndex] = useState(0);
+    const [rowMenu, setRowMenu] = useState<{ x: number; y: number; item: WorkspaceOpenItem } | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const reduceMotion = useReducedMotion();
 
     const items = useMemo(
-        () => buildWorkspaceOpenItems({ shells, canOpenFeature, features }),
-        [shells, canOpenFeature, features],
+        () => buildWorkspaceOpenItems({ shells, canOpenFeature, features, splitFeatures }),
+        [shells, canOpenFeature, features, splitFeatures],
     );
     const visible = useMemo(
         () => visibleWorkspaceOpenItems(items, query, view),
@@ -103,7 +116,50 @@ export function WorkspaceOpenMenu({
         if (item.kind === 'feature' && item.featureId && onOpenFeature) {
             onOpenFeature(item.featureId);
             onClose();
+            return;
         }
+        if (item.kind === 'split-feature' && isSplitFeatureId(item.featureId) && onOpenSplitFeature) {
+            onOpenSplitFeature(item.featureId);
+            onClose();
+        }
+    };
+
+    const splitDisabledFor = (item: WorkspaceOpenItem): boolean => {
+        if (item.kind === 'feature' || item.kind === 'split-feature') {
+            if (!isSplitFeatureId(item.featureId)) return true;
+            const state = splitFeatures?.find((feature) => feature.id === item.featureId);
+            if (state) return !state.canOpen;
+            return !canSplitPane;
+        }
+        if (item.kind === 'new-shell' || item.kind === 'shell') {
+            return !canSplitPane || !onSplitNewShell;
+        }
+        return true;
+    };
+
+    const runSplit = (item: WorkspaceOpenItem, edge: DockEdge) => {
+        if (splitDisabledFor(item)) return;
+        if ((item.kind === 'feature' || item.kind === 'split-feature') && isSplitFeatureId(item.featureId) && onOpenSplitFeature) {
+            onOpenSplitFeature(item.featureId, edge);
+            onClose();
+            return;
+        }
+        if (item.kind === 'new-shell' && onSplitNewShell) {
+            onSplitNewShell(edge);
+            onClose();
+            return;
+        }
+        if (item.kind === 'shell' && onSplitNewShell) {
+            onSplitNewShell(edge, item.shell);
+            onClose();
+        }
+    };
+
+    const openRowMenu = (item: WorkspaceOpenItem, event: { clientX: number; clientY: number; preventDefault: () => void }) => {
+        if (item.kind === 'other-shells') return;
+        if (item.kind === 'feature' && !isSplitFeatureId(item.featureId)) return;
+        event.preventDefault();
+        setRowMenu({ x: event.clientX, y: event.clientY, item });
     };
 
     const goBack = () => {
@@ -147,6 +203,7 @@ export function WorkspaceOpenMenu({
     let rowIndex = -1;
 
     return (
+        <>
         <TopbarDropdown
             widthClass="w-72"
             align={align}
@@ -238,6 +295,7 @@ export function WorkspaceOpenMenu({
                                             active={active}
                                             onHover={() => setActiveIndex(index)}
                                             onSelect={() => runItem(item)}
+                                            onContextMenu={(event) => openRowMenu(item, event)}
                                         />
                                     );
                                 })}
@@ -264,6 +322,18 @@ export function WorkspaceOpenMenu({
                 </AnimatePresence>
             </div>
         </TopbarDropdown>
+            {rowMenu && (
+                <ContextMenu
+                    x={rowMenu.x}
+                    y={rowMenu.y}
+                    onClose={() => setRowMenu(null)}
+                    items={splitOpenMenuItems(
+                        (edge) => runSplit(rowMenu.item, edge),
+                        splitDisabledFor(rowMenu.item),
+                    )}
+                />
+            )}
+        </>
     );
 }
 
@@ -273,12 +343,14 @@ function WorkspaceOpenRow({
     active,
     onHover,
     onSelect,
+    onContextMenu,
 }: {
     id: string;
     item: WorkspaceOpenItem;
     active: boolean;
     onHover: () => void;
     onSelect: () => void;
+    onContextMenu?: (event: { clientX: number; clientY: number; preventDefault: () => void }) => void;
 }) {
     return (
         <button
@@ -286,9 +358,17 @@ function WorkspaceOpenRow({
             id={id}
             role="option"
             aria-selected={active}
-            disabled={item.disabled}
+            aria-disabled={item.disabled || undefined}
             onMouseEnter={onHover}
-            onClick={onSelect}
+            onClick={() => {
+                if (item.disabled) return;
+                onSelect();
+            }}
+            onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onContextMenu?.(event);
+            }}
             className={cn(
                 'w-full h-7 text-left px-2.5 text-xs flex items-center gap-2.5 rounded-md transition-colors',
                 item.disabled
@@ -324,7 +404,7 @@ function WorkspaceOpenIcon({ item }: { item: WorkspaceOpenItem }): ReactNode {
     if (item.kind === 'new-shell') return <Plus size={12} />;
     if (item.kind === 'other-shells') return <TerminalIcon size={12} />;
     if (item.kind === 'shell' && item.shell) return <ShellIcon shell={item.shell} size={12} />;
-    if (item.kind === 'feature' && item.featureId) {
+    if ((item.kind === 'feature' || item.kind === 'split-feature') && item.featureId) {
         const Icon = FEATURE_ICON[item.featureId];
         return <Icon size={12} />;
     }

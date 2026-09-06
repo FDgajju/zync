@@ -2,6 +2,7 @@ import { memo, type RefObject } from 'react';
 import { Copy, Clipboard as ClipboardIcon, Trash2, Scissors, FolderOpen } from 'lucide-react';
 import type { Terminal as XTerm } from '@xterm/xterm';
 import { ContextMenu } from '../ui/ContextMenu';
+import { canDockHere, filesAlreadyInSplit, openFilesHere, openHerePlacementItems, pickFilesOpenPath } from '../layout/tabDock';
 import type { AppSettings } from '../../store/settingsSlice';
 import { useAppStore } from '../../store/useAppStore';
 import { terminalCache } from '../../lib/terminal';
@@ -82,25 +83,15 @@ export const TerminalContextMenu = memo(function TerminalContextMenu({
         {
           label: 'Open File Manager Here',
           icon: <FolderOpen className="w-4 h-4" />,
-          action: () => {
-            const store = useAppStore.getState();
-            const term = store.terminals[connectionId]?.find((t) => t.id === sessionId);
-            const connection = store.connections.find((c) => c.id === connectionId);
-            const targetPath =
-              term?.lastKnownCwd
-              || term?.initialPath
-              || connection?.homePath
-              || '/';
-            const tabId = store.activeTabId;
-            void (async () => {
-              await store.loadFiles(connectionId, targetPath);
-              if (!tabId) return;
-              // Retarget only the tab that initiated the action (ignore mid-await tab switches).
-              if (useAppStore.getState().tabs.some((tab) => tab.id === tabId)) {
-                useAppStore.getState().setTabView(tabId, 'files');
-              }
-            })();
-          },
+          children: openHerePlacementItems(
+            () => {
+              void openFilesHere(connectionId, filesPathHere(connectionId, sessionId));
+            },
+            (edge) => {
+              void openFilesHere(connectionId, filesPathHere(connectionId, sessionId), edge, sessionId);
+            },
+            !canDockHere(connectionId, filesAlreadyInSplit(connectionId)),
+          ),
         },
         {
           label: 'Clear Terminal',
@@ -112,3 +103,14 @@ export const TerminalContextMenu = memo(function TerminalContextMenu({
     />
   );
 });
+
+function filesPathHere(connectionId: string, sessionId: string): string {
+  const store = useAppStore.getState();
+  const term = store.terminals[connectionId]?.find((t) => t.id === sessionId);
+  const connection = store.connections.find((c) => c.id === connectionId);
+  return pickFilesOpenPath({
+    lastKnownCwd: term?.lastKnownCwd,
+    initialPath: term?.initialPath,
+    homePath: connection?.homePath,
+  });
+}

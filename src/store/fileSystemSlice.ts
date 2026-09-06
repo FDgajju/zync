@@ -87,7 +87,8 @@ export const createFileSystemSlice: StateCreator<AppStore, [], [], FileSystemSli
 
     loadFiles: async (connectionId, path, skipHistory = false, silent = false) => {
         const state = get();
-        const targetPath = path !== undefined ? path : (state.currentPath[connectionId] || '/');
+        const targetPath = (path !== undefined ? path : state.currentPath[connectionId] || '').trim();
+        if (!targetPath) return;
 
         // History Logic
         if (!skipHistory && targetPath !== state.currentPath[connectionId]) {

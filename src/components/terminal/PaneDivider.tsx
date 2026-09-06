@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { cn } from '../../lib/utils';
-import { MIN_PANE_RATIO, type SplitDirection } from '../../lib/paneLayout';
+import { MIN_PANE_RATIO, type SplitDirection, wheelAxisDelta, wheelDeltaToRatio } from '../../lib/paneLayout';
 import { beginPaneDividerDrag, endPaneDividerDrag } from '../../lib/terminal';
 
 const KEY_STEP = 0.05;
+const WHEEL_SETTLE_MS = 140;
 
 export function PaneDivider({
     direction,
@@ -19,6 +20,15 @@ export function PaneDivider({
     onEqualize: () => void;
 }) {
     const dragging = useRef(false);
+    const wheelHeld = useRef(false);
+    const wheelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const firstRatioRef = useRef(firstRatio);
+    firstRatioRef.current = firstRatio;
+    const onDragRef = useRef(onDrag);
+    onDragRef.current = onDrag;
+    const onDragEndRef = useRef(onDragEnd);
+    onDragEndRef.current = onDragEnd;
+    const nodeRef = useRef<HTMLDivElement>(null);
     const [held, setHeld] = useState(false);
     const listeners = useRef<{
         move: (event: globalThis.PointerEvent) => void;
@@ -42,18 +52,63 @@ export function PaneDivider({
         window.dispatchEvent(new Event('zync:pane-resize-end'));
     }, [onDragEnd]);
 
+    const finishWheel = useCallback((commit: boolean) => {
+        if (wheelTimer.current != null) {
+            window.clearTimeout(wheelTimer.current);
+            wheelTimer.current = null;
+        }
+        if (!wheelHeld.current) return;
+        wheelHeld.current = false;
+        setHeld(false);
+        endPaneDividerDrag();
+        if (commit) {
+            onDragEndRef.current();
+            window.dispatchEvent(new Event('zync:pane-resize-end'));
+        }
+    }, []);
+
     useEffect(() => () => {
         stopDrag(false);
-    }, [stopDrag]);
+        finishWheel(false);
+    }, [stopDrag, finishWheel]);
+
+    useEffect(() => {
+        const node = nodeRef.current;
+        if (!node) return undefined;
+
+        const onWheel = (event: WheelEvent) => {
+            if (event.ctrlKey || event.metaKey) return;
+            if (dragging.current) return;
+            const stacked = direction === 'vertical';
+            const axis = wheelAxisDelta(event.deltaX, event.deltaY, stacked);
+            const step = wheelDeltaToRatio(axis, event.deltaMode);
+            if (step === 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (!wheelHeld.current) {
+                wheelHeld.current = true;
+                setHeld(true);
+                beginPaneDividerDrag();
+            }
+            onDragRef.current(firstRatioRef.current + step);
+            if (wheelTimer.current != null) window.clearTimeout(wheelTimer.current);
+            wheelTimer.current = window.setTimeout(() => finishWheel(true), WHEEL_SETTLE_MS);
+        };
+
+        node.addEventListener('wheel', onWheel, { passive: false });
+        return () => node.removeEventListener('wheel', onWheel);
+    }, [direction, finishWheel]);
 
     const onPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         event.preventDefault();
         if (event.detail >= 2) {
+            finishWheel(false);
             onEqualize();
             return;
         }
         const parent = event.currentTarget.parentElement;
         if (!parent) return;
+        finishWheel(false);
         stopDrag(false);
         dragging.current = true;
         setHeld(true);
@@ -77,7 +132,7 @@ export function PaneDivider({
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);
         window.addEventListener('pointercancel', onUp);
-    }, [direction, onDrag, onEqualize, stopDrag]);
+    }, [direction, finishWheel, onDrag, onEqualize, stopDrag]);
 
     const onKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
         if (event.key === 'Enter' || event.key === 'Home') {
@@ -101,6 +156,7 @@ export function PaneDivider({
     const valueMin = Math.round(MIN_PANE_RATIO * 100);
     return (
         <div
+            ref={nodeRef}
             role="separator"
             tabIndex={0}
             aria-orientation={stacked ? 'horizontal' : 'vertical'}
@@ -108,11 +164,11 @@ export function PaneDivider({
             aria-valuemax={100 - valueMin}
             aria-valuenow={valueNow}
             aria-label="Resize panes"
-            title="Drag or arrow keys to resize · double-click or Enter to even panes"
+            title="Drag, scroll, or arrow keys to resize · double-click or Enter to even panes"
             onPointerDown={onPointerDown}
             onKeyDown={onKeyDown}
             className={cn(
-                'relative z-20 shrink-0 touch-none select-none transition-colors duration-150',
+                'relative z-20 shrink-0 touch-none select-none overscroll-none transition-colors duration-150',
                 stacked ? 'h-px w-full cursor-row-resize' : 'w-px h-full cursor-col-resize',
                 'outline-none focus-visible:bg-app-accent',
                 held ? 'bg-app-accent' : 'bg-app-border/40 hover:bg-app-accent/55',
@@ -122,8 +178,8 @@ export function PaneDivider({
                 className={cn(
                     'absolute',
                     stacked
-                        ? '-top-1.5 left-0 right-0 h-3.5'
-                        : 'top-0 -left-1.5 bottom-0 w-3.5',
+                        ? '-top-2 left-0 right-0 h-4'
+                        : 'top-0 -left-2 bottom-0 w-4',
                 )}
             />
         </div>

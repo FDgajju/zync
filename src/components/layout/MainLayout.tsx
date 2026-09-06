@@ -10,6 +10,7 @@ import { TabBar } from './TabBar';
 import { ShortcutManager } from '../managers/ShortcutManager';
 import { CommandPalette } from './CommandPalette';
 import { WorkspaceTabBar } from './WorkspaceTabBar';
+import { TabDockOverlay, type DockTabPointerHandlers } from './tabDock';
 import type { ShellEntry } from '../../lib/shells/types';
 import { GLOBAL_SNIPPETS_CONNECTION_ID, LOCAL_TERMINAL_CONNECTION_ID } from '../../features/connections/application/tabService';
 import { listen } from '@tauri-apps/api/event';
@@ -273,6 +274,11 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
     // Snippet quick access overlay state
     const [isSnippetSidebarOpen, setIsSnippetSidebarOpen] = useState(false);
 
+    const dockSurfaceRef = useRef<HTMLDivElement>(null);
+    const viewBeforeDockRef = useRef<string | null>(null);
+    const dockInSplit = useAppStore((state) => state.dockInSplit);
+    const showToast = useAppStore((state) => state.showToast);
+
     // Effect hooks must be unconditional
     // Ensure active view is always in openFeatures
     const pinnedFeatures = tab.connectionId === LOCAL_TERMINAL_CONNECTION_ID ? (localPinnedFeatures || EMPTY_ARRAY) : (connection?.pinnedFeatures || EMPTY_ARRAY);
@@ -484,6 +490,50 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
         }
     }, [setOpenFeatures, tab.view, tab.id, setTabView]);
 
+    const restoreViewBeforeDock = useCallback(() => {
+        const previous = viewBeforeDockRef.current;
+        viewBeforeDockRef.current = null;
+        if (previous && previous !== 'terminal') {
+            setTabView(tab.id, previous as Tab['view']);
+        }
+    }, [setTabView, tab.id]);
+
+    const dockPointer = useMemo<DockTabPointerHandlers>(() => ({
+        getSurface: () => dockSurfaceRef.current,
+        onDragStart: () => {
+            if (tab.view !== 'terminal') {
+                viewBeforeDockRef.current = tab.view;
+                setTabView(tab.id, 'terminal');
+            } else {
+                viewBeforeDockRef.current = null;
+            }
+        },
+        onDragEnd: (payload, edge, paneId) => {
+            if (!edge || !tab.connectionId) {
+                restoreViewBeforeDock();
+                return;
+            }
+            const result = dockInSplit(tab.connectionId, payload, edge, paneId);
+            if (result === 'refused-cap') {
+                showToast('info', 'This tab already has 4 panes.');
+                restoreViewBeforeDock();
+                return;
+            }
+            if (result === 'self' || result === 'no-target') {
+                restoreViewBeforeDock();
+                return;
+            }
+            viewBeforeDockRef.current = null;
+            if (payload.kind === 'feature') {
+                setOpenFeatures((open) => open.filter((id) => id !== payload.featureId));
+                setTabView(tab.id, 'terminal');
+            }
+        },
+        onDragCancel: () => {
+            restoreViewBeforeDock();
+        },
+    }), [dockInSplit, restoreViewBeforeDock, setTabView, showToast, tab.connectionId, tab.id, tab.view]);
+
     const handleTogglePin = useCallback((feature: string) => {
         if (tab.connectionId) {
             toggleConnectionFeature(tab.connectionId, feature);
@@ -555,11 +605,12 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
                             onTogglePin={handleTogglePin}
                             sessionToolsOpen={isSnippetSidebarOpen}
                             onToggleSessionTools={() => setIsSnippetSidebarOpen((open) => !open)}
+                            dockPointer={dockPointer}
                         />
                     )}
 
                     {/* Content Area */}
-                    <div className="flex-1 overflow-hidden relative flex flex-col">
+                    <div ref={dockSurfaceRef} className="flex-1 overflow-hidden relative flex flex-col">
                         <Suspense fallback={<TabLoading />}>
                             {filesPanelMounted && (
                                 <div
@@ -638,6 +689,8 @@ const TabContent = memo(function TabContent({ tab, isActive }: {
                                 onClose={() => setIsSnippetSidebarOpen(false)}
                                 restoreTerminalFocus={tab.view === 'terminal'}
                             />
+
+                            <TabDockOverlay />
 
                         </Suspense>
                     </div>

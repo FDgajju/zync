@@ -5,26 +5,41 @@ import type { TerminalTabSnapshot } from './sessionPersistence';
 import { scheduleSaveSession } from './sessionSlice';
 import {
     canSplit,
+    dockIntoLayout,
+    oppositeDockEdge,
+    dropFeature,
     dropTerm,
+    findLeafByFeature,
     findNode,
     firstLeaf,
     focusPane as focusPaneInLayout,
+    isFeatureContent,
     isPaneLeaf,
     isSplitLayout,
     layoutActiveTermId,
     findLayoutOwner,
     focusedTermIdForRestore,
     detachTermFromGroups,
+    featurePaneContent,
+    isPaneSplit,
     layoutForTerm,
+    markSplitIntro,
     neighborPaneId,
     parsePaneLayoutGroups,
+    sameGroupTermDock,
     setSplitSizes,
     singlePane,
     splitPane,
+    termPaneContent,
     visibleTermIds,
+    type DockEdge,
+    type DockPayload,
+    type DockResult,
+    type OpenSplitFeatureResult,
     type PaneLayoutGroups,
     type PaneNavDirection,
     type SplitDirection,
+    type SplitFeatureId,
 } from '../lib/paneLayout';
 
 export interface TerminalTab {
@@ -127,6 +142,20 @@ export interface TerminalSlice {
     focusPane: (connectionId: string, paneId: string) => void;
     /** Move keyboard focus to the neighboring pane. False if there is no split. */
     focusPaneInDirection: (connectionId: string, direction: PaneNavDirection) => boolean;
+    /** Open or focus a split-capable feature beside the focused pane. Never replaces a shell. */
+    openFeatureInSplit: (connectionId: string, featureId: SplitFeatureId, edge?: DockEdge) => OpenSplitFeatureResult;
+    /** Dock a feature tab or move a shell tab into this group's split. */
+    dockInSplit: (
+        connectionId: string,
+        payload: DockPayload,
+        edge: DockEdge,
+        targetPaneId?: string | null,
+        canvasTermId?: string | null,
+    ) => DockResult;
+    /** Put `termId` beside Files. Splits the Files pane, or Files overlay → Files | terminal without touching other shells. */
+    splitTermBesideFiles: (connectionId: string, termId: string, edge: DockEdge, filesPaneId?: string | null) => DockResult;
+    /** Remove a feature leaf; leftover shells stay. */
+    closeFeatureInSplit: (connectionId: string, featureId: SplitFeatureId) => void;
 
     /**
      * Clears the pendingRestore flag on all terminal tabs for a connection.
@@ -140,6 +169,34 @@ const ipc = window.ipcRenderer;
 
 function isTabVisible(tab: TerminalTab): boolean {
     return tab.tabVisible !== false;
+}
+
+function resolveDockOwner(
+    groups: PaneLayoutGroups | undefined,
+    activeId: string | null | undefined,
+    targetPaneId?: string,
+): string | null {
+    if (targetPaneId && groups) {
+        for (const [owner, layout] of Object.entries(groups)) {
+            if (findNode(layout.root, targetPaneId)) return owner;
+        }
+    }
+    if (activeId) return findLayoutOwner(groups, activeId) ?? activeId;
+    return null;
+}
+
+function writeConnectionGroups(
+    paneLayouts: Record<string, PaneLayoutGroups | undefined>,
+    connectionId: string,
+    groups: PaneLayoutGroups | undefined,
+): Record<string, PaneLayoutGroups | undefined> {
+    const next = { ...paneLayouts };
+    if (groups && Object.keys(groups).length > 0) {
+        next[connectionId] = groups;
+    } else {
+        delete next[connectionId];
+    }
+    return next;
 }
 
 export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> = (set, get) => ({
@@ -601,7 +658,7 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
             ];
 
             const target = findNode(layout.root, layout.activePaneId) ?? firstLeaf(layout.root);
-            const result = splitPane(layout, target.id, direction, { kind: 'term', termId: otherId });
+            const result = splitPane(layout, target.id, direction, termPaneContent(otherId));
             if (!result.ok) return state;
             const focused = focusPaneInLayout(result.layout, result.newPaneId);
 
@@ -618,18 +675,25 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
     },
 
     unsplitPanes: (connectionId) => {
-        set(state => {
-            const activeId = state.activeTerminalIds[connectionId];
-            if (!activeId) return state;
-            const groups = state.paneLayouts[connectionId];
-            const owner = findLayoutOwner(groups, activeId);
-            const layout = owner ? groups?.[owner] : undefined;
-            if (!owner || !layout || !isSplitLayout(layout)) return state;
+        const activeId = get().activeTerminalIds[connectionId];
+        if (!activeId) return;
+        const groups = get().paneLayouts[connectionId];
+        const owner = findLayoutOwner(groups, activeId);
+        const layout = owner ? groups?.[owner] : undefined;
+        if (!owner || !layout || !isSplitLayout(layout)) return;
+        const focused = findNode(layout.root, layout.activePaneId);
+        if (focused && isPaneLeaf(focused) && isFeatureContent(focused.content)) {
+            get().closeFeatureInSplit(connectionId, focused.content.featureId);
+            return;
+        }
 
-            const focused = findNode(layout.root, layout.activePaneId);
-            if (!focused || !isPaneLeaf(focused) || focused.content.kind !== 'term') return state;
-            const focusedTerm = focused.content.termId;
-            const { next, nextOwner } = detachTermFromGroups(groups, focusedTerm);
+        set(state => {
+            const focusedTermLeaf = findNode(layout.root, layout.activePaneId);
+            if (!focusedTermLeaf || !isPaneLeaf(focusedTermLeaf) || focusedTermLeaf.content.kind !== 'term') {
+                return state;
+            }
+            const focusedTerm = focusedTermLeaf.content.termId;
+            const { next, nextOwner } = detachTermFromGroups(state.paneLayouts[connectionId], focusedTerm);
 
             const nextTabs = (state.terminals[connectionId] || []).map(t => {
                 if (t.id === focusedTerm || (nextOwner && t.id === nextOwner)) {
@@ -715,5 +779,152 @@ export const createTerminalSlice: StateCreator<AppStore, [], [], TerminalSlice> 
         if (!nextId) return true;
         get().focusPane(connectionId, nextId);
         return true;
+    },
+
+    openFeatureInSplit: (connectionId, featureId, edge = 'right') => {
+        return get().dockInSplit(connectionId, { kind: 'feature', featureId }, edge);
+    },
+
+    dockInSplit: (connectionId, payload, edge, targetPaneId, canvasTermId) => {
+        const state = get();
+        const tabs = state.terminals[connectionId] || [];
+        const groups = state.paneLayouts[connectionId];
+        const paneId = targetPaneId || undefined;
+        const owner = resolveDockOwner(groups, canvasTermId ?? state.activeTerminalIds[connectionId], paneId)
+            ?? tabs.find(isTabVisible)?.id
+            ?? null;
+        if (!owner) return 'no-target';
+
+        if (payload.kind === 'term') {
+            if (!tabs.some((tab) => tab.id === payload.termId)) return 'no-target';
+            const selfDock = sameGroupTermDock(groups, owner, payload.termId);
+            if (selfDock) return selfDock;
+
+            const targetLayout = groups?.[owner] ?? singlePane(owner);
+            if (!canSplit(targetLayout)) return 'refused-cap';
+
+            const detached = detachTermFromGroups(groups, payload.termId);
+            const groupsNext: PaneLayoutGroups = { ...(detached.next ?? {}) };
+            const layout = groupsNext[owner] ?? singlePane(owner);
+            const docked = dockIntoLayout(layout, termPaneContent(payload.termId), edge, undefined, paneId);
+            if (!docked.ok) {
+                return docked.reason === 'cap' ? 'refused-cap' : 'no-target';
+            }
+            groupsNext[owner] = docked.layout;
+
+            const nextTabs = tabs.map((tab) => {
+                if (tab.id === payload.termId) return { ...tab, tabVisible: false };
+                if (detached.nextOwner && tab.id === detached.nextOwner) {
+                    return { ...tab, tabVisible: true };
+                }
+                return tab;
+            });
+
+            set({
+                terminals: { ...state.terminals, [connectionId]: nextTabs },
+                paneLayouts: writeConnectionGroups(
+                    state.paneLayouts,
+                    connectionId,
+                    Object.keys(groupsNext).length > 0 ? groupsNext : undefined,
+                ),
+                activeTerminalIds: {
+                    ...state.activeTerminalIds,
+                    [connectionId]: payload.termId,
+                },
+            });
+            scheduleSaveSession(() => get().saveSession());
+            return 'moved';
+        }
+
+        const layout = groups?.[owner] ?? singlePane(owner);
+        const docked = dockIntoLayout(layout, featurePaneContent(payload.featureId), edge, undefined, paneId);
+        if (!docked.ok) {
+            return docked.reason === 'cap' ? 'refused-cap' : 'no-target';
+        }
+        set({
+            paneLayouts: {
+                ...state.paneLayouts,
+                [connectionId]: { ...(groups ?? {}), [owner]: docked.layout },
+            },
+        });
+        scheduleSaveSession(() => get().saveSession());
+        return docked.created ? 'opened' : 'focused';
+    },
+
+    splitTermBesideFiles: (connectionId, termId, edge, filesPaneId) => {
+        const state = get();
+        const tabs = state.terminals[connectionId] || [];
+        if (!tabs.some((tab) => tab.id === termId)) return 'no-target';
+        const groups = state.paneLayouts[connectionId];
+        const knownFilesPane = filesPaneId
+            || (() => {
+                const canvasId = state.activeTerminalIds[connectionId] ?? tabs.find(isTabVisible)?.id ?? null;
+                const canvasLayout = canvasId ? layoutForTerm(groups, canvasId) : undefined;
+                return canvasLayout ? findLeafByFeature(canvasLayout.root, 'files')?.id ?? null : null;
+            })();
+
+        if (knownFilesPane) {
+            const owner = resolveDockOwner(groups, state.activeTerminalIds[connectionId], knownFilesPane);
+            return get().dockInSplit(connectionId, { kind: 'term', termId }, edge, knownFilesPane, owner);
+        }
+
+        const filesEdge = oppositeDockEdge(edge);
+        const placed = dockIntoLayout(
+            singlePane(termId),
+            featurePaneContent('files'),
+            filesEdge,
+        );
+        if (!placed.ok) {
+            return placed.reason === 'cap' ? 'refused-cap' : 'no-target';
+        }
+        if (isPaneSplit(placed.layout.root)) {
+            // splitPane marked Files as incoming; overlay should grow the shell instead.
+            const growTerm = filesEdge === 'left' || filesEdge === 'top' ? 1 : 0;
+            markSplitIntro(placed.layout.root.id, growTerm);
+        }
+
+        const detached = detachTermFromGroups(groups, termId);
+        const nextGroups: PaneLayoutGroups = { ...(detached.next ?? {}) };
+        nextGroups[termId] = placed.layout;
+        const nextTabs = tabs.map((tab) => (
+            tab.id === termId ? { ...tab, tabVisible: true } : tab
+        ));
+        set({
+            terminals: { ...state.terminals, [connectionId]: nextTabs },
+            paneLayouts: { ...state.paneLayouts, [connectionId]: nextGroups },
+            activeTerminalIds: { ...state.activeTerminalIds, [connectionId]: termId },
+        });
+        scheduleSaveSession(() => get().saveSession());
+        return 'opened';
+    },
+
+    closeFeatureInSplit: (connectionId, featureId) => {
+        set(state => {
+            const activeId = state.activeTerminalIds[connectionId];
+            if (!activeId) return state;
+            const groups = state.paneLayouts[connectionId];
+            const owner = findLayoutOwner(groups, activeId);
+            const layout = owner ? groups?.[owner] : undefined;
+            if (!owner || !layout) return state;
+            const dropped = dropFeature(layout, featureId);
+            if (dropped === layout) return state;
+            const nextGroups: PaneLayoutGroups = { ...(groups ?? {}) };
+            delete nextGroups[owner];
+            if (dropped && isSplitLayout(dropped)) {
+                nextGroups[owner] = dropped;
+            }
+            const remainingTerm = dropped ? layoutActiveTermId(dropped) : activeId;
+            return {
+                paneLayouts: writeConnectionGroups(
+                    state.paneLayouts,
+                    connectionId,
+                    Object.keys(nextGroups).length > 0 ? nextGroups : undefined,
+                ),
+                activeTerminalIds: remainingTerm
+                    ? { ...state.activeTerminalIds, [connectionId]: remainingTerm }
+                    : state.activeTerminalIds,
+            };
+        });
+        scheduleSaveSession(() => get().saveSession());
     },
 });

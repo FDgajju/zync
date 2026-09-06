@@ -1,7 +1,7 @@
 # Zync Terminal — Architecture & Reference
 
-**Last updated:** 2026-06-29  
-**Applies to:** Zync v2.19.1+
+**Last updated:** 2026-09-06  
+**Applies to:** Zync v2.29.0+
 
 This document describes **how Zync’s integrated terminal works today** — local and remote shells, stack choices, architecture, IPC, renderer, lifecycle, ghost suggestions, settings, and code layout. It is the single place to learn what the terminal system is and how it behaves, not a development plan or backlog.
 
@@ -46,7 +46,7 @@ Zync embeds a full terminal per workspace connection (plus a local shell) using 
 - **GPU rendering** — WebGL2 primary with automatic DOM fallback
 - **Opt-in resource reclaim** — background remote host PTYs can suspend after idle timeout
 
-Each workspace can have multiple shell tabs. A **local shell** (`LOCAL_TERMINAL_CONNECTION_ID`) runs without SSH; **remote shells** attach to the active host connection. By default only the active shell is mounted; a **split** can mount up to four nested visible shells (side by side first, or stacked). Inactive tabs keep their xterm instance and scrollback in `terminalCache`. Pane layout lives in `src/lib/paneLayout` (tree + cap). Files / Port Forwarding / Dashboard stay full-view.
+Each workspace can have multiple shell tabs. A **local shell** (`LOCAL_TERMINAL_CONNECTION_ID`) runs without SSH; **remote shells** attach to the active host connection. By default only the active shell is mounted; a **split** can mount up to four nested visible leaves (side by side first, or stacked). A leaf is a shell or a host feature (Files, Port Forwarding, Dashboard, Snippets). Inactive tabs keep their xterm instance and scrollback in `terminalCache`. Pane layout lives in `src/lib/paneLayout` (tree + cap). Workspace **+ → Files / Dashboard / …** is still the full-view overlay. Drag a feature tab or another shell tab to an edge to dock it as a pane. A split group always keeps at least one shell.
 
 ---
 
@@ -139,13 +139,13 @@ flowchart TB
 | File | Role |
 |------|------|
 | `TerminalManager.tsx` | Mounts one to four visible shells; keeps inactive tabs warm; routes snippet/plugin writes through `queueTerminalInput` |
-| `PaneLayoutView.tsx` / `PaneDivider.tsx` | Split tree renderer; 1px seams; accent on the focused pane's inner edges only; drag to resize; double-click a seam to even both sides |
+| `PaneLayoutView.tsx` / `PaneDivider.tsx` | Split tree renderer; term leaves and Files leaves; 1px seams; accent on the focused pane's inner edges only; drag, scroll, or arrow keys to resize; double-click a seam to even both sides. New splits grow in once (`paneLayout/intro.ts`); divider drag/scroll does not use that transition |
 | `paneLayout/nav.ts` | Spatial neighbor for Ctrl+Alt+arrows |
 | `Terminal.tsx` | Hook wiring (~270 lines): lifecycle, theme, search, ghost, keybindings, global shortcuts |
 | `TerminalHost.tsx` | Connected-state presentation: search bar, context menu, ghost overlays, xterm container |
 | `TerminalDisconnectedView.tsx` | Connecting / error / reconnect UI for remote hosts |
 | `TerminalSearchBar.tsx` | Find UI; removed from DOM when closed (a11y) |
-| `TerminalContextMenu.tsx` | Copy/paste via shared clipboard helper; **Open File Manager Here** jumps to Files at the shell cwd |
+| `TerminalContextMenu.tsx` | Copy/paste via shared clipboard helper; **Open File Manager Here** jumps to Files at the shell cwd; **Open File Manager in split** docks Left / Right / Bottom |
 | `GhostSuggestionOverlay.tsx` | Inline ghost suffix at cursor |
 | `GhostSuggestionListOverlay.tsx` | Popup list (portal to `document.body`) |
 | `useTerminalLifecycle.ts` | xterm init, spawn/suspend, resize scheduler, renderer sync, output channel attach |
@@ -375,7 +375,8 @@ Historical scrollback **does not reflow** when the window is resized. Lines writ
 - `ResizeObserver` on terminal container — **gated on `isVisibleRef`**
 - Window resize
 - Layout transitions (sidebar, panel) — visual `fit()` immediately; PTY IPC deferred until settle (500ms safety timeout)
-- Split divider drag — visual `fit()` while dragging; one PTY resize (`SIGWINCH`) on pointer up (`zync:pane-resize-end`). Double-click a seam to even both sides, then the same pointer-up resize path runs.
+- Split divider drag — visual `fit()` while dragging; one PTY resize (`SIGWINCH`) on pointer up (`zync:pane-resize-end`). Double-click a seam to even both sides, then the same pointer-up resize path runs. Hover the seam and scroll to resize the same way; PTY resize waits until the wheel settles. Ctrl/Cmd+wheel is not captured (zoom).
+- Split intro — new pane flex-grows from 0 to its share (~280ms). Visual `fit()` during the intro; one PTY resize when it ends (`zync:pane-resize-end`). Skipped when `prefers-reduced-motion: reduce`. Restored layouts do not replay the intro.
 - Renderer kind changes — refit + screen refresh
 - Files/Dashboard return — `terminalPanelRestore` + `isTerminalDomMeasurable`
 
@@ -477,6 +478,9 @@ Terminal tab intro links jump to Appearance for look-and-feel.
 | WebGL + ligatures together | xterm-recommended order; better than mutual exclusion |
 | `terminalService` facade | Decouple `terminalSlice` from React component exports |
 | Passive OSC 7 only | No shell injection; works when prompt emits OSC 7 |
+| Files-in-split is a pane leaf, not a `terminals[]` row | No fake PTY; `tab.view` stays `terminal` so the overlay does not cover the split. **+ → Files** remains full-view. Split icons / Ctrl+Shift+arrows still create a shell. A group is dropped if it would have zero shells. |
+| Drag tab to an edge docks that tab | Nearest-edge drop with a half-pane preview on the pane under the pointer (nested splits stay local). The preview eases between edges. Feature tabs become feature leaves and leave the tab bar; another shell tab moves into this group (`tabVisible: false`) without killing its PTY. The current shell tab onto itself is a no-op. Right-click **Open in split to the Right / Bottom** on feature tabs, other shell tabs, and workspace **+** rows; a normal click still opens a tab. Plugins and global workspace tabs are not dockable. |
+| Split intro is one-shot, not persisted | `splitPane` marks the new split id; the view consumes it on mount. Session restore and reduced-motion skip the grow-in. Divider drag never enables the flex transition. |
 | Fail-closed process probe | If sysinfo fails, defer suspend rather than kill busy shell |
 
 ---
@@ -517,7 +521,8 @@ src/components/terminal/
   useTerminalGhost.ts, useTerminalKeybindings.ts, useTerminalGlobalShortcuts.ts
   terminalTheme.ts
 
-src/lib/paneLayout/        # Split tree, cap, persist helpers
+src/lib/paneLayout/        # Split tree, cap, persist, dock geometry, split intro; term + feature leaves
+src/components/layout/tabDock/  # Drag a tab to an edge to dock it as a pane
 src/lib/terminal/          # See §5 — 38 modules, index.ts public API
 src/lib/ghostSuggestions/  # See §15
 
@@ -539,6 +544,7 @@ src-tauri/src/ghost/
 
 ```
 tests/terminal*.test.mjs
+tests/paneLayout.test.mjs
 tests/ghostSuggestionsHelpers.test.mjs
 tests/runTerminalRendererTests.mjs
 ```

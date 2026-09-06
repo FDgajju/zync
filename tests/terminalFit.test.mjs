@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import {
   beginPaneDividerDrag,
+  beginPaneSplitIntro,
   createResizeScheduler,
   endPaneDividerDrag,
+  endPaneSplitIntro,
   isPaneDividerDragging,
+  isPaneSizeTransient,
 } from '../.tmp-agent-tests/src/lib/terminal/terminalFit.js';
 
 function runTest(name, fn) {
@@ -32,6 +35,21 @@ runTest('pane divider drag depth nests and never goes negative', () => {
   assert.equal(isPaneDividerDragging(), false);
   endPaneDividerDrag();
   assert.equal(isPaneDividerDragging(), false);
+});
+
+runTest('split intro shares the pane-size-transient hold with divider drag', () => {
+  resetDrag();
+  beginPaneSplitIntro();
+  assert.equal(isPaneSizeTransient(), true);
+  assert.equal(isPaneDividerDragging(), true);
+  assert.equal(endPaneSplitIntro(), true);
+  assert.equal(isPaneSizeTransient(), false);
+  beginPaneSplitIntro();
+  beginPaneDividerDrag();
+  assert.equal(endPaneSplitIntro(), false);
+  assert.equal(isPaneSizeTransient(), true);
+  endPaneDividerDrag();
+  assert.equal(isPaneSizeTransient(), false);
 });
 
 runTest('resize scheduler forwards syncBackend on immediate runs', () => {

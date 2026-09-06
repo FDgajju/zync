@@ -113,6 +113,9 @@ export {
   createResizeScheduler,
   beginPaneDividerDrag,
   endPaneDividerDrag,
+  beginPaneSplitIntro,
+  endPaneSplitIntro,
+  isPaneSizeTransient,
   isPaneDividerDragging,
 } from './terminalFit.js';
 export { restoreTerminalDisplay } from './terminalPanelRestore.js';

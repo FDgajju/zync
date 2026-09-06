@@ -39,7 +39,7 @@ export const markConnectionConnected = (
             status: 'connected',
             lastError: undefined,
             lastConnected: Date.now(),
-            homePath,
+            homePath: homePath || connection.homePath,
         };
 
         if (normalizedOs && (!connection.icon || connection.icon === 'Server')) {

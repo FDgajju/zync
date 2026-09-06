@@ -35,6 +35,12 @@ runTest('markConnectionConnected sets metadata and optional detected icon', () =
   assert.equal(next[0].icon, 'ubuntu');
 });
 
+runTest('markConnectionConnected does not replace homePath with an empty placeholder', () => {
+  const connections = [{ id: 'a', status: 'connecting', homePath: '/home/a' }];
+  const next = markConnectionConnected(connections, 'a', '');
+  assert.equal(next[0].homePath, '/home/a');
+});
+
 runTest('markConnectionErrorIfNeeded is idempotent for existing error', () => {
   const connections = [{ id: 'a', status: 'error' }];
   const next = markConnectionErrorIfNeeded(connections, 'a');

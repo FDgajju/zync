@@ -358,6 +358,56 @@
     overflow: hidden;
 }
 
+.pane-split-branch {
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.pane-split-branch.is-intro {
+    transition: flex-grow 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pane-split-intro-veil {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    background: color-mix(in srgb, var(--color-app-accent) 16%, transparent);
+    animation: pane-split-veil-out 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes pane-split-veil-out {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}
+
+.tab-dock-preview {
+    transition:
+        left 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        top 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        width 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        height 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pane-split-branch.is-intro,
+    .tab-dock-preview {
+        transition: none;
+    }
+
+    .pane-split-intro-veil {
+        animation: none;
+        opacity: 0;
+    }
+}
+
 .terminal-container .xterm {
     height: 100%;
     width: 100%;
